@@ -264,6 +264,17 @@ export class IngestionStore {
         );
         return { archiveId: archive.id, duplicate: false, fixtures: 0, appearances: 0, issues: issues.length };
       }
+      // Historical corrections protect the whole fixture from older observations,
+      // including cross-endpoint replays after a newer provider revision is current.
+      const corrected = await client.query<{ fixture_id: string }>(
+        `SELECT DISTINCT split_part(n.entity_key,':',1) AS fixture_id
+         FROM sports.normalized_revisions n JOIN sports.source_revisions s ON s.id=n.source_revision_id
+         WHERE n.entity_type='appearance' AND s.provider='manual' AND s.retrieved_at >= $1::timestamptz
+           AND n.entity_key ~ '^[1-9][0-9]{0,17}:[1-9][0-9]{0,17}$'
+           AND split_part(n.entity_key,':',1)=ANY($2::text[])`,
+        [archive.retrievedAt, batch.fixtures.map((fixture) => fixture.id)],
+      );
+      const protectedFixtures = new Set(corrected.rows.map((row) => row.fixture_id));
       const coverage = batch.coverage;
       const competition = await this.upsert(client, source, "competitions", { provider: "apifootball", provider_id: coverage.id }, {
         name: coverage.name, country_name: coverage.country, timezone: coverage.timezone, coefficient: 1.5, enabled: true,
@@ -304,6 +315,10 @@ export class IngestionStore {
       const issues = [...batch.issues];
       for (const fixture of [...batch.fixtures].sort((a, b) => a.id.localeCompare(b.id))) {
         if (fixture.leagueId !== coverage.id || fixture.season !== coverage.season) throw new Error("Fixture is outside import coverage");
+        if (protectedFixtures.has(fixture.id)) {
+          issues.push({ code: "superseded_by_manual_correction", resource: fixture.id });
+          continue;
+        }
         const previous = await this.readFixture(client, fixture.id);
         if (previous && (previous.leagueId !== coverage.id || previous.season !== coverage.season)) throw new Error("Fixture coverage cannot change during import");
         const old = await client.query<{ id: string; provider_id: string; player_id: string; club_provider_id: string | null }>(

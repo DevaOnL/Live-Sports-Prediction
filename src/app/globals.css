@@ -104,3 +104,20 @@ h3 { font-size: 29px; line-height: 1.15; letter-spacing: -1px; font-weight: 650;
   .competition-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.account-shell { min-height: 100svh; background: var(--surface); padding: 40px 20px 80px; }
+.account-brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: min(100%, 520px); margin: 0 auto 42px; font-size: 14px; font-weight: 650; }
+.account-card { width: min(100%, 520px); margin-inline: auto; padding: clamp(24px, 5vw, 48px); background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+.account-card h1 { font-size: clamp(36px, 5vw, 48px); letter-spacing: -.05em; }
+.account-card .eyebrow { color: var(--muted); margin-bottom: 18px; }
+.account-intro { color: var(--muted); font-size: 14px; line-height: 1.7; margin: 20px 0 30px; }
+.account-form { display: grid; }
+.account-form label { margin-bottom: 9px; font-size: 13px; font-weight: 600; }
+.account-form input { width: 100%; min-width: 0; min-height: 48px; margin-bottom: 22px; padding: 12px 14px; font: inherit; font-size: 15px; border: 1px solid #b9c6bc; border-radius: 7px; background: #fff; color: var(--ink); }
+.account-form input:focus-visible, button:focus-visible { outline: 3px solid #176c53; outline-offset: 3px; }
+button.button { border: 0; cursor: pointer; min-height: 48px; font: inherit; font-size: 14px; font-weight: 600; }
+button:disabled { cursor: wait; opacity: .65; }
+.account-error { color: #a52f20; font-size: 13px; line-height: 1.6; min-height: 21px; margin: 0 0 18px; }
+.account-error:empty { margin-bottom: 0; min-height: 0; }
+.account-role { display: inline-block; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 8px 12px; margin: 0 0 30px; font-size: 13px; }
+.account-card > .button { display: flex; width: 100%; }

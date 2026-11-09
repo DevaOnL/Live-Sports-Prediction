@@ -7,16 +7,19 @@ metadata. The executable definitions are
 [`002_auth.sql`](../db/migrations/002_auth.sql),
 [`003_grants.sql`](../db/migrations/003_grants.sql),
 [`004_ingestion.sql`](../db/migrations/004_ingestion.sql),
-[`005_rosters.sql`](../db/migrations/005_rosters.sql), and
-[`006_forecasts.sql`](../db/migrations/006_forecasts.sql).
+[`005_rosters.sql`](../db/migrations/005_rosters.sql),
+[`006_forecasts.sql`](../db/migrations/006_forecasts.sql),
+[`007_forecast_freshness.sql`](../db/migrations/007_forecast_freshness.sql),
+[`008_reporting.sql`](../db/migrations/008_reporting.sql), and
+[`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql).
 
-The app remains a process-only preview. An explicitly enabled worker imports
-covered provider data, reconstructs standings, and processes durable ingestion
-jobs and forecast refreshes using restricted runtime identities. Saved forecasts retain
-their inputs and explanations; see [forecasting](forecasting.md). Login routes
-remain unavailable. Authentication tables provide storage compatible with Better Auth's
-core shape; they do not provide a login flow by themselves. See the
-[ingestion guide](ingestion.md) for the MongoDB archive and recovery contract.
+The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
+football reads and administrator operations. Login/account screens are available;
+the root page remains a methodology preview. An explicitly enabled worker imports
+covered provider data, reconstructs standings, and processes ingestion jobs and
+forecast refreshes. Saved forecasts retain inputs and explanations; see
+[forecasting](forecasting.md). The [API guide](api.md) describes session setup and
+authorization. The [ingestion guide](ingestion.md) covers MongoDB archives and recovery.
 
 ## Entity relationships
 
@@ -60,7 +63,8 @@ Each child has exactly one referenced parent unless the diagram marks that paren
 optional (`o|`); a parent can have zero or more children (`o{`). Fixture home and
 away references each identify a club registered in that fixture's season.
 Optional canonical provenance links to `normalized_revisions` are omitted for
-readability. `auth.verification` and the migration ledger are independent tables.
+readability. `auth.verification`, `auth."rateLimit"` and the migration ledger are
+independent tables.
 
 ## Tables and keys
 
@@ -80,7 +84,7 @@ and `ingestion_batches` uses its archive identifier. External identifiers remain
 | `sports.player_memberships` | Player FK and registered season-club FK; half-open interval `[valid_from, valid_until)`, optionally open-ended; unique `(player_id, club_id, season_id, valid_from)` |
 | `sports.fixtures` | Unique `(provider, provider_id)`; season and two registered season-club FKs; nullable kickoff/scores; separate fixture and statistics statuses |
 | `sports.appearances` | Unique `(fixture_id, player_id)`; player FK; composite fixture-season and membership-player-club-season FKs; optional club/membership; participation, minutes, rating, and eight count metrics |
-| `sports.source_revisions` | Unique MongoDB archive reference; provider, action, resource key, lowercase SHA-256 hash, retrieval time; unique `(provider, action, resource_key, content_sha256, retrieved_at)` retains distinct observations of matching content |
+| `sports.source_revisions` | Unique source reference (provider archive ID or explicit manual reference); provider, action, resource key, lowercase SHA-256 hash, retrieval time; unique `(provider, action, resource_key, content_sha256, retrieved_at)` retains distinct observations of matching content |
 | `sports.normalized_revisions` | Source revision FK; entity type/key, content hash, optional same-entity parent; unique increasing identity ordinal; unique `(source_revision_id, entity_type, entity_key, content_sha256)` |
 | `sports.standings_snapshots` | Season and required normalized revision FKs; local cutoff date, UTC cutoff instant, completeness flag; unique `(season_id, cutoff_local_date, normalized_revision_id)` |
 | `sports.standings_rows` | PK `(snapshot_id, club_id)`; composite snapshot-season and registered season-club FKs; position/uncertainty, played/wins/draws/losses, goals, points |
@@ -93,11 +97,12 @@ and `ingestion_batches` uses its archive identifier. External identifiers remain
 | `sports.roster_snapshots` | UUID PK; season FK, unique source revision FK, original observation time, completeness and normalized revision; append-only |
 | `sports.roster_entries` | PK `(snapshot_id, player_id, club_id)`; snapshot-season, registered season-club and player FKs; preserves conflicting club observations |
 | `sports.forecast_revisions` | UUID PK and increasing ordinal; player FK; same-player earlier parent FK; model version, semantic hash, canonical source ordinal, cutoff, full input/provenance/result JSON objects; append-only |
-| `sports.forecast_heads` | Player PK/FK and same-player revision FK; mutable current pointer and update time |
+| `sports.forecast_heads` | Player PK/FK and same-player revision FK; mutable pointer/update time plus latest evaluation cutoff, source ordinal, provenance and check time |
 | `auth."user"` | Text PK; case-insensitive unique email, name, verification flag, optional image, `viewer`/`admin` role, creation/update times |
 | `auth.session` | Text PK; unique nonempty token; user FK with cascading deletion; expiry after creation and optional client metadata |
 | `auth.account` | Text PK; user FK with cascading deletion; unique `("providerId", "accountId")`; optional password/token fields |
 | `auth.verification` | Text PK; nonempty identifier/value, expiry and creation/update times; identifier index |
+| `auth."rateLimit"` | Text PK and unique nonempty key; atomic shared authentication attempt count and millisecond last-request timestamp; timestamp index |
 | `infra.schema_migrations` | PK `filename`; lowercase SHA-256 checksum and application time; owned by `lsp_migrator` |
 
 Stable clubs and players are separate from season registration and dated
@@ -106,6 +111,8 @@ records. Appearance metrics use typed columns: `goals`, `assists`,
 `shots_on_target`, `key_passes`, `tackles`, `interceptions`, `saves`, and
 `goals_conceded`. SQL stores archive references and revision metadata, with raw
 provider response storage reserved for MongoDB.
+Manual appearance corrections append SQL source/revision and actor audit evidence;
+they do not invent provider archives or imported provider batches.
 
 ## Integrity and missing data
 
@@ -165,7 +172,7 @@ table, and function privileges are revoked; runtime roles receive explicit grant
 | --- | --- |
 | `lsp_reader` | Read canonical football, source/normalized revisions, standings, points adjustments, rosters and forecasts; no writes or auth/outbox/jobs/audit access |
 | `lsp_writer` | Read all `sports` tables; insert/update/delete canonical competitions, seasons, clubs, registration, players, memberships, fixtures, and appearances; append revisions, snapshots/rows, adjustments, audit, outbox, and jobs; update only outbox `published_at` and specified job lifecycle columns |
-| `lsp_auth` | Read users; insert/update permitted profile fields with a default `viewer` role; CRUD sessions/accounts/verifications; no user deletion, role writes, football access, or migration access |
+| `lsp_auth` | Read users; insert/update permitted profile fields with a default `viewer` role; CRUD sessions/accounts/verifications and shared rate-limit records; no user deletion, role writes, football access, or migration access |
 | `lsp_migrator` | Own schemas, tables, and constraint functions; manage the migration ledger and apply versioned SQL; reserved for controlled administration |
 
 The writer may select/insert roster observations and forecast revisions, but
@@ -182,7 +189,18 @@ the writer can select and insert them, but cannot update or delete them.
 The auth role cannot insert or update `auth."user".role`; assigning an admin role
 requires a controlled administrator. Audit actor identifiers are durable text,
 so deleting an authentication user does not erase attribution. Database grants
-do not implement route authorization or session checks.
+do not implement route authorization or session checks. The server performs a
+fresh database-backed session and role lookup before protected requests. Viewer
+football reads use `lsp_reader`; administrator work uses `lsp_writer`; session
+storage and trusted role lookups use `lsp_auth`. Read services use repeatable-read,
+read-only snapshots. Comparison calculates canonical model inputs within that
+snapshot and does not persist forecasts.
+
+The local `npm run users --` CLI uses `lsp_migrator` to create password accounts,
+change passwords or roles, and revoke sessions. Passwords enter through stdin,
+not arguments. Password/role changes revoke existing sessions transactionally.
+Public signup and password reset are disabled. Follow [session setup](api.md)
+before using login; applying authentication tables does not seed users.
 
 Indexes cover provider-key deduplication, player/fixture history, dated
 memberships, fixture lookup by season and home/away club, revision ancestry/entity
@@ -224,12 +242,16 @@ For an existing managed database, preserve its data and apply only new migration
 npm run db:migrate
 ```
 
-This includes `004_ingestion.sql`, which adds cross-store commit markers and the
-shared provider request ledger. Apply it before enabling ingestion. MongoDB
+Apply `009_auth_rate_limit.sql` before starting upgraded web sessions; it adds
+the database-backed authentication limiter and its auth-role grants. The same
+command applies all earlier pending files, including ingestion commit markers,
+forecast freshness and reporting routines. MongoDB
 collection validators, indexes, and restricted runtime privileges are provisioned
 separately with `npm run mongo:provision`; that command requires the local MongoDB
-bootstrap credentials. The app receives none of these credentials, and the worker
-receives only the runtime writer/ingestion credentials.
+bootstrap credentials. The Compose app receives only the auth secret and the
+reader/writer/auth runtime passwords. The Compose worker receives only its writer,
+MongoDB ingestion and provider credentials. Neither receives bootstrap or migrator
+secrets. Local CLI and development commands load the ignored local `.env`.
 
 Do not remove volumes to upgrade a schema. Container replacement and ordinary
 `docker compose down` preserve named volumes. Editing `.env` does not rotate the
@@ -313,6 +335,9 @@ Run it after `npm ci`:
     'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT system_identifier::text FROM pg_control_system()"')
   export POSTGRES_TEST_CLUSTER_ID="$db_test_cluster_id"
   npm run test:db
+  npm run test:forecast
+  npm run test:reporting
+  npm run test:auth
 )
 ```
 
@@ -320,8 +345,11 @@ The [CI workflow](../.github/workflows/ci.yml) also runs the database suite in a
 isolated PostgreSQL service. Lint, typecheck, and build require no database or
 provider credentials. The separate [ingestion integration recipe](ingestion.md#isolated-integration-tests)
 uses disposable PostgreSQL and MongoDB instances and exercises cross-store
-recovery without a provider API key. Run `npm run test:reporting` in the guarded
-PostgreSQL test subshell to check history selection, recursive limits, concurrent
-request idempotence, rollback, trigger notifications and role boundaries.
+recovery and authenticated HTTP APIs without a provider API key. The reporting
+suite checks history selection, recursive limits, concurrent request idempotence,
+rollback, trigger notifications and role boundaries. The auth suite checks real
+sessions, expiry/logout/revocation, trusted roles, CLI administration and shared
+login throttling. `npm run test:api` also needs that isolated MongoDB identity and
+a preceding `npm run build`; use the combined ingestion recipe for those tests.
 `npm run demo` manages its own independent containers and requires no environment
 file; it must be run outside any custom shared database workflow.

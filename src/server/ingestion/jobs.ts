@@ -7,7 +7,8 @@ import { RateLimitError } from "./store";
 type StatisticsJob = { id: string; kind: "fixture.statistics"; payload: { leagueId: string; fixtureId: string } };
 type StandingsJob = { id: string; kind: "standings.rebuild"; payload: { leagueId: string } };
 type ForecastJob = { id: string; kind: "forecast.refresh"; payload: Record<string, never> };
-export type IngestionJob = StatisticsJob | StandingsJob | ForecastJob;
+type SourceSyncJob = { id: string; kind: "source.sync"; payload: Record<string, never> };
+export type IngestionJob = StatisticsJob | StandingsJob | ForecastJob | SourceSyncJob;
 type Claimed = { id: string; kind: string; payload: unknown; attempts: number; max_attempts: number };
 type Decision = { retry: boolean; undoAttempt: boolean; delay: number; code: string };
 
@@ -17,7 +18,9 @@ function parseJob(row: Claimed): IngestionJob {
   const payload = row.payload;
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new InvalidJob();
   const record = payload as Record<string, unknown>;
-  if (row.kind === "forecast.refresh" && Object.keys(record).length === 0) return { id: row.id, kind: row.kind, payload: {} };
+  if ((row.kind === "forecast.refresh" || row.kind === "source.sync") && Object.keys(record).length === 0) {
+    return { id: row.id, kind: row.kind, payload: {} };
+  }
   if (typeof record.leagueId !== "string") throw new InvalidJob();
   try { coverageFor(record.leagueId); } catch { throw new InvalidJob(); }
   if (row.kind === "standings.rebuild" && Object.keys(record).length === 1) {
@@ -55,7 +58,7 @@ export class JobQueue {
   }
 
   private get kinds(): string {
-    return this.forecasts ? "('fixture.statistics','standings.rebuild','forecast.refresh')" : "('fixture.statistics','standings.rebuild')";
+    return this.forecasts ? "('fixture.statistics','standings.rebuild','source.sync','forecast.refresh')" : "('fixture.statistics','standings.rebuild','source.sync')";
   }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -76,7 +79,7 @@ export class JobQueue {
     return this.transaction(async (client) => {
       const events = await client.query<{ id: string; event_type: string; deduplication_key: string; payload: unknown }>(
         `SELECT id,event_type,deduplication_key,payload FROM sports.outbox
-         WHERE published_at IS NULL AND event_type IN ('fixture.statistics','standings.rebuild')
+         WHERE published_at IS NULL AND event_type IN ('fixture.statistics','standings.rebuild','source.sync')
          ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT $1`, [limit],
       );
       for (const event of events.rows) {

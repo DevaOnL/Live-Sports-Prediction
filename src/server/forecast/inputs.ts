@@ -82,7 +82,7 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
   const appearanceRows = await client.query<StoredAppearance>(
       `SELECT a.*,c.provider_id AS club_id FROM sports.appearances a
        JOIN sports.fixtures f ON f.id=a.fixture_id LEFT JOIN sports.clubs c ON c.id=a.club_id
-       WHERE f.season_id=ANY($1::uuid[]) AND a.player_id=ANY($2::uuid[]) ORDER BY a.player_id,a.fixture_id`,
+       WHERE f.provider='apifootball' AND f.season_id=ANY($1::uuid[]) AND a.player_id=ANY($2::uuid[]) ORDER BY a.player_id,a.fixture_id`,
       [seasonIds, players.rows.map((player) => player.id)]);
   const rosterRows = await client.query<{ id: string; season_id: string; observed_at: Date; complete: boolean; source_revision_id: string }>(
       `SELECT id,season_id,observed_at,complete,source_revision_id FROM sports.roster_snapshots
