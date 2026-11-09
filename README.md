@@ -4,9 +4,10 @@ A football player analysis project built around five qualifying league appearanc
 with opponent strength and competition context informing an explainable forecast.
 
 The current application provides a responsive preview, an idle worker, and a
-containerized PostgreSQL/MongoDB environment. Match imports, forecasts, comparisons,
-and application login are not implemented yet. Preview screens clearly label
-forecast availability.
+containerized PostgreSQL/MongoDB environment. PostgreSQL includes a relational
+schema, authentication storage, restricted database roles, and explicit migration
+tooling. Match imports, forecasts, comparisons, and application login are not
+implemented yet. Preview screens clearly label forecast availability.
 
 ## Requirements
 
@@ -20,7 +21,8 @@ npm ci
 cp .env.example .env
 ```
 
-Replace both placeholder passwords in `.env` with independent random values.
+Replace all placeholder passwords in `.env` with independent random values of at
+least 16 characters.
 Keep that file local. No football API credential is needed to run this application.
 
 ```bash
@@ -44,6 +46,27 @@ Database initialization occurs only on empty volumes; editing `.env` does not
 rotate an existing database password. A normal `docker compose down` retains
 volumes. Deleting volumes destroys their stored data.
 
+## Set up the relational database
+
+With PostgreSQL running, provision its restricted logins and apply the migrations:
+
+```bash
+npm run db:provision
+npm run db:migrate
+```
+
+Provisioning creates or updates the reader, writer, authentication, and migration
+logins using the local password variables. Migration files run in order, each in
+its own transaction, and their checksums are recorded. Rerunning the migration
+command verifies the applied history and applies only new files. Apply upgrades
+explicitly with these commands while preserving existing volumes; never edit an
+already-applied migration.
+
+The [database guide](docs/database.md) documents the ER diagram, relational
+constraints, role grants, migration behavior, and an isolated PostgreSQL test
+recipe. Database tests create temporary databases and require a verified disposable
+cluster. Run them only using that recipe or the dedicated CI service.
+
 ## Development
 
 Stop the app container before running the local development server on port 3000:
@@ -64,7 +87,9 @@ npm run build
 ```
 
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
-type checking, and the production build without database or API credentials.
+type checking, and the production build without database or API credentials. A
+separate job verifies migrations, constraints, and permissions against a disposable
+PostgreSQL 17 service.
 
 ## Methodology
 
@@ -82,7 +107,7 @@ heuristic estimates rather than guaranteed outcomes or calibrated probabilities.
 ## Technology
 
 Next.js and TypeScript provide the web interface and a shared language for server
-and worker code. PostgreSQL is intended for canonical relational records and
+and worker code. PostgreSQL stores canonical relational records and enforces
 constraints; MongoDB is intended for source archives. Docker Compose provides a
 reproducible local environment with persistent database volumes. Inter is
 self-hosted through the application bundle.
