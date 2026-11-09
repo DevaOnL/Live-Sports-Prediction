@@ -4,6 +4,7 @@
 !/.env.example
 !/.github/
 !/src/
+!/public/
 !/db/
 /db/*
 !/db/migrations/

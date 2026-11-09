@@ -9,6 +9,9 @@ Imports preserve source responses, normalize fixtures and player statistics,
 reconstruct historical standings, and save forecasts with immutable input
 evidence. The website includes an overview, searchable player catalogue, detailed
 forecast evidence, player comparisons, and restricted administrator operations.
+The image-led interface uses locally served football photography and generic
+position artwork, with detailed evidence available in expandable sections.
+Photographs are illustrative; asset sources and licenses accompany the files.
 
 ## Requirements
 

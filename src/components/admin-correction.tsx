@@ -88,7 +88,8 @@ export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: ini
 
   return <section className="panel" aria-labelledby="correction-title">
     <div className="panel-header"><div><p className="eyebrow">Canonical data</p><h2 id="correction-title">Correct an appearance</h2></div></div>
-    <div className="panel-body"><p className="muted">Load current observed values before editing. Corrections preserve source archives and append an auditable manual revision.</p>
+    <div className="panel-body"><p className="muted">Load current values. Save an audited revision.</p>
+      <details className="provenance-details"><summary>Correction help</summary><p>Source archives stay intact. Later provider observations may supersede a correction; forecast refresh is asynchronous.</p></details>
       <form onSubmit={correct} className="page-stack">
         <div className="field-grid">
           <label className="field" htmlFor="correction-player"><span className="field-label">Player ID</span><input id="correction-player" className="field-input" inputMode="numeric" value={playerId} disabled={command.locked} onChange={(event) => { invalidate(); setPlayerId(event.target.value); }} /></label>
@@ -98,16 +99,15 @@ export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: ini
         {loadError !== undefined && <p className="error-message" role="alert">{loadError instanceof Error ? loadError.message : "The appearance could not be loaded."}</p>}
         {loaded && <>
           <div><h3>{loaded.playerName}</h3><p>{loaded.row.homeClub.name} · {loaded.row.awayClub.name} · {formatDate(loaded.row.kickoffAt)}</p>
-            <p className="form-note">{correctable ? "Finalized, played appearance with verified membership." : "This appearance cannot be corrected: finality, played participation, fixture membership and a current revision are required."}</p></div>
+            <p className="form-note">{correctable ? "Final · Played · Membership verified" : "Correction unavailable. A final, played appearance, verified membership and current revision are required."}</p></div>
           <label className="field" htmlFor="correction-revision"><span className="field-label">Expected revision</span><input id="correction-revision" className="field-input code-value" value={loaded.row.revisionId ?? "Unavailable"} readOnly /></label>
-          <p className="form-note" id="correction-null-note">Select each field you intend to change. Leave an edited value blank to record missing data (null); enter 0 for a known zero. Unselected fields retain their current values.</p>
+          <p className="form-note" id="correction-null-note">Choose fields to change. Edited blank = missing (null); 0 = known zero. Unchecked fields stay unchanged.</p>
           <div className="correction-grid">{metricFields.map(([field, label]) => <div className="field" key={field}>
             <label className="checkbox-label"><input type="checkbox" checked={edited[field] ?? false} disabled={command.locked || !correctable} onChange={(event) => setEdited((current) => ({ ...current, [field]: event.target.checked }))} />Edit {label.toLowerCase()}</label>
             <label htmlFor={`correction-${field}`} className="field-label">{label}</label>
             <input id={`correction-${field}`} className="field-input" type="number" min="0" max={field === "rating" ? 10 : 2_147_483_647} step={field === "rating" ? "0.01" : "1"} value={draft[field] ?? ""} placeholder="Missing (null)" aria-describedby="correction-null-note" disabled={!edited[field] || command.locked || !correctable} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} />
           </div>)}</div>
           <label className="field" htmlFor="correction-reason"><span className="field-label">Reason</span><textarea id="correction-reason" className="field-textarea" rows={3} minLength={3} maxLength={1000} required value={reason} disabled={command.locked || !correctable} onChange={(event) => setReason(event.target.value)} /></label>
-          <p className="form-note">Later provider observations may supersede this correction. Forecast refresh runs asynchronously.</p>
           <div className="action-row"><button className="button" type="submit" disabled={command.pending || !correctable || (!command.uncertain && (conflict || !Object.values(edited).some(Boolean)))}>{command.pending ? "Saving correction…" : command.uncertain ? "Retry same correction" : "Apply correction"}</button></div>
         </>}
         <CommandFeedback {...command}>{conflict && <p>Another revision may now be current. Reload appearance before applying a new correction.</p>}{command.result && <p>Correction saved as a manual revision. The audit trail retains the reason and before/after values.</p>}</CommandFeedback>

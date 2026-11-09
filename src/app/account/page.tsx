@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { resolvePrincipal, type Principal } from "@/server/auth/principal";
 import { getWebRuntime } from "@/server/web/runtime";
 import { SignOut } from "./sign-out";
+import { SiteMasthead } from "@/components/site-masthead";
+import { PlayerArtwork } from "@/components/football-art";
 
 export const dynamic = "force-dynamic";
 
@@ -20,16 +22,14 @@ export default async function Account() {
   }
   if (!principal) redirect("/login");
   return (
-    <main className="account-shell" id="main">
-      <Link className="account-brand" href="/">Live Sports Prediction <span aria-hidden="true">↗</span></Link>
+    <><a className="skip-link" href="#main">Skip to content</a><SiteMasthead identity={{ name: principal.name, role: principal.role, email: principal.email, id: principal.id, expiresAt: principal.expiresAt.toISOString() }} /><main className="account-shell" id="main" tabIndex={-1}><div className="account-layout"><div className="account-visual"><PlayerArtwork position="FWD" /></div>
       <section className="account-card" aria-labelledby="account-title">
-        <p className="eyebrow">Your account</p>
-        <h1 id="account-title">Welcome, {principal.name}.</h1>
-        <p className="account-intro">You are signed in as {principal.email}.</p>
+        <h1 id="account-title">{principal.name}</h1>
+        <p className="account-intro">{principal.email}</p>
         <p className="account-role">{principal.role === "admin" ? "Administrator" : "Viewer"}</p>
         <p><Link className="text-link" href="/overview">Open your workspace <span aria-hidden="true">→</span></Link></p>
         <SignOut />
       </section>
-    </main>
+    </div></main></>
   );
 }
