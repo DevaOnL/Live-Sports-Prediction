@@ -27,6 +27,7 @@ export default async function Account() {
         <h1 id="account-title">Welcome, {principal.name}.</h1>
         <p className="account-intro">You are signed in as {principal.email}.</p>
         <p className="account-role">{principal.role === "admin" ? "Administrator" : "Viewer"}</p>
+        <p><Link className="text-link" href="/overview">Open your workspace <span aria-hidden="true">→</span></Link></p>
         <SignOut />
       </section>
     </main>

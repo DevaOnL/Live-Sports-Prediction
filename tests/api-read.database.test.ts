@@ -129,6 +129,11 @@ test("detail separates bounded observed values, immutable forecast and latest ev
   assert.equal(detail.observedAppearances.find((appearance) => appearance.fixtureId === "900003")?.metrics.goals, null);
   assert.equal(detail.observedAppearances[0].metrics.assists, 0);
   assert.equal(detail.observedAppearances[0].minutes, 97);
+  const current = (await reader.query(`SELECT a.normalized_revision_id FROM sports.appearances a
+    JOIN sports.players p ON p.id=a.player_id JOIN sports.fixtures f ON f.id=a.fixture_id
+    WHERE p.provider_id='8004' AND f.provider_id=$1`, [detail.observedAppearances[0].fixtureId])).rows[0];
+  assert.equal(detail.observedAppearances[0].revisionId, current.normalized_revision_id);
+  assert(detail.observedAppearances.every((appearance) => appearance.membershipKnown === true));
   assert.equal(detail.forecast?.result.selected.length, 5);
   assert.equal(detail.forecast?.result.projected90.goals?.value, null);
   assert.equal(detail.forecast?.result.forecastRating.status, "available");
@@ -171,6 +176,7 @@ test("observed evidence is bounded and unknown participation/minutes remain null
   const detail = await service.player("8004");
   assert.equal(detail.observedAppearances.length, 50);
   assert(detail.observedAppearances.every((appearance) => appearance.minutes === null && appearance.rating === null));
+  assert(detail.observedAppearances.every((appearance) => appearance.revisionId === null && appearance.membershipKnown === false));
   assert.equal(detail.forecast?.result.selected.length, 5, "a read cannot rewrite the saved revision");
 });
 

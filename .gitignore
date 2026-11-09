@@ -34,6 +34,11 @@
 !/tests/api-admin.database.test.ts
 !/tests/api-http.database.test.ts
 !/tests/http.test.ts
+!/tests/forecast-presentation.test.ts
+!/tests/interface.browser.test.ts
+!/tests/support/
+/tests/support/*
+!/tests/support/web.ts
 !/tests/ingestion.database.test.ts
 !/docs/
 /docs/*
