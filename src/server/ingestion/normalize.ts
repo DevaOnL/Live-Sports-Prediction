@@ -181,7 +181,7 @@ function lineup(value: Row, fixture: Fixture, state: State) {
   }
 }
 
-function detail(rawStats: unknown[], fixture: Fixture, state: State, resource: string) {
+function detail(rawStats: unknown[], fixture: Fixture, state: State, resource: string, priorSource: "lineup" | "stored" = "lineup") {
   const prior = fixture.appearances;
   const normalized = new Map<string, Appearance>();
   const duplicates = new Set<string>();
@@ -219,7 +219,7 @@ function detail(rawStats: unknown[], fixture: Fixture, state: State, resource: s
     if (!present) {
       normalized.set(previous.player.id, unknownAppearance(previous.player, previous.clubId));
       issue(state, "missing_player_statistics", `${resource}/player:${previous.player.id}`);
-    } else if (present.clubId !== previous.clubId) {
+    } else if (priorSource === "lineup" && present.clubId !== previous.clubId) {
       normalized.set(previous.player.id, unknownAppearance(previous.player, previous.clubId));
       issue(state, "conflicting_membership", `${resource}/player:${previous.player.id}`);
     }
@@ -274,23 +274,45 @@ function event(value: Row, state: State): Fixture | null {
 }
 
 function teams(values: unknown[], state: State) {
+  const roster = { complete: true, entries: [] as { playerId: string; clubId: string }[] };
+  state.batch.roster = roster;
   const seen = new Set<string>();
+  const memberships = new Map<string, Set<string>>();
   for (const raw of values) {
-    if (!row(raw)) { issue(state, "invalid_club", "get_teams"); continue; }
+    if (!row(raw)) { issue(state, "invalid_club", "get_teams"); roster.complete = false; continue; }
     const id = identifier(raw.team_key);
     const displayName = name(raw.team_name);
-    if (!id || !displayName) { issue(state, "invalid_club", "get_teams"); continue; }
-    if (seen.has(id)) { issue(state, "duplicate_club", `club:${id}`); continue; }
+    if (!id || !displayName) { issue(state, "invalid_club", "get_teams"); roster.complete = false; continue; }
+    if (seen.has(id)) { issue(state, "duplicate_club", `club:${id}`); roster.complete = false; }
     seen.add(id);
     addClub({ id, name: displayName }, state);
-    if (!Array.isArray(raw.players)) { issue(state, "missing_roster", `club:${id}`, "players"); continue; }
+    if (!Array.isArray(raw.players)) { issue(state, "missing_roster", `club:${id}`, "players"); roster.complete = false; continue; }
     const players = new Set<string>();
     for (const item of raw.players) {
-      if (!row(item)) { issue(state, "invalid_player", `club:${id}`); continue; }
+      if (!row(item)) { issue(state, "invalid_player", `club:${id}`); roster.complete = false; continue; }
+      const suppliedClubs = [item.team_key, item.team_id].filter((value) => !blank(value)).map(identifier);
+      if (suppliedClubs.some((clubId) => clubId !== id)) {
+        issue(state, "conflicting_roster_membership", `club:${id}`, "team_id");
+        roster.complete = false;
+        continue;
+      }
       const known = player(item, id, state, `club:${id}`);
-      if (known && players.has(known.id)) issue(state, "duplicate_player", `club:${id}/player:${known.id}`);
-      if (known) players.add(known.id);
+      if (!known) { roster.complete = false; continue; }
+      if (players.has(known.id)) issue(state, "duplicate_player", `club:${id}/player:${known.id}`);
+      players.add(known.id);
+      const clubs = memberships.get(known.id) ?? new Set<string>();
+      if (!clubs.has(id)) roster.entries.push({ playerId: known.id, clubId: id });
+      clubs.add(id);
+      memberships.set(known.id, clubs);
+      if (clubs.size > 1) {
+        roster.complete = false;
+        issue(state, "ambiguous_roster_membership", `player:${known.id}`);
+      }
     }
+  }
+  if (seen.size !== state.coverage.expectedClubs) {
+    roster.complete = false;
+    issue(state, "incomplete_roster_coverage", state.coverage.id, "clubs");
   }
 }
 
@@ -395,7 +417,9 @@ export function normalizeResponse(response: ProviderResponse, coverage: Coverage
     if (!Array.isArray(stats)) issue(state, "invalid_payload", resource, "player_statistics");
     // A successfully received football response with broken detail supersedes
     // earlier metrics with an explicit gap. Provider/HTTP errors stop in the client.
-    detail(Array.isArray(stats) ? stats : [], fixture, state, resource);
+    // Stored attribution is an older observation. A validated fresh row may
+    // correct it; only contradictions within the current payload stay unknown.
+    detail(Array.isArray(stats) ? stats : [], fixture, state, resource, "stored");
     addClub(fixture.home, state); addClub(fixture.away, state);
     for (const item of fixture.appearances) addPlayer(item.player, state);
     batch.fixtures.push(fixture);

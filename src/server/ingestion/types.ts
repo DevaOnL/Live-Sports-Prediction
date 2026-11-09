@@ -27,6 +27,7 @@ export type ProviderStanding = {
 export type Batch = {
   coverage: Coverage; clubs: Club[]; players: Player[]; fixtures: Fixture[];
   standings: ProviderStanding[]; issues: Issue[];
+  roster?: { complete: boolean; entries: { playerId: string; clubId: string }[] };
 };
 export type ProviderResponse = {
   action: ProviderAction; resourceKey: string; params: Record<string, string>;

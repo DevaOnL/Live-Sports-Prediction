@@ -61,7 +61,16 @@ export class IngestionPipeline {
     return count;
   }
 
-  async reconcile(): Promise<number> { return this.exclusive(() => this.recover()); }
+  async reconcile(): Promise<number> {
+    return this.exclusive(async () => {
+      const recovered = await this.recover();
+      for (const archive of await this.archives.latestRosters()) {
+        const batch = normalizeResponse(archive, coverageFor(archive.params.league_id));
+        if (batch.roster && batch.clubs.length > 0) await this.store.replayRoster(archive, batch);
+      }
+      return recovered;
+    });
+  }
 
   private async request(action: ProviderAction, params: Record<string, string>): Promise<ImportResult | null> {
     const response = await this.provider.request(action, params);

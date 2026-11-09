@@ -49,7 +49,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:4001/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); const enabled = process.env.INGESTION_ENABLED === 'true'; if (body.status !== 'alive' || body.service !== 'worker' || body.scope !== (enabled ? 'ingestion' : 'process-only') || body.jobsEnabled !== enabled || body.databaseConnections !== enabled || body.predictionsEnabled !== false) process.exit(1); }).catch(() => process.exit(1))"
+        - "fetch('http://127.0.0.1:4001/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); const enabled = process.env.INGESTION_ENABLED === 'true'; if (body.status !== 'alive' || body.service !== 'worker' || body.scope !== (enabled ? 'ingestion' : 'process-only') || body.jobsEnabled !== enabled || body.databaseConnections !== enabled || body.predictionsEnabled !== enabled) process.exit(1); }).catch(() => process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5

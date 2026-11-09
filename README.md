@@ -5,9 +5,10 @@ with opponent strength and competition context informing an explainable forecast
 
 The application provides a responsive preview and a recoverable football-data
 worker backed by PostgreSQL and MongoDB. Imports preserve source responses, normalize
-fixtures and player statistics, and reconstruct historical standings. Forecast
-execution, comparisons, and application login remain future work. Preview screens
-label forecast availability.
+fixtures and player statistics, reconstruct historical standings, and save
+explainable player forecasts with immutable input evidence. Comparisons and
+application login remain future work. The web interface remains a preview;
+forecasts are currently available through the operational CLI.
 
 ## Requirements
 
@@ -94,6 +95,26 @@ The initial backlog may take several request windows. Read the
 [ingestion guide](docs/ingestion.md) for coverage, missing-data behavior, recovery,
 and isolated PostgreSQL/MongoDB verification.
 
+## Calculate forecasts
+
+Apply pending migrations before starting an upgraded worker. Existing imports
+can recover their latest roster observations from archived data without provider
+requests:
+
+```bash
+npm run db:migrate
+npm run ingest -- reconcile
+npm run forecast -- refresh all
+npm run forecast -- status
+```
+
+Use `npm run forecast -- show PLAYER_ID` with a provider player identifier to
+inspect the current result, fixed five-match window, target, missing-data reasons,
+and saved provenance. The enabled worker refreshes automatically after canonical
+changes and checks target expiry every minute. Calculations need PostgreSQL writer
+credentials, with no provider key or MongoDB connection. See the
+[forecasting guide](docs/forecasting.md) for formulas and availability rules.
+
 ## Development
 
 Stop the app container before running the local development server on port 3000:
@@ -116,12 +137,12 @@ npm run build
 
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
 type checking, and the production build without database or API credentials. A
-separate job verifies migrations, constraints, and permissions against a disposable
-PostgreSQL 17 service.
+separate job verifies migrations, constraints, ingestion, forecast persistence,
+and refresh processing against disposable PostgreSQL 17 and MongoDB 8 services.
 
 ## Methodology
 
-The intended analysis uses the latest five finalized appearances with at least
+The analysis uses the latest five finalized appearances with at least
 60 reported minutes each. A shorter appearance leaves that window unchanged.
 Opponent and own-team strength provide context for an overall rating and selected
 position-specific statistics. Counts represent decimal estimates under a
@@ -129,9 +150,8 @@ position-specific statistics. Counts represent decimal estimates under a
 
 Data coverage is restricted to regular-season Championship (153) and Ligue 2
 (164), 2026/27, using APIFootball.com's permanent free plan. Free-plan availability
-can change; missing source data remains explicit. Forecast calculations are not
-implemented. Future forecasts will be heuristic estimates rather than guaranteed
-outcomes or calibrated probabilities.
+can change; missing source data remains explicit. Forecasts are fixed heuristic
+estimates, with no established predictive accuracy or calibrated probability.
 
 ## Technology
 
