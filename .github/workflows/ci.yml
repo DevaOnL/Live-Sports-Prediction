@@ -40,7 +40,8 @@ jobs:
         run: npm run build
 
   database:
-    runs-on: ubuntu-latest
+    # MongoDB 8 requires a compatible host kernel for its integration service.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     services:
       postgres:
