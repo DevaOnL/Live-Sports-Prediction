@@ -11,6 +11,7 @@ import pg from "pg";
 import { ArchiveStore, archiveId } from "../src/server/ingestion/archive";
 import { coverageFor } from "../src/server/ingestion/coverage";
 import { JobQueue } from "../src/server/ingestion/jobs";
+import { normalizeResponse } from "../src/server/ingestion/normalize";
 import { IngestionPipeline } from "../src/server/ingestion/pipeline";
 import { ProviderError } from "../src/server/ingestion/provider";
 import { localDate, reconstructStandings } from "../src/server/ingestion/standings";
@@ -136,6 +137,56 @@ async function importBatch(value: Batch): Promise<{ archive: ArchivedResponse; r
   const result = await store.import(archive, value);
   await archives.mark(archive.id, "imported", value.issues, result);
   return { archive, result };
+}
+
+function sourceStatistics(clubId = clubs[0].id) {
+  return {
+    match_id: "900001", player_key: "8001", player_name: "Test player 8001", player_type: "Forwards",
+    team_name: clubId === clubs[0].id ? "home" : "away", team_key: clubId,
+    player_minutes_played: "97", player_rating: "7.5", player_goals: "1", player_assists: "0",
+    player_shots_on_goal: "2", player_key_passes: "0", player_tackles: "0", player_interceptions: "0",
+    player_saves: "0", player_goals_conceded: "1",
+  };
+}
+
+async function importSourceStatistics(clubId = clubs[0].id) {
+  await archives.save(response({ player_statistics: [sourceStatistics(clubId)] }, {
+    action: "get_statistics", resourceKey: "test:153:statistics:900001", params: { league_id: "153", match_id: "900001" },
+  }));
+  const pipeline = new IngestionPipeline(pool, mongo, "offline-correction-test");
+  assert.equal(await pipeline.reconcile(), 1);
+}
+
+async function importSummary(clubId: string) {
+  await archives.save(response([{
+    match_id: "900001", league_id: "153", league_year: "2026/27", stage_name: "Regular Season",
+    match_hometeam_id: clubs[0].id, match_hometeam_name: clubs[0].name,
+    match_awayteam_id: clubs[1].id, match_awayteam_name: clubs[1].name,
+    match_date: "2026-08-01", match_time: "15:00", match_status: "Finished",
+    match_hometeam_score: "2", match_awayteam_score: "1",
+    lineup: { [clubId === clubs[0].id ? "home" : "away"]: {
+      starting_lineups: [{ player_key: "8001", lineup_player: "Test player 8001" }],
+    } },
+  }], { params: { league_id: "153", timezone: "UTC" } }));
+  const pipeline = new IngestionPipeline(pool, mongo, "offline-correction-test");
+  assert.equal(await pipeline.reconcile(), 1);
+}
+
+function sourceRoster(position = "Forwards") {
+  return clubs.map((club, index) => ({
+    team_key: club.id, team_name: club.name,
+    players: index === 0 ? [{ player_key: "8001", player_name: "Test player 8001", player_type: position }] : [],
+  }));
+}
+
+async function importRoster(payload: unknown = sourceRoster()) {
+  const archive = await archives.save(response(payload, {
+    action: "get_teams", resourceKey: "test:153:teams", params: { league_id: "153" },
+  }));
+  const normalized = normalizeResponse(archive, coverage);
+  const result = await store.import(archive, normalized);
+  await archives.mark(archive.id, "imported", normalized.issues, result);
+  return { archive, normalized };
 }
 
 async function counts() {
@@ -279,6 +330,228 @@ test("a summary adds unseen lineup players as uncertainty and downgrades previou
   assert.equal(stored?.appearances.find((entry) => entry.player.id === "8001")?.minutes, 97);
   assert.equal(stored?.appearances.find((entry) => entry.player.id === "8002")?.participation, "unknown");
   assert.equal((await administrator.query("SELECT count(*) FROM sports.outbox WHERE event_type='fixture.statistics'")).rows[0].count, "1");
+});
+
+test("fresh statistics correct a prior club attribution and repeated observations stay stable", async () => {
+  await importBatch(batch([fixture({ appearances: [{ ...appearance(), clubId: clubs[1].id }] })]));
+  await importSourceStatistics();
+  const recovered = (await store.fixture("900001"))?.appearances[0];
+  assert.equal(recovered?.clubId, clubs[0].id);
+  assert.equal(recovered?.participation, "played");
+  assert.equal(recovered?.minutes, 97);
+  assert.equal(recovered?.goals, 1);
+  const previous = await counts();
+  await importSourceStatistics();
+  assert.deepEqual(await counts(), previous);
+});
+
+test("statistics reintroduce a player whose earlier correction cleared membership", async () => {
+  await importBatch(batch());
+  await importBatch(batch([fixture({ appearances: [] })]));
+  const removed = (await store.fixture("900001"))?.appearances[0];
+  assert.equal(removed?.clubId, "");
+  assert.equal(removed?.participation, "unknown");
+  await importSourceStatistics();
+  const recovered = (await store.fixture("900001"))?.appearances[0];
+  assert.equal(recovered?.clubId, clubs[0].id);
+  assert.equal(recovered?.participation, "played");
+  assert.equal(recovered?.minutes, 97);
+  assert.equal(recovered?.goals, 1);
+});
+
+for (const statisticsStatus of ["complete", "partial"] as const) {
+  test(`a changed summary club clears ${statisticsStatus} detail, enqueues enrichment and recovers with fresh statistics`, async () => {
+    await importBatch(batch([fixture({ statisticsStatus })]));
+    const initialEnrichment = Number((await administrator.query("SELECT count(*) FROM sports.outbox WHERE event_type='fixture.statistics'")).rows[0].count);
+    await importSummary(clubs[1].id);
+    const changed = await store.fixture("900001");
+    assert.equal(changed?.statisticsStatus, "partial");
+    const uncertain = changed?.appearances[0];
+    assert.equal(uncertain?.clubId, clubs[1].id);
+    assert.equal(uncertain?.participation, "unknown");
+    assert.equal(uncertain?.minutes, null);
+    assert.equal(uncertain?.rating, null);
+    assert.equal(uncertain?.goals, null);
+    assert.equal(uncertain?.shotsOnTarget, null);
+    const correctedRevision = (await administrator.query("SELECT normalized_revision_id FROM sports.appearances")).rows[0].normalized_revision_id;
+    const enrichment = await administrator.query("SELECT deduplication_key FROM sports.outbox WHERE event_type='fixture.statistics'");
+    assert.equal(enrichment.rowCount, initialEnrichment + 1);
+    assert(enrichment.rows.some((row) => row.deduplication_key === `fixture.statistics:900001:${correctedRevision}`));
+    const previous = await counts();
+    await importSummary(clubs[1].id);
+    assert.deepEqual(await counts(), previous);
+    await importSourceStatistics(clubs[1].id);
+    const recovered = (await store.fixture("900001"))?.appearances[0];
+    assert.equal(recovered?.clubId, clubs[1].id);
+    assert.equal(recovered?.participation, "played");
+    assert.equal(recovered?.minutes, 97);
+    assert.equal(recovered?.goals, 1);
+  });
+}
+
+test("a same-club summary preserves complete detail without extra enrichment", async () => {
+  await importBatch(batch([fixture({ statisticsStatus: "complete" })]));
+  const previous = await counts();
+  await importSummary(clubs[0].id);
+  const preserved = await store.fixture("900001");
+  assert.equal(preserved?.statisticsStatus, "complete");
+  assert.equal(preserved?.appearances[0].participation, "played");
+  assert.equal(preserved?.appearances[0].minutes, 97);
+  assert.equal(preserved?.appearances[0].rating, 7.5);
+  assert.deepEqual(await counts(), previous);
+});
+
+test("roster observations are append only, grant reader access and retain removals in newer complete snapshots", async () => {
+  const first = await importRoster();
+  const second = await importRoster(sourceRoster().map((team) => ({ ...team, players: [] })));
+  const snapshots = (await administrator.query(`SELECT s.id,s.complete,s.observed_at,sr.archive_ref FROM sports.roster_snapshots s
+    JOIN sports.source_revisions sr ON sr.id=s.source_revision_id ORDER BY s.observed_at`)).rows;
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(snapshots.map((row) => row.complete), [true, true]);
+  assert.deepEqual(snapshots.map((row) => row.archive_ref), [first.archive.id, second.archive.id]);
+  assert.equal(snapshots[0].observed_at.toISOString(), first.archive.retrievedAt);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_entries WHERE snapshot_id=$1", [snapshots[0].id])).rows[0].count, "1");
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_entries WHERE snapshot_id=$1", [snapshots[1].id])).rows[0].count, "0");
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.player_memberships")).rows[0].count, "0",
+    "a roster observation does not invent a transfer date or fixture membership interval");
+  for (const table of ["roster_snapshots", "roster_entries"]) {
+    for (const statement of [`DELETE FROM sports.${table}`, `UPDATE sports.${table} SET season_id=season_id`]) {
+      await assert.rejects(() => pool.query(statement), (error: unknown) => (error as { code?: string }).code === "42501");
+    }
+    const permissions = (await administrator.query(`SELECT
+      has_table_privilege('lsp_reader',$1,'SELECT') AS reader_select,
+      has_table_privilege('lsp_reader',$1,'INSERT') AS reader_insert,
+      has_table_privilege('lsp_writer',$1,'INSERT') AS writer_insert,
+      has_table_privilege('lsp_writer',$1,'UPDATE') AS writer_update,
+      has_table_privilege('lsp_writer',$1,'DELETE') AS writer_delete`, [`sports.${table}`])).rows[0];
+    assert.deepEqual(permissions, { reader_select: true, reader_insert: false, writer_insert: true, writer_update: false, writer_delete: false });
+  }
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.outbox WHERE event_type='roster.changed'")).rows[0].count, "2");
+});
+
+test("unchanged roster observations retain fresh provenance without repeated effective refresh events", async () => {
+  const first = await importRoster();
+  const second = await importRoster();
+  assert.notEqual(first.archive.id, second.archive.id);
+  const snapshots = (await administrator.query("SELECT normalized_revision_id FROM sports.roster_snapshots ORDER BY observed_at")).rows;
+  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots[0].normalized_revision_id, snapshots[1].normalized_revision_id);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.outbox WHERE event_type='roster.changed'")).rows[0].count, "1");
+  assert.equal((await archives.latestRosters())[0].id, second.archive.id);
+});
+
+test("ambiguous and incomplete roster observations preserve membership evidence and do not claim completeness", async () => {
+  await importRoster();
+  const ambiguous = sourceRoster();
+  ambiguous[1].players = [...ambiguous[0].players];
+  const imported = await importRoster(ambiguous);
+  assert.equal(imported.normalized.players.length, 1);
+  const snapshot = (await administrator.query(`SELECT s.id,s.complete FROM sports.roster_snapshots s
+    JOIN sports.source_revisions sr ON sr.id=s.source_revision_id WHERE sr.archive_ref=$1`, [imported.archive.id])).rows[0];
+  assert.equal(snapshot.complete, false);
+  const memberships = (await administrator.query(`SELECT p.provider_id AS player_id,c.provider_id AS club_id FROM sports.roster_entries e
+    JOIN sports.players p ON p.id=e.player_id JOIN sports.clubs c ON c.id=e.club_id
+    WHERE e.snapshot_id=$1 ORDER BY c.provider_id`, [snapshot.id])).rows;
+  assert.deepEqual(memberships, [clubs[0], clubs[1]].sort((a, b) => a.id.localeCompare(b.id)).map((club) => ({ player_id: "8001", club_id: club.id })));
+  const incomplete = sourceRoster().map((team, index) => index === 1 ? { ...team, players: undefined } : team);
+  const latest = await importRoster(incomplete);
+  assert.equal(latest.normalized.roster?.complete, false);
+  assert.equal((await administrator.query("SELECT complete FROM sports.roster_snapshots ORDER BY observed_at DESC LIMIT 1")).rows[0].complete, false);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_snapshots WHERE complete")).rows[0].count, "1");
+});
+
+test("position corrections emit player refresh events even when roster membership is unchanged", async () => {
+  await importRoster();
+  await importRoster(sourceRoster("Midfielders"));
+  assert.equal((await administrator.query("SELECT position FROM sports.players WHERE provider_id='8001'")).rows[0].position, "MID");
+  const changes = (await administrator.query("SELECT payload FROM sports.outbox WHERE event_type='canonical.changed' AND aggregate_type='player'")).rows;
+  assert.equal(changes.length, 2);
+  assert(changes.every((row) => row.payload.playerId === "8001" && typeof row.payload.revisionId === "string"));
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.outbox WHERE event_type='roster.changed'")).rows[0].count, "1");
+});
+
+test("offline reconciliation projects committed roster archives after upgrade and ignores uncommitted or invalid observations", async () => {
+  const archive = await archives.save(response(sourceRoster(), {
+    action: "get_teams", resourceKey: "test:153:teams", params: { league_id: "153" },
+  }));
+  const normalized = normalizeResponse(archive, coverage);
+  const olderImport = { ...normalized };
+  delete olderImport.roster;
+  const result = await store.import(archive, olderImport);
+  await archives.mark(archive.id, "imported", normalized.issues, result);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_snapshots")).rows[0].count, "0");
+  const uncommitted = await archives.save(response(sourceRoster().map((team) => ({ ...team, players: [] })), {
+    action: "get_teams", resourceKey: "test:153:teams", params: { league_id: "153" },
+  }));
+  await store.replayRoster(uncommitted, normalizeResponse(uncommitted, coverage));
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_snapshots")).rows[0].count, "0");
+  assert.deepEqual((await archives.latestRosters()).map((observation) => observation.id), [archive.id]);
+  await archives.mark(uncommitted.id, "invalid", [{ code: "synthetic_uncommitted", resource: "get_teams" }]);
+  const invalid = await archives.save(response({}, {
+    action: "get_teams", resourceKey: "test:153:teams", params: { league_id: "153" },
+  }));
+  await archives.mark(invalid.id, "invalid", [{ code: "invalid_payload", resource: "get_teams" }]);
+  const pipeline = new IngestionPipeline(pool, mongo, "offline-upgrade-test");
+  pipeline.provider.request = async () => assert.fail("offline reconciliation must not call the provider");
+  assert.equal(await pipeline.reconcile(), 0);
+  const snapshot = (await administrator.query(`SELECT s.*,sr.archive_ref FROM sports.roster_snapshots s
+    JOIN sports.source_revisions sr ON sr.id=s.source_revision_id`)).rows[0];
+  assert.equal(snapshot.archive_ref, archive.id);
+  assert.equal(snapshot.observed_at.toISOString(), archive.retrievedAt);
+  assert.equal(snapshot.complete, true);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_entries")).rows[0].count, "1");
+  const previous = await counts();
+  assert.equal(await pipeline.reconcile(), 0);
+  assert.deepEqual(await counts(), previous);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_snapshots")).rows[0].count, "1");
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.provider_requests")).rows[0].count, "0");
+});
+
+test("offline reconciliation retains every conflicting latest-time roster observation", async () => {
+  const latestAt = "2026-11-09T10:00:00.000Z";
+  const transferred = sourceRoster();
+  transferred[1].players = transferred[0].players;
+  transferred[0].players = [];
+  const imported: ArchivedResponse[] = [];
+  for (const [payload, retrievedAt] of [
+    [sourceRoster(), "2026-11-09T09:00:00.000Z"],
+    [sourceRoster(), latestAt],
+    [transferred, latestAt],
+  ] as const) {
+    const archive = await archives.save(response(payload, {
+      action: "get_teams", resourceKey: "test:153:teams", params: { league_id: "153" }, retrievedAt,
+    }));
+    const normalized = normalizeResponse(archive, coverage);
+    const olderImport = { ...normalized };
+    delete olderImport.roster;
+    const result = await store.import(archive, olderImport);
+    await archives.mark(archive.id, "imported", normalized.issues, result);
+    imported.push(archive);
+  }
+  const latestIds = imported.slice(1).map((archive) => archive.id).sort();
+  assert.deepEqual((await archives.latestRosters()).map((archive) => archive.id), latestIds);
+  const pipeline = new IngestionPipeline(pool, mongo, "offline-tied-roster-test");
+  pipeline.provider.request = async () => assert.fail("offline reconciliation must not call the provider");
+  assert.equal(await pipeline.reconcile(), 0);
+  const snapshots = (await administrator.query(`SELECT s.observed_at,s.complete,sr.archive_ref,c.provider_id AS club_id
+    FROM sports.roster_snapshots s JOIN sports.source_revisions sr ON sr.id=s.source_revision_id
+    JOIN sports.roster_entries e ON e.snapshot_id=s.id JOIN sports.clubs c ON c.id=e.club_id
+    ORDER BY sr.archive_ref`)).rows;
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.archive_ref), latestIds);
+  assert(snapshots.every((snapshot) => snapshot.observed_at.toISOString() === latestAt && snapshot.complete));
+  assert.deepEqual(snapshots.map((snapshot) => snapshot.club_id).sort(), [clubs[0].id, clubs[1].id].sort());
+  const previous = await counts();
+  assert.equal(await pipeline.reconcile(), 0);
+  assert.deepEqual(await counts(), previous);
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.roster_snapshots")).rows[0].count, "2");
+  assert.equal((await administrator.query("SELECT count(*) FROM sports.provider_requests")).rows[0].count, "0");
+});
+
+test("latest roster archive lookup validates authoritative hashes", async () => {
+  const imported = await importRoster();
+  await mongoAdmin.db(mongoDatabase).collection("raw_archives").updateOne({ _id: imported.archive.id } as never, { $set: { text: "changed bytes" } });
+  await assert.rejects(() => archives.latestRosters(), /hash mismatch/);
 });
 
 test("the shared rolling request cap is atomic across concurrent callers and request records are append only", async () => {

@@ -33,8 +33,8 @@ npm run db:migrate
 npm run mongo:provision
 ```
 
-`db:migrate` includes `004_ingestion.sql`; it checks all previously applied
-checksums before applying new files. Preserve existing volumes during upgrades.
+`db:migrate` includes ingestion, roster and forecast storage. It checks all
+previously applied checksums before applying new files. Preserve existing volumes during upgrades.
 MongoDB provisioning creates or updates collection validators/indexes and the
 restricted `MONGO_WORKER_USER`, whose default is `lsp_ingestion`, in `MONGO_DB`.
 The administrative commands use local bootstrap/migration credentials.
@@ -64,7 +64,7 @@ The CLI uses the same restricted identities and shared provider budget:
 | --- | --- |
 | `npm run ingest -- sync` | Import teams, the full covered-season event schedule in UTC, and provider standings for both competitions; enqueue required detailed statistics and standings work |
 | `npm run ingest -- once` | Process a bounded batch of queued ingestion work |
-| `npm run ingest -- reconcile` | Revisit archived observations whose SQL/import metadata may need recovery |
+| `npm run ingest -- reconcile` | Recover SQL/import metadata and hydrate the latest previously committed roster observations offline |
 | `npm run ingest -- status` | Show fixture/archive states, shared budget use, standings reconciliation, queue counts, and failed job identifiers with safe failure codes |
 | `npm run ingest -- retry JOB_UUID` | Requeue a failed ingestion job after correcting its cause; replace `JOB_UUID` with its identifier from status |
 
@@ -125,14 +125,28 @@ Transient failures use exponential backoff; permanent provider errors and invali
 job payloads stop immediately. The default maximum is five attempts. Shared-budget exhaustion
 defers a job without spending its processing attempt. Provider retry dates are
 bounded to one second through one hour. Persisted errors contain safe codes.
-Other outbox event types remain available to their future consumers; forecast
-execution is not implemented.
+Canonical, standings and roster changes are coalesced into local `forecast.refresh`
+jobs. Changes arriving during a running refresh remain pending for a follow-up.
+An automatic minute check handles target expiry even without new provider data.
+Forecast work takes priority over source-detail jobs and uses no provider budget.
+The worker performs a local refresh pass before reconciliation and source polling.
+Unrelated outbox event types remain available to their consumers. See
+[forecasting](forecasting.md) for model behavior and persistence.
 
 Use `status` to identify the affected job and code, fix configuration or service
 availability, then use `reconcile` for cross-store recovery or `retry JOB_UUID` for
 a failed job. A denied provider request does not create a source archive or erase
 previous observations. A successful but broken statistics response records a gap
 and replaces stale metrics with unknown values for known participants.
+
+Roster observations preserve validated player/club pairs separately from
+fixture-instant memberships. Memberships established by appearances cover only
+that fixture instant; they do not imply continuous transfer tenure. A complete
+newer roster can remove an old current-club association, and conflicting or
+incomplete newest observations remain uncertain. Unknown positions and missing
+match metrics do not by themselves invalidate roster membership coverage.
+After an upgrade, `reconcile` projects the latest already committed `get_teams`
+archives using their original observation times, without spending API requests.
 
 ## Missing data and historical standings
 

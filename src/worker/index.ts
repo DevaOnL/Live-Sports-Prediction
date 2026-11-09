@@ -32,7 +32,7 @@ async function main() {
     response.writeHead(healthy ? 200 : 503).end(JSON.stringify({
       service: "worker", status: healthy ? "alive" : "unavailable", scope: enabled ? "ingestion" : "process-only",
       jobsEnabled: enabled, databaseConnections: databases, lastSync, sourceState,
-      predictionsEnabled: false,
+      predictionsEnabled: enabled,
     }));
   });
   server.listen(listenPort, "0.0.0.0", () => console.info(`Worker health listening on ${listenPort}; ingestion ${enabled ? "enabled" : "disabled"}.`));
@@ -40,6 +40,11 @@ async function main() {
     if (!runtime) return;
     while (!stopping) {
       try {
+        // Local evidence refresh must not wait behind source network activity.
+        await runtime.queue.scheduleForecast();
+        await runtime.queue.dispatch(500);
+        await runtime.queue.runForecastOnce(runtime.handle);
+        lastProgress = Date.now();
         await runtime.pipeline.reconcile();
         if (Date.now() >= nextSync) {
           try {
@@ -54,6 +59,7 @@ async function main() {
             else throw error;
           }
         }
+        await runtime.queue.scheduleForecast();
         await runtime.queue.dispatch(500);
         // Finite batches allow polling, recovery, and shutdown between jobs.
         for (let index = 0; index < 5 && !stopping; index++) {

@@ -5,13 +5,16 @@ provenance, historical standings, authentication storage, and durable processing
 metadata. The executable definitions are
 [`001_football.sql`](../db/migrations/001_football.sql),
 [`002_auth.sql`](../db/migrations/002_auth.sql),
-[`003_grants.sql`](../db/migrations/003_grants.sql), and
-[`004_ingestion.sql`](../db/migrations/004_ingestion.sql).
+[`003_grants.sql`](../db/migrations/003_grants.sql),
+[`004_ingestion.sql`](../db/migrations/004_ingestion.sql),
+[`005_rosters.sql`](../db/migrations/005_rosters.sql), and
+[`006_forecasts.sql`](../db/migrations/006_forecasts.sql).
 
 The app remains a process-only preview. An explicitly enabled worker imports
 covered provider data, reconstructs standings, and processes durable ingestion
-jobs using restricted runtime identities. Login routes and forecasts are not
-implemented. Authentication tables provide storage compatible with Better Auth's
+jobs and forecast refreshes using restricted runtime identities. Saved forecasts retain
+their inputs and explanations; see [forecasting](forecasting.md). Login routes
+remain unavailable. Authentication tables provide storage compatible with Better Auth's
 core shape; they do not provide a login flow by themselves. See the
 [ingestion guide](ingestion.md) for the MongoDB archive and recovery contract.
 
@@ -24,6 +27,15 @@ erDiagram
   CLUBS ||--o{ SEASON_CLUBS : participates
   SEASON_CLUBS ||--o{ PLAYER_MEMBERSHIPS : registers
   PLAYERS ||--o{ PLAYER_MEMBERSHIPS : joins
+  COMPETITION_SEASONS ||--o{ ROSTER_SNAPSHOTS : observes
+  SOURCE_REVISIONS ||--o| ROSTER_SNAPSHOTS : explains
+  ROSTER_SNAPSHOTS ||--o{ ROSTER_ENTRIES : contains
+  PLAYERS ||--o{ ROSTER_ENTRIES : appears
+  SEASON_CLUBS ||--o{ ROSTER_ENTRIES : observes
+  PLAYERS ||--o{ FORECAST_REVISIONS : predicts
+  FORECAST_REVISIONS o|--o{ FORECAST_REVISIONS : parent
+  PLAYERS ||--o| FORECAST_HEADS : current
+  FORECAST_REVISIONS ||--o| FORECAST_HEADS : points_to
   COMPETITION_SEASONS ||--o{ FIXTURES : schedules
   SEASON_CLUBS ||--o{ FIXTURES : home_club
   SEASON_CLUBS ||--o{ FIXTURES : away_club
@@ -78,6 +90,10 @@ and `ingestion_batches` uses its archive identifier. External identifiers remain
 | `sports.audit_log` | Optional normalized revision FK; actor type/identifier, action, entity type/key, JSON object detail, occurrence time |
 | `sports.ingestion_batches` | PK `archive_id`; source and optional normalized revision FKs; committed fixture/appearance counts and validation issues; durable SQL import marker |
 | `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-hour budget index |
+| `sports.roster_snapshots` | UUID PK; season FK, unique source revision FK, original observation time, completeness and normalized revision; append-only |
+| `sports.roster_entries` | PK `(snapshot_id, player_id, club_id)`; snapshot-season, registered season-club and player FKs; preserves conflicting club observations |
+| `sports.forecast_revisions` | UUID PK and increasing ordinal; player FK; same-player earlier parent FK; model version, semantic hash, canonical source ordinal, cutoff, full input/provenance/result JSON objects; append-only |
+| `sports.forecast_heads` | Player PK/FK and same-player revision FK; mutable current pointer and update time |
 | `auth."user"` | Text PK; case-insensitive unique email, name, verification flag, optional image, `viewer`/`admin` role, creation/update times |
 | `auth.session` | Text PK; unique nonempty token; user FK with cascading deletion; expiry after creation and optional client metadata |
 | `auth.account` | Text PK; user FK with cascading deletion; unique `("providerId", "accountId")`; optional password/token fields |
@@ -147,10 +163,16 @@ table, and function privileges are revoked; runtime roles receive explicit grant
 
 | Login | Granted capability |
 | --- | --- |
-| `lsp_reader` | Read canonical football, source/normalized revisions, standings, and points adjustments; no writes or auth/outbox/jobs/audit access |
+| `lsp_reader` | Read canonical football, source/normalized revisions, standings, points adjustments, rosters and forecasts; no writes or auth/outbox/jobs/audit access |
 | `lsp_writer` | Read all `sports` tables; insert/update/delete canonical competitions, seasons, clubs, registration, players, memberships, fixtures, and appearances; append revisions, snapshots/rows, adjustments, audit, outbox, and jobs; update only outbox `published_at` and specified job lifecycle columns |
 | `lsp_auth` | Read users; insert/update permitted profile fields with a default `viewer` role; CRUD sessions/accounts/verifications; no user deletion, role writes, football access, or migration access |
 | `lsp_migrator` | Own schemas, tables, and constraint functions; manage the migration ledger and apply versioned SQL; reserved for controlled administration |
+
+The writer may select/insert roster observations and forecast revisions, but
+cannot update or delete them. It may insert a forecast head and update only its
+revision pointer and update time. A revision parent must belong to the same player
+and have a smaller ordinal. The current head comparison permits A to B to A input
+corrections to append a third revision while exact replay remains idempotent.
 
 The writer's job update columns are `status`, `attempts`, `max_attempts`,
 `run_after`, `locked_by`, `locked_until`, `last_error`, and `completed_at`.

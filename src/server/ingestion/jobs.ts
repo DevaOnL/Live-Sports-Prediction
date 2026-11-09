@@ -6,7 +6,8 @@ import { RateLimitError } from "./store";
 
 type StatisticsJob = { id: string; kind: "fixture.statistics"; payload: { leagueId: string; fixtureId: string } };
 type StandingsJob = { id: string; kind: "standings.rebuild"; payload: { leagueId: string } };
-export type IngestionJob = StatisticsJob | StandingsJob;
+type ForecastJob = { id: string; kind: "forecast.refresh"; payload: Record<string, never> };
+export type IngestionJob = StatisticsJob | StandingsJob | ForecastJob;
 type Claimed = { id: string; kind: string; payload: unknown; attempts: number; max_attempts: number };
 type Decision = { retry: boolean; undoAttempt: boolean; delay: number; code: string };
 
@@ -16,6 +17,7 @@ function parseJob(row: Claimed): IngestionJob {
   const payload = row.payload;
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new InvalidJob();
   const record = payload as Record<string, unknown>;
+  if (row.kind === "forecast.refresh" && Object.keys(record).length === 0) return { id: row.id, kind: row.kind, payload: {} };
   if (typeof record.leagueId !== "string") throw new InvalidJob();
   try { coverageFor(record.leagueId); } catch { throw new InvalidJob(); }
   if (row.kind === "standings.rebuild" && Object.keys(record).length === 1) {
@@ -48,8 +50,12 @@ function retryDecision(error: unknown, attempts: number): Decision {
 
 /** Durable ingestion jobs. Other outbox events remain available to their consumers. */
 export class JobQueue {
-  constructor(private readonly pool: Pool, private readonly workerId: string = randomUUID()) {
+  constructor(private readonly pool: Pool, private readonly workerId: string = randomUUID(), private readonly forecasts = false) {
     if (!workerId || workerId.length > 128 || /[\u0000-\u001f\u007f]/.test(workerId)) throw new Error("Invalid worker identity");
+  }
+
+  private get kinds(): string {
+    return this.forecasts ? "('fixture.statistics','standings.rebuild','forecast.refresh')" : "('fixture.statistics','standings.rebuild')";
   }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -81,8 +87,36 @@ export class JobQueue {
         );
         await client.query("UPDATE sports.outbox SET published_at=clock_timestamp() WHERE id=$1", [event.id]);
       }
-      return events.rows.length;
+      let acknowledged = events.rows.length;
+      if (this.forecasts) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended('lsp:forecast-dispatch',0))");
+        const active = await client.query("SELECT 1 FROM sports.jobs WHERE kind='forecast.refresh' AND status IN ('ready','running') LIMIT 1");
+        if (!active.rowCount) {
+          const changes = await client.query<{ id: string }>(`SELECT id FROM sports.outbox
+            WHERE published_at IS NULL AND event_type IN ('canonical.changed','standings.changed','roster.changed','forecast.requested')
+            ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 100000`);
+          if (changes.rows.length) {
+            const anchor = changes.rows[0].id;
+            await client.query(`INSERT INTO sports.jobs(outbox_id,kind,deduplication_key,payload)
+              VALUES ($1,'forecast.refresh',$2,'{}') ON CONFLICT(deduplication_key) DO NOTHING`, [anchor, `forecast.refresh:${anchor}`]);
+            await client.query("UPDATE sports.outbox SET published_at=clock_timestamp() WHERE id=ANY($1::uuid[])", [changes.rows.map((row) => row.id)]);
+            acknowledged += changes.rows.length;
+          }
+        }
+      }
+      return acknowledged;
     });
+  }
+
+  async scheduleForecast(now = new Date()): Promise<number> {
+    if (!this.forecasts) return 0;
+    if (!Number.isFinite(now.getTime())) throw new Error("Invalid forecast scheduling time");
+    const bucket = Math.floor(now.getTime() / 60_000);
+    const result = await this.pool.query(`INSERT INTO sports.outbox(event_type,aggregate_type,aggregate_id,deduplication_key,payload)
+      SELECT 'forecast.requested','competition',id,$1,'{}' FROM sports.competitions
+      WHERE provider='apifootball' AND provider_id IN ('153','164') AND enabled ORDER BY provider_id LIMIT 1
+      ON CONFLICT(deduplication_key) DO NOTHING`, [`forecast.clock:${bucket}`]);
+    return result.rowCount ?? 0;
   }
 
   async scheduleStatistics(): Promise<number> {
@@ -119,7 +153,7 @@ export class JobQueue {
     });
   }
 
-  private async claim(token: string): Promise<Claimed | null> {
+  private async claim(token: string, forecastOnly: boolean): Promise<Claimed | null> {
     return this.transaction(async (client) => {
       // An expired final attempt becomes terminal; other interrupted work can retry.
       await client.query(
@@ -127,14 +161,14 @@ export class JobQueue {
            locked_by=NULL,locked_until=NULL,last_error='lease_expired',
            completed_at=CASE WHEN attempts>=max_attempts THEN clock_timestamp() ELSE NULL END,
            run_after=clock_timestamp()
-         WHERE kind IN ('fixture.statistics','standings.rebuild')
+         WHERE kind IN ${this.kinds}
            AND status='running' AND locked_until<=clock_timestamp()`,
       );
       const result = await client.query<Claimed>(
         `WITH next AS (
            SELECT id FROM sports.jobs WHERE status='ready' AND run_after<=clock_timestamp()
-             AND kind IN ('fixture.statistics','standings.rebuild')
-           ORDER BY run_after,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
+             AND kind IN ${forecastOnly ? "('forecast.refresh')" : this.kinds}
+           ORDER BY CASE WHEN kind='forecast.refresh' THEN 0 WHEN kind='standings.rebuild' THEN 1 ELSE 2 END,run_after,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
          ) UPDATE sports.jobs j SET status='running',attempts=attempts+1,
              locked_by=$1,locked_until=clock_timestamp()+interval '120 seconds',last_error=NULL
            FROM next WHERE j.id=next.id RETURNING j.id,j.kind,j.payload,j.attempts,j.max_attempts`, [token],
@@ -143,9 +177,13 @@ export class JobQueue {
     });
   }
 
-  async runOnce(handler: (job: IngestionJob) => Promise<void>): Promise<boolean> {
+  async runForecastOnce(handler: (job: IngestionJob) => Promise<void>): Promise<boolean> {
+    return this.forecasts ? this.runOnce(handler, true) : false;
+  }
+
+  async runOnce(handler: (job: IngestionJob) => Promise<void>, forecastOnly = false): Promise<boolean> {
     const token = `${this.workerId}:${randomUUID()}`;
-    const row = await this.claim(token);
+    const row = await this.claim(token, forecastOnly);
     if (!row) return false;
     let leaseLost = false;
     let renewal: Promise<void> | null = null;
@@ -192,7 +230,7 @@ export class JobQueue {
   async status(): Promise<{ kind: string; status: string; count: string }[]> {
     const result = await this.pool.query<{ kind: string; status: string; count: string }>(
       `SELECT kind,status,count(*)::text AS count FROM sports.jobs
-       WHERE kind IN ('fixture.statistics','standings.rebuild') GROUP BY kind,status ORDER BY kind,status`,
+       WHERE kind IN ${this.kinds} GROUP BY kind,status ORDER BY kind,status`,
     );
     return result.rows;
   }
@@ -200,7 +238,7 @@ export class JobQueue {
   async failures(): Promise<{ id: string; kind: string; attempts: number; last_error: string | null; completed_at: Date }[]> {
     const result = await this.pool.query<{ id: string; kind: string; attempts: number; last_error: string | null; completed_at: Date }>(
       `SELECT id,kind,attempts,last_error,completed_at FROM sports.jobs
-       WHERE status='failed' AND kind IN ('fixture.statistics','standings.rebuild')
+       WHERE status='failed' AND kind IN ${this.kinds}
        ORDER BY completed_at DESC,id LIMIT 100`,
     );
     return result.rows;
@@ -211,7 +249,7 @@ export class JobQueue {
     const result = await this.pool.query(
       `UPDATE sports.jobs SET status='ready',attempts=0,run_after=clock_timestamp(),
          locked_by=NULL,locked_until=NULL,last_error=NULL,completed_at=NULL
-       WHERE id=$1 AND status='failed' AND kind IN ('fixture.statistics','standings.rebuild')`, [id],
+       WHERE id=$1 AND status='failed' AND kind IN ${this.kinds}`, [id],
     );
     return result.rowCount === 1;
   }

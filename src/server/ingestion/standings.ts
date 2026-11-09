@@ -138,6 +138,7 @@ function validScore(value: number | null): value is number {
 /** Retrospective standings from corrected results, never historical publication replay. */
 export function reconstructStandings(
   coverage: Coverage, clubs: Club[], fixtures: Fixture[], cutoffDate: string,
+  options: { asOf?: string } = {},
 ): { rows: StandingRow[]; complete: boolean; issues: Issue[] } {
   const issues: Issue[] = [];
   let complete = true;
@@ -148,6 +149,10 @@ export function reconstructStandings(
   let cutoff: string;
   try {
     cutoff = cutoffUtc(cutoffDate, coverage.timezone);
+    if (options.asOf !== undefined) {
+      if (!Number.isFinite(Date.parse(options.asOf))) throw new RangeError("Invalid observation cutoff");
+      cutoff = options.asOf;
+    }
   } catch {
     return { rows: [], complete: false, issues: [{ code: "invalid_cutoff", resource: coverage.id }] };
   }
@@ -211,6 +216,13 @@ export function reconstructStandings(
       gap("fixture_outside_season", fixture.id, "kickoffAt"); continue;
     }
     if (matchDate >= cutoffDate) continue;
+    // Current forecast context includes observed finals earlier on this local
+    // date. A match that has not kicked off cannot contribute, and a known live
+    // match has no final result yet. Stale past schedules remain an explicit gap.
+    if (options.asOf !== undefined) {
+      if (Date.parse(fixture.kickoffAt!) >= Date.parse(options.asOf)) continue;
+      if (fixture.status === "live") continue;
+    }
     if (fixture.status === "unknown") { gap("unknown_result", fixture.id, "status"); continue; }
     if (fixture.status === "scheduled" || fixture.status === "live") { gap("unfinished_past_fixture", fixture.id, "status"); continue; }
     if (fixture.status !== "final") continue;

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Collection, Db } from "mongodb";
+import { COVERAGE } from "./coverage";
 import type { ArchivedResponse, ImportResult, Issue, ProviderResponse } from "./types";
 
 type RawArchive = ProviderResponse & { _id: string };
@@ -88,6 +89,27 @@ export class ArchiveStore {
       result.push(archived(document));
     }
     return result;
+  }
+
+  /** Retain every latest-time observation so offline upgrades preserve ambiguity. */
+  async latestRosters(): Promise<ArchivedResponse[]> {
+    const documents = await this.raw.aggregate<RawArchive>([
+      { $match: { action: "get_teams", "params.league_id": { $in: COVERAGE.map((coverage) => coverage.id) } } },
+      { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },
+      { $match: { "metadata.state": "imported" } },
+      { $setWindowFields: {
+        partitionBy: "$params.league_id", sortBy: { retrievedAt: -1 },
+        output: { observationRank: { $denseRank: {} } },
+      } },
+      { $match: { observationRank: 1 } },
+      { $unset: ["metadata", "observationRank"] },
+      { $sort: { "params.league_id": 1, _id: 1 } },
+    ]).toArray();
+    return documents.map((document) => {
+      validateArchive(document);
+      if (archiveId(document) !== document._id) throw new Error("Archive identity mismatch");
+      return archived(document);
+    });
   }
 
   async mark(id: string, state: "imported" | "invalid" | "failed", issues: Issue[], result?: ImportResult): Promise<void> {

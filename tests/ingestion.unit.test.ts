@@ -46,6 +46,12 @@ function fullStatistics() {
 function awayStatsWithId(id: string, index: number) {
   return { ...awayStats(), player_key: id, player_name: `Invented away player ${index}` };
 }
+function rosterTeams() {
+  return Array.from({ length: coverage.expectedClubs }, (_, index) => ({
+    team_key: String(101 + index), team_name: `Example club ${index + 1}`,
+    players: index === 0 ? [{ player_key: "201", player_name: "Example player", player_type: "Unknown" }] : [],
+  }));
+}
 
 test("coverage is fixed, immutable, and rejects expansion", () => {
   assert.deepEqual(COVERAGE.map((item) => [item.id, item.season, item.expectedClubs, item.timezone]), [
@@ -248,13 +254,43 @@ test("unknown membership, malformed participants, and duplicate rows prevent com
   assert.equal(fixture.appearances[0].participation, "unknown");
 });
 
-test("detailed participant fixture and membership mismatches remain uncertain", () => {
+test("detailed participant fixture mismatches and missing fixture context remain uncertain", () => {
   assert.equal(detail({ player_statistics: [stats({ match_id: "9002" }), awayStats()] }).fixtures[0].statisticsStatus, "partial");
-  const previous = detail({ player_statistics: [stats(), awayStats()] }).fixtures[0];
-  const changed = detail({ player_statistics: [stats({ team_name: "away" }), awayStats()] }, previous);
-  assert.equal(changed.fixtures[0].appearances[0].participation, "unknown");
-  assert.ok(changed.issues.some((item) => item.code === "conflicting_membership"));
   assert.equal(normalizeResponse(response("get_statistics", { player_statistics: [] }), coverage).fixtures.length, 0);
+});
+
+test("fresh validated statistics correct old club attribution and recover missing membership", () => {
+  const previous = detail(fullStatistics()).fixtures[0];
+  for (const clubId of ["102", ""]) {
+    const prior: Fixture = {
+      ...previous,
+      appearances: previous.appearances.map((item) => item.player.id === "201" ? {
+        ...item, clubId, participation: clubId ? "played" : "unknown",
+      } : item),
+    };
+    const corrected = detail(fullStatistics(), prior);
+    const recovered = corrected.fixtures[0].appearances.find((item) => item.player.id === "201")!;
+    assert.equal(recovered.clubId, "101");
+    assert.equal(recovered.participation, "played");
+    assert.equal(recovered.minutes, 96);
+    assert.equal(recovered.saves, 4);
+    assert.equal(corrected.fixtures[0].statisticsStatus, "complete");
+    assert.equal(corrected.issues.some((item) => item.code === "conflicting_membership"), false);
+    assert.deepEqual(detail(fullStatistics(), corrected.fixtures[0]).fixtures, corrected.fixtures);
+  }
+});
+
+test("same-response lineup and statistics membership contradictions remain uncertain", () => {
+  const batch = normalizeResponse(response("get_events", [event({
+    lineup: { home: { starting_lineups: [{ player_key: "201", lineup_player: "Example Keeper" }] } },
+    player_statistics: [stats({ team_name: "away" }), awayStats()],
+  })]), coverage);
+  const uncertain = batch.fixtures[0].appearances.find((item) => item.player.id === "201")!;
+  assert.equal(uncertain.clubId, "101");
+  assert.equal(uncertain.participation, "unknown");
+  assert.equal(uncertain.minutes, null);
+  assert.equal(uncertain.saves, null);
+  assert.ok(batch.issues.some((item) => item.code === "conflicting_membership"));
 });
 
 test("team rosters preserve plural position groups and unknown positions", () => {
@@ -267,6 +303,53 @@ test("team rosters preserve plural position groups and unknown positions", () =>
   ] }]), coverage);
   assert.deepEqual(batch.players.map((item) => item.position), ["GK", "DEF", "MID", "FWD", "UNKNOWN"]);
   assert.ok(batch.players.every((item) => item.clubId === "101"));
+});
+
+test("roster completeness tracks club coverage independently of positions and metric availability", () => {
+  const batch = normalizeResponse(response("get_teams", rosterTeams()), coverage);
+  assert.deepEqual(batch.roster, { complete: true, entries: [{ playerId: "201", clubId: "101" }] });
+  assert.ok(batch.issues.some((item) => item.code === "unknown_position"));
+  const empty = normalizeResponse(response("get_teams", rosterTeams().map((team) => ({ ...team, players: [] }))), coverage);
+  assert.deepEqual(empty.roster, { complete: true, entries: [] });
+  const partial = normalizeResponse(response("get_teams", rosterTeams().slice(1)), coverage);
+  assert.equal(partial.roster?.complete, false);
+  assert.ok(partial.issues.some((item) => item.code === "incomplete_roster_coverage"));
+});
+
+test("roster ambiguity preserves every validated player-club pair before player deduplication", () => {
+  const teams = rosterTeams();
+  teams[1].players = [...teams[0].players];
+  const batch = normalizeResponse(response("get_teams", teams), coverage);
+  assert.equal(batch.players.length, 1);
+  assert.deepEqual(batch.roster, { complete: false, entries: [
+    { playerId: "201", clubId: "101" }, { playerId: "201", clubId: "102" },
+  ] });
+  assert.ok(batch.issues.some((item) => item.code === "ambiguous_roster_membership"));
+});
+
+test("missing and malformed roster members cannot establish complete current-club coverage", () => {
+  for (const invalid of [null, {}, { player_key: "0", player_name: "Invalid" }, { player_key: "202", player_name: "" },
+    { player_key: "202", player_name: "Conflicting club", team_id: "101" },
+    { player_key: "202", player_name: "Invalid club", team_key: "unknown" }]) {
+    const teams = rosterTeams();
+    const payload = teams.map((team, index) => index === 1 ? { ...team, players: [invalid] } : team);
+    const batch = normalizeResponse(response("get_teams", payload), coverage);
+    assert.equal(batch.roster?.complete, false);
+    assert.deepEqual(batch.roster?.entries, [{ playerId: "201", clubId: "101" }]);
+  }
+  const missing = rosterTeams().map((team, index) => index === 1 ? { ...team, players: undefined } : team);
+  assert.equal(normalizeResponse(response("get_teams", missing), coverage).roster?.complete, false);
+});
+
+test("conflicting duplicate clubs retain validated roster pairs and mark coverage incomplete", () => {
+  const teams = rosterTeams();
+  teams.push({ team_key: "101", team_name: "Conflicting name", players: [{ player_key: "202", player_name: "Other player", player_type: "Forward" }] });
+  const batch = normalizeResponse(response("get_teams", teams), coverage);
+  assert.equal(batch.clubs.length, coverage.expectedClubs);
+  assert.deepEqual(batch.roster, { complete: false, entries: [
+    { playerId: "201", clubId: "101" }, { playerId: "202", clubId: "101" },
+  ] });
+  assert.ok(batch.issues.some((item) => item.code === "duplicate_club"));
 });
 
 test("provider standings normalize totals and permit deduction-adjusted negative points", () => {
