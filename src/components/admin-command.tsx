@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type ReactNode } from "react";
+import { Children, useRef, useState, type ReactNode } from "react";
 import { api, ApiFailure } from "@/lib/api";
 
 type CapturedCommand = { path: string; method: "POST" | "PATCH"; body: Record<string, unknown> };
@@ -37,13 +37,14 @@ export function useAdminCommand<T>(onSuccess?: (result: T) => void) {
 export function CommandFeedback({ pending, uncertain, error, children }: {
   pending: boolean; uncertain: boolean; error?: unknown; children?: ReactNode;
 }) {
+  if (!pending && error === undefined && Children.toArray(children).length === 0) return null;
   return <div className="command-feedback" role="status" aria-live="polite">
-    {pending && <p>Submitting your request…</p>}
+    {pending && <p>Submitting…</p>}
     {error !== undefined && <p className="error-message">{uncertain
-      ? "The outcome could not be confirmed. Retry the same request below; its identifier and submitted values are retained to prevent duplicate work."
+      ? "Outcome unknown. Retry below: the same request UUID and submitted values are retained to prevent duplicates."
       : error instanceof Error ? error.message : "The request could not be completed."}</p>}
     {error instanceof ApiFailure && error.status === 401 && <Link className="text-link" href="/login">Sign in again</Link>}
-    {error instanceof ApiFailure && error.status === 403 && <p>Administrator access is required. Your current account cannot perform this action.</p>}
+    {error instanceof ApiFailure && error.status === 403 && <p>Administrator access required.</p>}
     {children}
   </div>;
 }

@@ -6,6 +6,8 @@
 !eslint.config.mjs
 !src/
 !src/**
+!public/
+!public/**
 !scripts/
 scripts/*
 !scripts/build.mjs

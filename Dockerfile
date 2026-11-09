@@ -22,6 +22,7 @@ ENV NODE_ENV=production \
 
 COPY --from=build --chown=node:node /app/.next/standalone ./.next/standalone
 COPY --from=build --chown=node:node /app/.next/static ./.next/standalone/.next/static
+COPY --from=build --chown=node:node /app/public ./.next/standalone/public
 
 USER node
 EXPOSE 3000

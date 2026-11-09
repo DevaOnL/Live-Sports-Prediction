@@ -2,8 +2,8 @@
 
 The server exposes authenticated football reads and administrator operations.
 The website provides sign-in, an overview, player discovery and detail, comparison,
-administrator operations, and account/logout screens. The root page explains the
-methodology. API results preserve unavailable values and explanations.
+administrator operations, and account/logout screens. The root page links to
+player discovery and comparison, with a compact method summary. API results preserve unavailable values and explanations.
 
 ## Configure local access
 

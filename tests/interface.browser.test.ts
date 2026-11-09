@@ -41,7 +41,49 @@ async function noOverflow(page: Page) {
   assert(bounds.content <= bounds.viewport + 1, `page content ${bounds.content}px exceeds viewport ${bounds.viewport}px at ${new URL(page.url()).pathname}`);
 }
 
+async function mastheadFits(page: Page) {
+  const bounds = await page.locator(".site-masthead").evaluate((masthead) => ({
+    viewport: innerWidth,
+    targets: [...masthead.querySelectorAll<HTMLAnchorElement>("a")].map((link) => {
+      const box = link.getBoundingClientRect();
+      return { name: link.getAttribute("aria-label") ?? link.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    }),
+  }));
+  for (const [index, target] of bounds.targets.entries()) {
+    assert(target.left >= -0.25 && target.right <= bounds.viewport + 0.25, `${target.name} fits the ${bounds.viewport}px masthead`);
+    for (const other of bounds.targets.slice(index + 1)) {
+      assert(target.right <= other.left || other.right <= target.left || target.bottom <= other.top || other.bottom <= target.top,
+        `${target.name} and ${other.name} have separate click targets at ${bounds.viewport}px`);
+    }
+  }
+}
+
 test("browser sign-in redirects protected routes and keeps administrator access server-enforced", { timeout: 60_000 }, async () => withPage(async (page) => {
+  await page.goto(web.origin);
+  assert.equal(await page.locator("h1").count(), 1);
+  assert.equal(await page.locator('a[href^="/design"]').count(), 0);
+  await page.locator('.home-hero img').waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".home-hero img")].every((image) => image.complete && image.naturalWidth > 0));
+  const homeVisual = await page.evaluate(() => {
+    const masthead = document.querySelector(".site-masthead")!;
+    const hero = document.querySelector(".home-hero")!;
+    return { masthead: getComputedStyle(masthead).backgroundColor, hero: getComputedStyle(hero).backgroundImage,
+      images: [...hero.querySelectorAll<HTMLImageElement>("img")].map((image) => new URL(image.currentSrc).origin) };
+  });
+  assert(homeVisual.images.length > 0 && homeVisual.images.every((origin) => origin === web.origin));
+  assert(await page.locator('a[href="/players"]').count() > 0);
+  assert(await page.locator('a[href="/compare"]').count() > 0);
+  await noOverflow(page);
+  await page.locator('a[href="/login"]').first().click();
+  await page.waitForURL(`${web.origin}/login`);
+  await page.goBack();
+  await page.locator(".home-hero").waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".home-hero img")].every((image) => image.complete && image.naturalWidth > 0));
+  assert.deepEqual(await page.evaluate(() => ({
+    masthead: getComputedStyle(document.querySelector(".site-masthead")!).backgroundColor,
+    hero: getComputedStyle(document.querySelector(".home-hero")!).backgroundImage,
+    images: [...document.querySelectorAll<HTMLImageElement>(".home-hero img")].map((image) => new URL(image.currentSrc).origin),
+  })), homeVisual, "the production homepage keeps its visual styling after browser navigation");
   await page.goto(`${web.origin}/players/8001`);
   await page.waitForURL(`${web.origin}/login`);
   await page.getByLabel("Email address").fill("viewer@example.test");
@@ -72,6 +114,7 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await page.route("**/api/competitions", holdOptions);
   try {
     await page.goto(`${web.origin}/players?leagueId=153&clubId=3072&pageSize=2`, { waitUntil: "domcontentloaded" });
+    await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
     await page.getByLabel("Competition", { exact: true }).waitFor();
     assert.equal(await page.getByLabel("Competition", { exact: true }).inputValue(), "153");
     assert.equal(await page.getByLabel("Club", { exact: true }).inputValue(), "3072");
@@ -95,10 +138,12 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await page.getByText("Page 2 of 2", { exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get("page"), "2");
   assert.equal(await page.getByRole("heading", { name: /^Synthetic demo / }).count(), 2);
+  await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
   await page.getByLabel("Search players", { exact: true }).fill("No matching synthetic player");
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await page.getByRole("heading", { name: "Nothing here yet." }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get("q"), "No matching synthetic player");
+  await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
   await page.getByLabel("Search players", { exact: true }).fill("");
   await page.getByLabel("Competition", { exact: true }).selectOption("153");
   await page.getByLabel("Club", { exact: true }).selectOption("3072");
@@ -119,12 +164,15 @@ test("player detail separates five selected matches, reported observations, unit
   await selected.getByText("5 of 5 selected", { exact: true }).waitFor();
   assert.equal(await selected.locator("ol > li").count(), 5);
   assert.equal(await selected.getByText("97 min", { exact: true }).count(), 4);
+  await page.locator("summary").filter({ hasText: /^Observed appearances$/ }).click();
   const observed = page.getByRole("table", { name: "Recent observed appearances and reported match statistics" });
   assert.equal(await observed.getByRole("row").count(), 8);
   assert.equal(await observed.getByRole("cell", { name: "97", exact: true }).count(), 4);
   await page.getByRole("heading", { name: "Forecast rating", exact: true }).waitFor();
   await page.getByRole("heading", { name: "Adjusted form index", exact: true }).waitFor();
   assert((await page.getByRole("main").innerText()).includes("per 90 minutes"));
+  await page.getByText("Target passed", { exact: true }).waitFor();
+  await page.locator("summary").filter({ hasText: /^Freshness details$/ }).click();
   await page.getByText("The saved target kickoff has passed. These saved projections need a new evaluation before use for a future match.", { exact: true }).waitFor();
   await page.getByText("Revision and source evidence", { exact: true }).click();
   await page.getByText("Canonical input hash", { exact: true }).waitFor();
@@ -148,6 +196,14 @@ test("comparison preserves two-to-four selections in URLs and requires explicit 
   await page.getByRole("region", { name: "Aligned comparison results", exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get("allowCrossPosition"), "true");
   assert.equal(await page.getByRole("article", { name: /^Evidence for Synthetic demo / }).count(), 2);
+  const firstEvidence = page.getByRole("article", { name: `Evidence for ${names[0]}`, exact: true });
+  await firstEvidence.locator("summary").filter({ hasText: /^Selected matches & forecast evidence$/ }).click();
+  const selected = firstEvidence.getByRole("region", { name: "Selected five-match window", exact: true });
+  await selected.getByText("5 of 5 selected", { exact: true }).waitFor();
+  assert.equal(await selected.locator("ol > li").count(), 5);
+  await firstEvidence.locator("summary").filter({ hasText: /^Comparison and revision evidence$/ }).click();
+  await firstEvidence.getByText("Canonical input hash", { exact: true }).waitFor();
+  await firstEvidence.getByText("Shared cutoff", { exact: true }).waitFor();
   await page.goto(`${web.origin}/players?pageSize=4`);
   for (const name of names.slice(2)) await page.getByRole("button", { name: `Add ${name} to comparison`, exact: true }).click();
   await page.getByRole("link", { name: "Compare players", exact: true }).click();
@@ -172,7 +228,7 @@ test("loading, recoverable service errors, missing records and expired sessions 
   });
   try {
     await page.goto(`${web.origin}/overview`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("status").filter({ hasText: "Loading the latest saved evidence…" }).first().waitFor();
+    await page.getByRole("status").filter({ hasText: "Loading…" }).first().waitFor();
   } finally { release(); }
   await page.getByRole("heading", { name: "We could not load this view.", exact: true }).waitFor();
   await page.unroute("**/api/overview");
@@ -186,7 +242,7 @@ test("loading, recoverable service errors, missing records and expired sessions 
     await route.fulfill({ response, json: empty });
   });
   await page.getByRole("button", { name: "Refresh view", exact: true }).click();
-  await page.getByText("No players have been imported yet. An administrator can request an import; forecasts need covered match history before they can be evaluated.", { exact: true }).waitFor();
+  await page.getByText("No players imported yet. An administrator can request an import.", { exact: true }).waitFor();
   await page.unroute("**/api/overview");
   await page.goto(`${web.origin}/players/999999`);
   await page.getByRole("heading", { name: "This record is unavailable.", exact: true }).waitFor();
@@ -255,7 +311,7 @@ test("administrator queue retries preserve request identity, correction conflict
   await page.getByRole("button", { name: "Apply correction", exact: true }).click();
   await page.getByText("Correction saved as a manual revision. The audit trail retains the reason and before/after values.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Committed imports", exact: true }).click();
-  await page.getByText("These batches committed to canonical storage. Validation issues describe retained uncertainty; queue acceptance alone does not create an entry here.", { exact: true }).waitFor();
+  await page.getByText("Committed batches · Validation issues retain uncertainty", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Audit trail", exact: true }).click();
   await page.getByRole("table", { name: /^Committed audit trail/ }).waitFor();
   await page.getByText("View audit evidence", { exact: true }).first().click();
@@ -270,14 +326,21 @@ test("main viewer and administrator journeys fit 390, 768 and 1440 pixel viewpor
     for (const [route, heading] of [["/overview", "The game, in context."], ["/players?pageSize=2", "Find your next player."], ["/players/8001", names[0]], ["/compare?playerId=8001&playerId=8002&allowCrossPosition=true", "Compare the evidence."], ["/admin", "Operations"]]) {
       await page.goto(web.origin + route);
       await page.getByRole("heading", { name: heading, exact: true }).waitFor();
-      await page.getByRole("status").filter({ hasText: "Loading the latest saved evidence…" }).first().waitFor({ state: "hidden" });
+      await page.getByRole("status").filter({ hasText: "Loading…" }).first().waitFor({ state: "hidden" });
       if (width === 390) await page.getByRole("link", { name: "Account settings", exact: true }).waitFor();
       await noOverflow(page);
+      await mastheadFits(page);
       if (process.env.BROWSER_EVIDENCE_DIR && width !== 768) {
         await mkdir(process.env.BROWSER_EVIDENCE_DIR, { recursive: true, mode: 0o700 });
         const name = route.split("?")[0].replaceAll("/", "-").replace(/^-/, "");
         await page.screenshot({ path: join(process.env.BROWSER_EVIDENCE_DIR, `${name}-${width}.png`), fullPage: true, animations: "disabled" });
       }
     }
+  }
+  for (const width of [320, 375, 601]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${web.origin}/admin`);
+    await page.getByRole("heading", { name: "Operations", exact: true }).waitFor();
+    await mastheadFits(page);
   }
 }));
