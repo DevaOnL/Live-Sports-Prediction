@@ -170,7 +170,7 @@ table, and function privileges are revoked; runtime roles receive explicit grant
 
 The writer may select/insert roster observations and forecast revisions, but
 cannot update or delete them. It may insert a forecast head and update only its
-revision pointer and update time. A revision parent must belong to the same player
+revision pointer, update time, and latest-evaluation metadata. A revision parent must belong to the same player
 and have a smaller ordinal. The current head comparison permits A to B to A input
 corrections to append a third revision while exact replay remains idempotent.
 
@@ -255,6 +255,14 @@ can be supplied with `npm run db:migrate -- --dir path`. Existing unmanaged
 `sports`/`auth`/`infra` schemas or an incorrectly owned ledger require administrator
 review rather than automatic adoption or replacement.
 
+## Reporting and notifications
+
+`007_forecast_freshness.sql` backfills mutable evaluation metadata independently
+of immutable forecast revisions. `008_reporting.sql` adds invoker SQL functions,
+a refresh-request procedure and a transactional forecast-head trigger. The
+[demonstration guide](demo.md) describes their signatures, grants and executable
+examples. Runtime roles cannot change these routines.
+
 ## Isolated integration tests
 
 [`tests/database.test.ts`](../tests/database.test.ts) verifies fresh migrations,
@@ -312,4 +320,8 @@ The [CI workflow](../.github/workflows/ci.yml) also runs the database suite in a
 isolated PostgreSQL service. Lint, typecheck, and build require no database or
 provider credentials. The separate [ingestion integration recipe](ingestion.md#isolated-integration-tests)
 uses disposable PostgreSQL and MongoDB instances and exercises cross-store
-recovery without a provider API key.
+recovery without a provider API key. Run `npm run test:reporting` in the guarded
+PostgreSQL test subshell to check history selection, recursive limits, concurrent
+request idempotence, rollback, trigger notifications and role boundaries.
+`npm run demo` manages its own independent containers and requires no environment
+file; it must be run outside any custom shared database workflow.

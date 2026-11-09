@@ -4,6 +4,7 @@ import { port } from "../server/ingestion/connections";
 import { createRuntime } from "../server/ingestion/runtime";
 import { ProviderError } from "../server/ingestion/provider";
 import { RateLimitError } from "../server/ingestion/store";
+import { pollForecasts } from "./forecast-polling";
 
 async function main() {
   const enabledText = process.env.INGESTION_ENABLED ?? "false";
@@ -18,6 +19,8 @@ async function main() {
   let lastSync: string | null = null;
   let sourceState = enabled ? "awaiting-sync" : "disabled";
   let persistenceUp = true;
+  let forecastsUp = true;
+  let lastForecastProgress = Date.now();
   const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.setHeader("Cache-Control", "no-store");
@@ -28,11 +31,13 @@ async function main() {
     if (runtime) {
       try { await runtime.ping(); databases = true; } catch { /* Return health state without connection diagnostics. */ }
     }
-    const healthy = !stopping && (!enabled || (databases && persistenceUp && Date.now() - lastProgress < 300_000));
+    const healthy = !stopping && (!enabled || (databases && persistenceUp && forecastsUp
+      && Date.now() - lastProgress < 300_000 && Date.now() - lastForecastProgress < 300_000));
     response.writeHead(healthy ? 200 : 503).end(JSON.stringify({
       service: "worker", status: healthy ? "alive" : "unavailable", scope: enabled ? "ingestion" : "process-only",
       jobsEnabled: enabled, databaseConnections: databases, lastSync, sourceState,
       predictionsEnabled: enabled,
+      forecastPolling: enabled ? forecastsUp && Date.now() - lastForecastProgress < 300_000 ? "alive" : "unavailable" : "disabled",
     }));
   });
   server.listen(listenPort, "0.0.0.0", () => console.info(`Worker health listening on ${listenPort}; ingestion ${enabled ? "enabled" : "disabled"}.`));
@@ -40,11 +45,6 @@ async function main() {
     if (!runtime) return;
     while (!stopping) {
       try {
-        // Local evidence refresh must not wait behind source network activity.
-        await runtime.queue.scheduleForecast();
-        await runtime.queue.dispatch(500);
-        await runtime.queue.runForecastOnce(runtime.handle);
-        lastProgress = Date.now();
         await runtime.pipeline.reconcile();
         if (Date.now() >= nextSync) {
           try {
@@ -59,7 +59,6 @@ async function main() {
             else throw error;
           }
         }
-        await runtime.queue.scheduleForecast();
         await runtime.queue.dispatch(500);
         // Finite batches allow polling, recovery, and shutdown between jobs.
         for (let index = 0; index < 5 && !stopping; index++) {
@@ -75,7 +74,11 @@ async function main() {
       await pause(5_000, undefined, { signal: abort.signal }).catch(() => undefined);
     }
   };
-  const running = loop();
+  const running = Promise.all([loop(), runtime ? pollForecasts(runtime.queue, runtime.handle, {
+    signal: abort.signal,
+    onProgress() { forecastsUp = true; lastForecastProgress = Date.now(); },
+    onError() { forecastsUp = false; console.error("Forecast persistence unavailable; retrying safely."); },
+  }) : Promise.resolve()]);
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;

@@ -115,6 +115,14 @@ changes and checks target expiry every minute. Calculations need PostgreSQL writ
 credentials, with no provider key or MongoDB connection. See the
 [forecasting guide](docs/forecasting.md) for formulas and availability rules.
 
+## Database demonstrations
+
+Run `npm run demo` after `npm ci` to execute the SQL and MongoDB examples on
+fresh disposable Docker containers. It uses synthetic data, independent temporary
+credentials, and no football API calls. Existing project databases and volumes
+are untouched. The [demonstration guide](docs/demo.md) maps each example to its
+source, expected result, and safety checks.
+
 ## Development
 
 Stop the app container before running the local development server on port 3000:
@@ -138,7 +146,8 @@ npm run build
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
 type checking, and the production build without database or API credentials. A
 separate job verifies migrations, constraints, ingestion, forecast persistence,
-and refresh processing against disposable PostgreSQL 17 and MongoDB 8 services.
+refresh processing, reporting permissions, and isolated database demonstrations
+against disposable PostgreSQL 17 and MongoDB 8 services.
 
 ## Methodology
 

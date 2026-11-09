@@ -401,6 +401,50 @@ test("a same-club summary preserves complete detail without extra enrichment", a
   assert.deepEqual(await counts(), previous);
 });
 
+for (const detailed of [false, true]) {
+  test(`opposite-club lineup evidence clears known membership and metrics in a ${detailed ? "detailed event" : "summary"} until fresh statistics correct it`, async () => {
+    await importBatch(batch([fixture({ statisticsStatus: "complete" })]));
+    const homeStatistics = [sourceStatistics(), ...Array.from({ length: 10 }, (_, index) => ({
+      ...sourceStatistics(), player_key: String(8100 + index), player_name: `Other home player ${index}`,
+    }))];
+    const awayStatistics = Array.from({ length: 11 }, (_, index) => ({
+      ...sourceStatistics(clubs[1].id), player_key: String(8200 + index), player_name: `Other away player ${index}`,
+    }));
+    const archive = await archives.save(response([{
+      match_id: "900001", league_id: "153", league_year: "2026/27", stage_name: "Regular Season",
+      match_hometeam_id: clubs[0].id, match_hometeam_name: clubs[0].name,
+      match_awayteam_id: clubs[1].id, match_awayteam_name: clubs[1].name,
+      match_date: "2026-08-01", match_time: "15:00", match_status: "Finished",
+      match_hometeam_score: "2", match_awayteam_score: "1",
+      lineup: {
+        home: { starting_lineups: [{ player_key: "8001", lineup_player: "Test player 8001" }] },
+        away: { starting_lineups: [{ player_key: "8001", lineup_player: "Test player 8001" }] },
+      },
+      ...(detailed ? { player_stats: { home: homeStatistics, away: awayStatistics } } : {}),
+    }], { params: { league_id: "153", timezone: "UTC" } }));
+    const pipeline = new IngestionPipeline(pool, mongo, "offline-conflicting-lineup-test");
+    assert.equal(await pipeline.reconcile(), 1);
+    const uncertain = (await administrator.query(`SELECT a.club_id,a.membership_id,a.participation,a.minutes,a.rating,a.goals,a.saves
+      FROM sports.appearances a JOIN sports.players p ON p.id=a.player_id WHERE p.provider_id='8001'`)).rows[0];
+    assert.deepEqual(uncertain, {
+      club_id: null, membership_id: null, participation: "unknown", minutes: null, rating: null, goals: null, saves: null,
+    });
+    assert.equal((await store.fixture("900001"))?.statisticsStatus, "partial");
+    const marker = (await administrator.query("SELECT issues_json FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows[0];
+    assert.ok(marker.issues_json.some((item: { code: string; resource: string }) =>
+      item.code === "conflicting_membership" && item.resource === "fixture:900001/player:8001"));
+    await importSourceStatistics();
+    const recovered = (await store.fixture("900001"))?.appearances.find((item) => item.player.id === "8001");
+    assert.equal(recovered?.clubId, clubs[0].id);
+    assert.equal(recovered?.participation, "played");
+    assert.equal(recovered?.minutes, 97);
+    assert.equal(recovered?.rating, 7.5);
+    assert.equal(recovered?.goals, 1);
+    assert.equal((await administrator.query(`SELECT a.membership_id IS NOT NULL AS known FROM sports.appearances a
+      JOIN sports.players p ON p.id=a.player_id WHERE p.provider_id='8001'`)).rows[0].known, true);
+  });
+}
+
 test("roster observations are append only, grant reader access and retain removals in newer complete snapshots", async () => {
   const first = await importRoster();
   const second = await importRoster(sourceRoster().map((team) => ({ ...team, players: [] })));

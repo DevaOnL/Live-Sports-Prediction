@@ -263,3 +263,9 @@ after `npm ci`.
 The subshell removes only its two temporary containers on exit. It does not reset
 project volumes. Test output describes the checks actually run; this setup recipe
 does not establish live-provider availability or a successful real-data import.
+
+Contradictory same-player lineup clubs preserve unknown participation and clear
+stale membership and metrics. Detailed statistics in that contradictory response
+do not silently choose a club; a later consistent statistics response can recover
+known participation. The worker polls the local forecast queue independently of
+source requests, so a slow provider does not block local refreshes.
