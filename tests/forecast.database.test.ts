@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { after, before, beforeEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -147,6 +148,68 @@ test("all four positions persist complete inputs, shared provenance and reproduc
   assert.deepEqual(Object.keys(saved[3]!.result.projected90), ["goals", "assists", "shotsOnTarget"]);
   assert.equal((await admin.query("SELECT count(*) FROM sports.outbox WHERE event_type='canonical.changed' AND aggregate_type='forecast'")).rows[0].count, "0");
   assert.equal((await forecasts.refreshAll("2026-08-10T13:00:00.000Z")).unchanged, 4, "clock passage alone does not append revisions");
+});
+
+test("a comparison refresh aligns latest evaluations when only one player's semantic inputs change", async () => {
+  await forecasts.refreshAll(cutoff);
+  const original = (await forecasts.show(players[0].id))!;
+  const changedOriginal = (await forecasts.show(players[3].id))!;
+  const updated = { ...fixture(0, 5), appearances: players.map((player) => appearance(player,
+    player.id === players[3].id ? { goals: 3 } : {})) };
+  await importFixtures([updated]);
+  const latestRoster = await roster("2026-08-09T00:00:00.000Z");
+  const laterCutoff = "2026-08-10T13:00:00.000Z";
+  const summary = await forecasts.refreshMany([players[0].id, players[3].id], laterCutoff);
+  assert.equal(summary.created, 1);
+  assert.equal(summary.unchanged, 1);
+  const unchanged = (await forecasts.show(players[0].id))!;
+  const changed = (await forecasts.show(players[3].id))!;
+  assert.equal(unchanged.id, original.id);
+  assert.deepEqual(unchanged.input, original.input, "an evaluation never rewrites revision inputs");
+  assert.deepEqual(unchanged.result, original.result);
+  assert.deepEqual(unchanged.provenance, original.provenance);
+  assert.equal(unchanged.cutoffAt, original.cutoffAt);
+  assert.equal(unchanged.sourceOrdinal, original.sourceOrdinal);
+  assert.notEqual(changed.id, changedOriginal.id);
+  assert.equal(changed.parentId, changedOriginal.id);
+  assert.equal(unchanged.evaluation.cutoffAt, laterCutoff);
+  assert.equal(changed.evaluation.cutoffAt, laterCutoff);
+  assert.equal(unchanged.evaluation.sourceOrdinal, changed.evaluation.sourceOrdinal);
+  assert(BigInt(unchanged.evaluation.sourceOrdinal) > BigInt(original.sourceOrdinal));
+  assert(Date.parse(unchanged.evaluation.checkedAt) >= Date.parse(original.evaluation.checkedAt));
+  assert((unchanged.evaluation.provenance.rosterObservations as { snapshotId: string }[])
+    .some((observation) => observation.snapshotId === latestRoster));
+  assert.equal((await forecasts.status()).revisions, 5);
+  const pointer = (await pool.query("SELECT updated_at FROM sports.forecast_heads WHERE revision_id=$1", [unchanged.id])).rows[0].updated_at;
+  await pool.query("UPDATE sports.forecast_heads SET checked_at=TIMESTAMPTZ '2020-01-01' WHERE revision_id=$1", [unchanged.id]);
+  await forecasts.refreshMany([players[0].id, players[3].id], "2026-08-10T14:00:00.000Z");
+  const checkedAgain = (await forecasts.show(players[0].id))!;
+  assert.equal(checkedAgain.id, unchanged.id);
+  assert.equal(checkedAgain.evaluation.cutoffAt, "2026-08-10T14:00:00.000Z");
+  assert(Date.parse(checkedAgain.evaluation.checkedAt) > Date.parse("2020-01-01T00:00:00.000Z"));
+  assert.equal((await pool.query("SELECT updated_at FROM sports.forecast_heads WHERE revision_id=$1", [unchanged.id])).rows[0].updated_at.toISOString(), pointer.toISOString());
+  assert.equal((await forecasts.status()).revisions, 5);
+});
+
+test("the freshness migration backfills existing pointers without changing revision evidence", async () => {
+  await forecasts.refreshAll(cutoff);
+  const revisions = (await admin.query("SELECT * FROM sports.forecast_revisions ORDER BY ordinal")).rows;
+  await admin.query("BEGIN");
+  try {
+    await admin.query(`ALTER TABLE sports.forecast_heads DROP COLUMN evaluation_cutoff_at,
+      DROP COLUMN evaluation_source_ordinal,DROP COLUMN evaluation_provenance_json,DROP COLUMN checked_at`);
+    await admin.query(await readFile(join(root, "db/migrations/007_forecast_freshness.sql"), "utf8"));
+    const heads = (await admin.query(`SELECT h.*,r.cutoff_at,r.source_ordinal,r.provenance_json,r.created_at
+      FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id`)).rows;
+    assert.equal(heads.length, 4);
+    for (const head of heads) {
+      assert.equal(head.evaluation_cutoff_at.toISOString(), head.cutoff_at.toISOString());
+      assert.equal(head.evaluation_source_ordinal, head.source_ordinal);
+      assert.deepEqual(head.evaluation_provenance_json, head.provenance_json);
+      assert.equal(head.checked_at.toISOString(), head.created_at.toISOString());
+    }
+    assert.deepEqual((await admin.query("SELECT * FROM sports.forecast_revisions ORDER BY ordinal")).rows, revisions);
+  } finally { await admin.query("ROLLBACK"); }
 });
 
 for (const minutes of [97, 59, 0]) test(`a new ${minutes}-minute final refreshes context and target with the exact eligibility window`, async () => {
@@ -422,5 +485,8 @@ test("forecast revisions are append-only for runtime roles and parents cannot cr
   try {
     assert.equal((await reader.query("SELECT count(*) FROM sports.forecast_revisions")).rows[0].count, "4");
     await assert.rejects(reader.query("DELETE FROM sports.forecast_heads"), { code: "42501" });
+    await assert.rejects(reader.query("UPDATE sports.forecast_heads SET checked_at=clock_timestamp()"), { code: "42501" });
+    assert((await reader.query("SELECT evaluation_cutoff_at,evaluation_source_ordinal,evaluation_provenance_json,checked_at FROM sports.forecast_heads")).rows
+      .every((head) => head.evaluation_cutoff_at && head.evaluation_source_ordinal && head.evaluation_provenance_json && head.checked_at));
   } finally { await reader.end(); }
 });

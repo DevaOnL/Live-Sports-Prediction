@@ -163,7 +163,7 @@ function kickoff(value: Row, state: State, resource: string): string | null | fa
 
 function lineup(value: Row, fixture: Fixture, state: State) {
   if (!row(value.lineup)) return;
-  const seen = new Set<string>();
+  const seen = new Map<string, Appearance>();
   for (const side of ["home", "away"] as const) {
     const part = value.lineup[side];
     if (!row(part)) continue;
@@ -173,9 +173,22 @@ function lineup(value: Row, fixture: Fixture, state: State) {
         if (!row(raw)) { issue(state, "invalid_player", `fixture:${fixture.id}`, "lineup"); continue; }
         const known = player(raw, fixture[side].id, state, `fixture:${fixture.id}`, true);
         if (!known) continue;
-        if (seen.has(known.id)) { issue(state, "duplicate_player", `fixture:${fixture.id}/player:${known.id}`); continue; }
-        seen.add(known.id);
-        fixture.appearances.push(unknownAppearance(known, fixture[side].id));
+        const previous = seen.get(known.id);
+        if (previous) {
+          const resource = `fixture:${fixture.id}/player:${known.id}`;
+          issue(state, "duplicate_player", resource);
+          if (previous.clubId !== fixture[side].id) {
+            // Keep contradictory evidence until this payload's detail is merged.
+            // Choosing either side would let a matching statistics row hide it.
+            previous.clubId = "";
+            previous.player = { ...previous.player, clubId: undefined };
+            issue(state, "conflicting_membership", resource);
+          }
+          continue;
+        }
+        const uncertain = unknownAppearance(known, fixture[side].id);
+        seen.set(known.id, uncertain);
+        fixture.appearances.push(uncertain);
       }
     }
   }

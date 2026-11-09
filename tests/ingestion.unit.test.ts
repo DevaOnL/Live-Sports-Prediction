@@ -293,6 +293,52 @@ test("same-response lineup and statistics membership contradictions remain uncer
   assert.ok(batch.issues.some((item) => item.code === "conflicting_membership"));
 });
 
+test("opposite-club lineup duplicates cannot be confirmed by matching statistics in the same payload", () => {
+  const lineup = {
+    home: { starting_lineups: [{ player_key: "201", lineup_player: "Example Keeper" }] },
+    away: { starting_lineups: [{ player_key: "201", lineup_player: "Example Keeper" }] },
+  };
+  for (const details of [
+    {},
+    { player_stats: { home: [stats()], away: [awayStats()] } },
+    { player_statistics: fullStatistics() },
+  ]) {
+    const batch = normalizeResponse(response("get_events", [event({ lineup, ...details })]), coverage);
+    const fixture = batch.fixtures[0];
+    const uncertain = fixture.appearances.filter((item) => item.player.id === "201");
+    assert.equal(uncertain.length, 1);
+    assert.equal(uncertain[0].clubId, "");
+    assert.equal(uncertain[0].participation, "unknown");
+    assert.equal(uncertain[0].minutes, null);
+    assert.equal(uncertain[0].rating, null);
+    assert.equal(uncertain[0].saves, null);
+    assert.notEqual(fixture.statisticsStatus, "complete");
+    assert.ok(batch.issues.some((item) => item.code === "conflicting_membership" && item.resource === "fixture:9001/player:201"));
+    const corrected = detail(fullStatistics(), fixture);
+    const recovered = corrected.fixtures[0].appearances.find((item) => item.player.id === "201")!;
+    assert.equal(recovered.clubId, "101");
+    assert.equal(recovered.participation, "played");
+    assert.equal(recovered.minutes, 96);
+    assert.equal(corrected.fixtures[0].statisticsStatus, "complete");
+  }
+});
+
+test("same-club lineup duplicates do not block consistent detailed participation", () => {
+  const batch = normalizeResponse(response("get_events", [event({
+    lineup: { home: {
+      starting_lineups: [{ player_key: "201", lineup_player: "Example Keeper" }],
+      substitutes: [{ player_key: "201", lineup_player: "Example Keeper" }],
+    } },
+    player_statistics: fullStatistics(),
+  })]), coverage);
+  const appearance = batch.fixtures[0].appearances.filter((item) => item.player.id === "201");
+  assert.equal(appearance.length, 1);
+  assert.equal(appearance[0].participation, "played");
+  assert.equal(appearance[0].minutes, 96);
+  assert.equal(batch.fixtures[0].statisticsStatus, "complete");
+  assert.equal(batch.issues.some((item) => item.code === "conflicting_membership"), false);
+});
+
 test("team rosters preserve plural position groups and unknown positions", () => {
   const batch = normalizeResponse(response("get_teams", [{ team_key: "101", team_name: "Example Club", players: [
     { player_key: "201", player_name: "Keeper", player_type: "Goalkeepers" },

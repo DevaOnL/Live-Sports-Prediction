@@ -7,6 +7,7 @@ export type SavedForecast = {
   id: string; ordinal: string; playerId: string; parentId: string | null; modelVersion: string;
   inputHash: string; sourceOrdinal: string; cutoffAt: string; createdAt: string;
   input: ForecastInput; provenance: Record<string, unknown>; result: ForecastResult;
+  evaluation: { cutoffAt: string; sourceOrdinal: string; provenance: Record<string, unknown>; checkedAt: string };
 };
 
 /** The ingestion lock freezes canonical evidence for the entire comparison batch. */
@@ -41,21 +42,28 @@ export class ForecastStore {
     const result = evaluateForecast(input);
     const hash = inputHash(input, result);
     // Compare only with the current head. A -> B -> A is a third observation.
-    if (previous.rows[0]?.input_hash === hash) return { created: false, result: previous.rows[0].result_json };
+    if (previous.rows[0]?.input_hash === hash) {
+      await this.setHead(client, playerId, previous.rows[0].id, prepared);
+      return { created: false, result: previous.rows[0].result_json };
+    }
     const revision = await client.query<{ id: string }>(
       `INSERT INTO sports.forecast_revisions(player_id,parent_id,model_version,input_hash,source_ordinal,cutoff_at,input_json,provenance_json,result_json)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [playerId, previous.rows[0]?.id ?? null, result.modelVersion, hash, prepared.sourceOrdinal, input.cutoffAt,
         canonicalJson(input), canonicalJson(prepared.provenance), canonicalJson(result)]);
-    await client.query(
-      `INSERT INTO sports.forecast_heads(player_id,revision_id) VALUES ($1,$2)
-       ON CONFLICT (player_id) DO UPDATE SET revision_id=EXCLUDED.revision_id,updated_at=now()`, [playerId, revision.rows[0].id]);
-    // Forecasts explain canonical observations; they must not feed canonical.changed.
-    await client.query(
-      `INSERT INTO sports.audit_log(actor_type,action,entity_type,entity_key,detail)
-       VALUES ('worker','forecast.refresh','forecast',$1,$2)`,
-      [input.player.id, canonicalJson({ forecastRevisionId: revision.rows[0].id, parentId: previous.rows[0]?.id ?? null, inputHash: hash, sourceOrdinal: prepared.sourceOrdinal })]);
+    await this.setHead(client, playerId, revision.rows[0].id, prepared);
     return { created: true, result };
+  }
+
+  private async setHead(client: PoolClient, playerId: string, revisionId: string, prepared: PreparedInput): Promise<void> {
+    await client.query(
+      `INSERT INTO sports.forecast_heads(player_id,revision_id,evaluation_cutoff_at,evaluation_source_ordinal,evaluation_provenance_json,checked_at)
+       VALUES ($1,$2,$3,$4,$5,clock_timestamp())
+       ON CONFLICT (player_id) DO UPDATE SET revision_id=EXCLUDED.revision_id,
+         updated_at=CASE WHEN forecast_heads.revision_id IS DISTINCT FROM EXCLUDED.revision_id THEN clock_timestamp() ELSE forecast_heads.updated_at END,
+         evaluation_cutoff_at=EXCLUDED.evaluation_cutoff_at,evaluation_source_ordinal=EXCLUDED.evaluation_source_ordinal,
+         evaluation_provenance_json=EXCLUDED.evaluation_provenance_json,checked_at=EXCLUDED.checked_at`,
+      [playerId, revisionId, prepared.input.cutoffAt, prepared.sourceOrdinal, canonicalJson(prepared.provenance)]);
   }
 
   private async refreshBatch(ids: readonly string[] | undefined, cutoffAt = new Date().toISOString()): Promise<RefreshResult> {
@@ -81,7 +89,9 @@ export class ForecastStore {
       id: string; ordinal: string; provider_id: string; parent_id: string | null; model_version: string;
       input_hash: string; source_ordinal: string; cutoff_at: Date; created_at: Date;
       input_json: ForecastInput; provenance_json: Record<string, unknown>; result_json: ForecastResult;
-    }>(`SELECT r.*,p.provider_id FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id
+      evaluation_cutoff_at: Date; evaluation_source_ordinal: string; evaluation_provenance_json: Record<string, unknown>; checked_at: Date;
+    }>(`SELECT r.*,p.provider_id,h.evaluation_cutoff_at,h.evaluation_source_ordinal,h.evaluation_provenance_json,h.checked_at
+        FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id
         JOIN sports.players p ON p.id=h.player_id WHERE p.provider='apifootball' AND p.provider_id=$1`, [providerPlayerId]);
     const row = rows.rows[0];
     return row ? {
@@ -89,6 +99,8 @@ export class ForecastStore {
       modelVersion: row.model_version, inputHash: row.input_hash, sourceOrdinal: row.source_ordinal,
       cutoffAt: row.cutoff_at.toISOString(), createdAt: row.created_at.toISOString(),
       input: row.input_json, provenance: row.provenance_json, result: row.result_json,
+      evaluation: { cutoffAt: row.evaluation_cutoff_at.toISOString(), sourceOrdinal: row.evaluation_source_ordinal,
+        provenance: row.evaluation_provenance_json, checkedAt: row.checked_at.toISOString() },
     } : null;
   }
 

@@ -24,6 +24,7 @@ services:
       start_period: 15s
 
   worker:
+    restart: unless-stopped
     build:
       context: .
       target: worker

@@ -121,3 +121,7 @@ jobs:
         run: npm run test:ingestion
       - name: Verify forecast revisions and refresh processing
         run: npm run test:forecast
+      - name: Verify reporting routines and trigger permissions
+        run: npm run test:reporting
+      - name: Run isolated database demonstrations
+        run: npm run demo

@@ -20,10 +20,12 @@
     "test:db": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/database.test.ts",
     "mongo:provision": "node --env-file-if-exists=.env --import tsx scripts/mongo.ts",
     "ingest": "node --env-file-if-exists=.env --import tsx scripts/ingest.ts",
-    "test:unit": "node --import tsx --test tests/ingestion.unit.test.ts tests/provider.test.ts tests/standings.test.ts tests/jobs.test.ts tests/forecast.test.ts",
+    "test:unit": "node --import tsx --test tests/ingestion.unit.test.ts tests/provider.test.ts tests/standings.test.ts tests/jobs.test.ts tests/forecast.test.ts tests/worker.test.ts",
     "test:ingestion": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/ingestion.database.test.ts",
     "forecast": "node --env-file-if-exists=.env --import tsx scripts/forecast.ts",
-    "test:forecast": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/forecast.database.test.ts tests/forecast-jobs.database.test.ts"
+    "test:forecast": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/forecast.database.test.ts tests/forecast-jobs.database.test.ts",
+    "test:reporting": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/reporting.database.test.ts",
+    "demo": "node --import tsx scripts/demo.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",

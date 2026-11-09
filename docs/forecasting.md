@@ -15,6 +15,9 @@ npm run ingest -- reconcile
 npm run forecast -- refresh all
 npm run forecast -- status
 npm run forecast -- show PLAYER_ID
+npm run forecast -- history PLAYER_ID
+npm run forecast -- lineage PLAYER_ID
+npm run forecast -- request
 ```
 
 Replace `PLAYER_ID` with the APIFootball.com player identifier. A single-player
@@ -22,12 +25,18 @@ refresh uses `npm run forecast -- refresh PLAYER_ID`. Unknown identifiers return
 zero refreshed players or `null` when shown. The forecast CLI requires only the
 PostgreSQL writer connection; it makes no provider requests and does not connect
 to MongoDB. Reconciliation separately requires both database runtime identities.
-These commands do not expose web forecast routes or a login flow.
+`history` accepts an optional ISO-8601 cutoff and lists eligible candidates; it
+does not establish that source history is complete. `lineage` follows the current
+head backward through its immutable parents. `request` enqueues an all-player
+refresh for the enabled worker; reusing its optional UUID is idempotent. These
+commands do not expose web forecast routes or a login flow.
 
 The enabled worker processes canonical, standings and roster events and checks
 time every minute. It coalesces pending changes into one durable refresh, retaining
 changes that arrive while it runs for a later refresh. Forecasts run locally even
-when source-detail jobs are deferred by the shared provider budget. Database
+when source-detail jobs are deferred by the shared provider budget. A separate
+five-second local queue loop continues while source requests are in flight. Docker
+restarts the worker after a failed startup; health tracks both processing loops. Database
 leases, retries and failure inspection use the [ingestion job lifecycle](ingestion.md).
 
 ## History, membership and availability
@@ -124,10 +133,17 @@ SHA-256 hashes cover semantic model evidence, including relevant short/DNP and
 gap evidence and current target/context. Wall-clock ticks, random SQL identifiers,
 and unrelated global revision increments do not create a revision. Identical
 inputs retain the existing revision and its original cutoff; that time is the
-saved observation time, not an assertion that the worker has stopped checking.
+saved observation time. `show().evaluation` records the latest successful check
+cutoff, source ordinal, provenance, and `checkedAt`, even when the semantic input
+hash is unchanged. The top-level cutoff and evidence remain those of the immutable
+revision. Apply `007_forecast_freshness.sql` before using this envelope; existing
+heads are backfilled from their revisions.
 A correction from A to B and back to A appends a third revision with a parent
-link. Runtime roles cannot update/delete saved revisions. Forecast audit entries
-do not emit canonical events or cause a refresh feedback loop.
+link. Runtime roles cannot update/delete saved revisions. A changed head invokes a transactional database trigger that writes one
+`forecast.refresh` audit entry and one `forecast.updated` notification. Freshness-only
+updates emit neither. These notifications are separate from canonical events and
+do not cause a refresh feedback loop. See the [database demonstrations](demo.md)
+for reporting functions, refresh requests and their privilege boundaries.
 
 ## Verification
 
