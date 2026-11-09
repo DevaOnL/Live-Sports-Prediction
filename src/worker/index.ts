@@ -1,52 +1,88 @@
 import { createServer } from "node:http";
+import { setTimeout as pause } from "node:timers/promises";
+import { port } from "../server/ingestion/connections";
+import { createRuntime } from "../server/ingestion/runtime";
+import { ProviderError } from "../server/ingestion/provider";
+import { RateLimitError } from "../server/ingestion/store";
 
-const port = Number(process.env.WORKER_PORT ?? "4001");
-
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error("WORKER_PORT must be an integer between 1 and 65535.");
-}
-
-const health = {
-  service: "worker",
-  status: "alive",
-  scope: "process-only",
-  jobsEnabled: false,
-  databaseConnections: false,
-} as const;
-
-// The HTTP event loop keeps the health listener active.
-const server = createServer((request, response) => {
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.setHeader("Cache-Control", "no-store");
-
-  if (request.method === "GET" && request.url === "/health") {
-    response.writeHead(200);
-    response.end(JSON.stringify(health));
-    return;
-  }
-
-  response.writeHead(404);
-  response.end(JSON.stringify({ error: "Not found" }));
-});
-
-server.listen(port, "0.0.0.0", () => {
-  console.info(
-    `Worker health server listening on port ${port}; job processing disabled.`,
-  );
-});
-
-let shuttingDown = false;
-
-function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-
-  server.close(() => {
-    process.exitCode = 0;
+async function main() {
+  const enabledText = process.env.INGESTION_ENABLED ?? "false";
+  if (!["true", "false"].includes(enabledText)) throw new Error("Invalid INGESTION_ENABLED");
+  const enabled = enabledText === "true";
+  const listenPort = port("WORKER_PORT", "4001");
+  const runtime = enabled ? await createRuntime() : null;
+  const abort = new AbortController();
+  let stopping = false;
+  let lastProgress = Date.now();
+  let nextSync = 0;
+  let lastSync: string | null = null;
+  let sourceState = enabled ? "awaiting-sync" : "disabled";
+  let persistenceUp = true;
+  const server = createServer(async (request, response) => {
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.setHeader("Cache-Control", "no-store");
+    if (request.method !== "GET" || request.url !== "/health") {
+      response.writeHead(404).end(JSON.stringify({ error: "Not found" })); return;
+    }
+    let databases = false;
+    if (runtime) {
+      try { await runtime.ping(); databases = true; } catch { /* Return health state without connection diagnostics. */ }
+    }
+    const healthy = !stopping && (!enabled || (databases && persistenceUp && Date.now() - lastProgress < 300_000));
+    response.writeHead(healthy ? 200 : 503).end(JSON.stringify({
+      service: "worker", status: healthy ? "alive" : "unavailable", scope: enabled ? "ingestion" : "process-only",
+      jobsEnabled: enabled, databaseConnections: databases, lastSync, sourceState,
+      predictionsEnabled: false,
+    }));
   });
-
-  setTimeout(() => process.exit(0), 5_000).unref();
+  server.listen(listenPort, "0.0.0.0", () => console.info(`Worker health listening on ${listenPort}; ingestion ${enabled ? "enabled" : "disabled"}.`));
+  const loop = async () => {
+    if (!runtime) return;
+    while (!stopping) {
+      try {
+        await runtime.pipeline.reconcile();
+        if (Date.now() >= nextSync) {
+          try {
+            await runtime.pipeline.sync();
+            await runtime.queue.scheduleStatistics();
+            lastSync = new Date().toISOString();
+            sourceState = "synced";
+            nextSync = Date.now() + 900_000;
+          } catch (error) {
+            if (error instanceof RateLimitError) { sourceState = "budget-deferred"; nextSync = Math.max(Date.now() + 1000, error.retryAt.getTime()); }
+            else if (error instanceof ProviderError) { sourceState = error.code; nextSync = Math.max(Date.now() + (error.retryable ? 60_000 : 900_000), error.retryAt?.getTime() ?? 0); }
+            else throw error;
+          }
+        }
+        await runtime.queue.dispatch(500);
+        // Finite batches allow polling, recovery, and shutdown between jobs.
+        for (let index = 0; index < 5 && !stopping; index++) {
+          if (!await runtime.queue.runOnce(runtime.handle)) break;
+          lastProgress = Date.now();
+        }
+        persistenceUp = true;
+        lastProgress = Date.now();
+      } catch {
+        persistenceUp = false;
+        console.error("Ingestion persistence unavailable; retrying safely.");
+      }
+      await pause(5_000, undefined, { signal: abort.signal }).catch(() => undefined);
+    }
+  };
+  const running = loop();
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
+    abort.abort();
+    server.close();
+    const deadline = setTimeout(() => process.exit(1), 45_000);
+    deadline.unref();
+    await running;
+    await runtime?.close();
+    clearTimeout(deadline);
+  };
+  process.once("SIGTERM", () => { void shutdown(); });
+  process.once("SIGINT", () => { void shutdown(); });
 }
 
-process.once("SIGTERM", shutdown);
-process.once("SIGINT", shutdown);
+main().catch(() => { console.error("Worker startup failed; check ingestion configuration and database setup."); process.exitCode = 1; });
