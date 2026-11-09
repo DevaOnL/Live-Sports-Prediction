@@ -44,7 +44,7 @@ test("dispatch limits its consumer types and commits publication with job creati
   const mock = fixture();
   assert.equal(await mock.queue.dispatch(25), 2);
   const select = mock.queries.find((entry) => entry.sql.includes("SELECT id,event_type"))!;
-  assert.match(select.sql, /event_type IN \('fixture.statistics','standings.rebuild'\)/);
+  assert.match(select.sql, /event_type IN \('fixture.statistics','standings.rebuild','source.sync'\)/);
   assert.match(select.sql, /FOR UPDATE SKIP LOCKED/);
   assert.deepEqual(select.values, [25]);
   assert.equal(mock.queries.filter((entry) => entry.sql.includes("INSERT INTO sports.jobs")).length, 2);
@@ -95,6 +95,16 @@ test("standings jobs accept only the covered league identifier", async () => {
   assert.match(mock.completion()!.sql, /status='succeeded'/);
 });
 
+test("source synchronization jobs accept only an empty payload", async () => {
+  const mock = fixture(job({ kind: "source.sync", payload: {} }));
+  await mock.queue.runOnce(async (item) => {
+    assert.deepEqual(item, { id: job().id, kind: "source.sync", payload: {} });
+  });
+  assert.match(mock.completion()!.sql, /status='succeeded'/);
+  const claim = mock.queries.find((entry) => entry.sql.includes("RETURNING j.id"))!;
+  assert.match(claim.sql, /'source.sync'/);
+});
+
 test("malformed, expanded and secret-bearing job payloads are terminal without executing", async () => {
   const invalid = [
     job({ payload: null }), job({ payload: [] }), job({ payload: { leagueId: "152", fixtureId: "9001" } }),
@@ -103,6 +113,8 @@ test("malformed, expanded and secret-bearing job payloads are terminal without e
     job({ payload: { leagueId: "153", fixtureId: "9001", apiKey: "private-value" } }),
     job({ kind: "standings.rebuild", payload: { leagueId: "153", fixtureId: "9001" } }),
     job({ kind: "unknown.consumer", payload: { leagueId: "153" } }),
+    job({ kind: "source.sync", payload: { leagueId: "153" } }),
+    job({ kind: "source.sync", payload: { apiKey: "private-value" } }),
   ];
   for (const row of invalid) {
     const mock = fixture(row);
@@ -155,7 +167,7 @@ test("failed-job retry accepts UUIDs only and retains the consumer allowlist", a
   assert.equal(await mock.queue.retryFailed(job().id), true);
   const query = mock.queries.at(-1)!;
   assert.match(query.sql, /attempts=0/);
-  assert.match(query.sql, /status='failed' AND kind IN \('fixture.statistics','standings.rebuild'\)/);
+  assert.match(query.sql, /status='failed' AND kind IN \('fixture.statistics','standings.rebuild','source.sync'\)/);
 });
 
 test("statistics refresh excludes unsupported seasons, active work, and repeats in the same time bucket", async () => {

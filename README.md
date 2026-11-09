@@ -3,12 +3,12 @@
 A football player analysis project built around five qualifying league appearances,
 with opponent strength and competition context informing an explainable forecast.
 
-The application provides a responsive preview and a recoverable football-data
-worker backed by PostgreSQL and MongoDB. Imports preserve source responses, normalize
-fixtures and player statistics, reconstruct historical standings, and save
-explainable player forecasts with immutable input evidence. Comparisons and
-application login remain future work. The web interface remains a preview;
-forecasts are currently available through the operational CLI.
+The application provides database-backed sign-in, authenticated football APIs,
+player comparison, administrator operations, and a recoverable data worker.
+Imports preserve source responses, normalize fixtures and player statistics,
+reconstruct historical standings, and save forecasts with immutable input
+evidence. The website has a methodology preview and login/account screens;
+catalogue, forecast, comparison and administrator dashboards remain future work.
 
 ## Requirements
 
@@ -22,25 +22,27 @@ npm ci
 cp .env.example .env
 ```
 
-Replace all placeholder passwords in `.env` with independent random values of at
-least 16 characters.
-Keep that file local and ignored by Git. Leave `INGESTION_ENABLED=false` to run the
-preview and idle worker without a football API credential.
+Replace all placeholder database passwords in `.env` with independent random
+values of at least 16 characters. Set `BETTER_AUTH_SECRET` to an independent
+random value of at least 32 characters; `openssl rand -hex 32` generates one.
+Keep that secret stable across restarts. Keep `.env` local and ignored by Git.
+`AUTH_BASE_URL` is the exact browser origin, initially `http://localhost:3000`;
+HTTPS is required for non-loopback origins. Leave `INGESTION_ENABLED=false` until
+ingestion is configured. Login and stored-data reads need no football API key.
 
 ```bash
 docker compose config --quiet
-docker compose up --build -d --wait
+docker compose up -d --wait postgres mongo
 ```
 
-Open <http://localhost:3000>. PostgreSQL and MongoDB bind to loopback ports 5432
-and 27017. The worker health listener is internal on port 4001. The app
-process receives no database credentials. An enabled worker receives only the
-restricted PostgreSQL writer and MongoDB ingestion credentials. Health endpoints
-report process liveness; database health is checked separately with authentication.
+PostgreSQL and MongoDB bind to loopback ports 5432 and 27017. Provision SQL and
+create local users below before starting the app. The Compose app receives only
+the authentication secret and restricted PostgreSQL reader/writer/auth credentials.
+The enabled Compose worker receives writer/MongoDB ingestion credentials and the
+provider key. Neither app nor worker receives bootstrap or migrator credentials.
 
 ```bash
 docker compose ps
-docker compose stop
 ```
 
 Named volumes preserve database data when containers are stopped or replaced.
@@ -60,14 +62,44 @@ npm run db:migrate
 Provisioning creates or updates the reader, writer, authentication, and migration
 logins using the local password variables. Migration files run in order, each in
 its own transaction, and their checksums are recorded. Rerunning the migration
-command verifies the applied history and applies only new files. Apply upgrades
-explicitly with these commands while preserving existing volumes; never edit an
-already-applied migration.
+command verifies the applied history and applies only new files. Apply schema
+upgrades explicitly with `npm run db:migrate` while preserving existing volumes;
+never edit an already-applied migration. Rerun provisioning only for deliberate
+role setup or password rotation.
+
+Existing installations must apply `009_auth_rate_limit.sql` before using web
+sessions. Preserve their volumes and applied migration files.
 
 The [database guide](docs/database.md) documents the ER diagram, relational
 constraints, role grants, migration behavior, and an isolated PostgreSQL test
 recipe. Database tests create temporary databases and require a verified disposable
 cluster. Run them only using that recipe or the dedicated CI service.
+
+## Create users and start the app
+
+Create viewer and administrator accounts with the local migrator CLI. Passwords
+are accepted through stdin and must contain 12–128 characters. For example, in
+Bash:
+
+```bash
+read -rs -p 'Viewer password: ' account_password
+printf '%s\n' "$account_password" | npm run users -- create --email viewer@example.test --name 'Local viewer' --role viewer --password-stdin
+unset account_password
+docker compose up -d --build --wait app worker
+```
+
+Use the [session/API guide](docs/api.md) for the administrator creation command,
+password changes, role changes and session revocation. There is no public signup
+or password-reset endpoint. Open <http://localhost:3000/login> using the exact
+configured origin. Sessions use HttpOnly cookies and authoritative SQL roles;
+viewers cannot perform administrator operations. The app has authenticated
+catalogue/detail/forecast/comparison APIs and audited administrator queue and
+correction APIs, documented in that guide.
+
+`GET /api/health` reports process liveness and configured feature flags without
+querying a database. It does not prove database readiness or forecast freshness.
+Database services authenticate their own health checks. The worker health
+listener is internal on port 4001.
 
 ## Import covered football data
 
@@ -110,7 +142,11 @@ npm run forecast -- status
 
 Use `npm run forecast -- show PLAYER_ID` with a provider player identifier to
 inspect the current result, fixed five-match window, target, missing-data reasons,
-and saved provenance. The enabled worker refreshes automatically after canonical
+and saved provenance. Saved API and CLI results describe the last completed
+evaluation, with its cutoff and check time. Imports and target expiry refresh
+asynchronously; an unchanged source ordinal alone does not establish freshness.
+The comparison API evaluates current canonical inputs at a common read snapshot
+without saving revisions. The enabled worker refreshes automatically after canonical
 changes and checks target expiry every minute. Calculations need PostgreSQL writer
 credentials, with no provider key or MongoDB connection. See the
 [forecasting guide](docs/forecasting.md) for formulas and availability rules.
@@ -132,6 +168,10 @@ docker compose stop app
 npm run dev
 ```
 
+Host development and CLI processes load the local `.env`; Compose explicitly
+limits each container's environment as described above. Keep administrative
+credentials out of deployed application environments.
+
 Run the worker separately with `npm run worker`. With ingestion disabled, it
 exposes `GET /health` without database connections or jobs. With ingestion enabled,
 it runs imports and queued processing. Web health is available at `GET /api/health`.
@@ -146,8 +186,11 @@ npm run build
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
 type checking, and the production build without database or API credentials. A
 separate job verifies migrations, constraints, ingestion, forecast persistence,
-refresh processing, reporting permissions, and isolated database demonstrations
-against disposable PostgreSQL 17 and MongoDB 8 services.
+refresh processing, reporting permissions, sessions/roles, authenticated HTTP APIs,
+and isolated database demonstrations against disposable PostgreSQL 17 and MongoDB 8
+services. `npm run test:auth` needs the guarded PostgreSQL test recipe;
+`npm run test:api` also needs the guarded MongoDB server and a preceding
+`npm run build`. See the database and ingestion guides before running either.
 
 ## Methodology
 

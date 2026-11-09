@@ -29,7 +29,15 @@ to MongoDB. Reconciliation separately requires both database runtime identities.
 does not establish that source history is complete. `lineage` follows the current
 head backward through its immutable parents. `request` enqueues an all-player
 refresh for the enabled worker; reusing its optional UUID is idempotent. These
-commands do not expose web forecast routes or a login flow.
+commands are local operational tools and do not authenticate a web session.
+
+Signed-in viewers and administrators can read stored evidence through
+`GET /api/players/PLAYER_ID` and `GET /api/players/PLAYER_ID/forecast`.
+`GET /api/compare?playerId=ID&playerId=ID` calculates a comparison from the current
+canonical database snapshot. The application uses the restricted SQL reader for
+these football reads; local forecast CLI commands use the writer. See the
+[API guide](api.md) for login, cookie handling, filters and administrator refresh
+requests. Product forecast/comparison screens remain future work.
 
 The enabled worker processes canonical, standings and roster events and checks
 time every minute. It coalesces pending changes into one durable refresh, retaining
@@ -122,8 +130,8 @@ The denominator preserves reported extra minutes.
 
 ## Stored evidence and replay
 
-Each batch reads canonical data under the ingestion transaction lock, giving
-all players a common cutoff and source ordinal. An immutable revision saves
+Each persisted refresh batch reads canonical data under the ingestion transaction
+lock, giving all players a common cutoff and source ordinal. An immutable revision saves
 the model version, full input, result, missing-data explanations and provenance.
 Provenance includes the historical roster observations used to scope missing matches.
 Historical context is reconstructed directly so a queued standings rebuild cannot
@@ -145,6 +153,37 @@ updates emit neither. These notifications are separate from canonical events and
 do not cause a refresh feedback loop. See the [database demonstrations](demo.md)
 for reporting functions, refresh requests and their privilege boundaries.
 
+API catalogue availability and overview counts describe the last stored
+evaluation. Catalogue summaries label this `kind: "stored-evaluation"` and include
+`evaluationCutoffAt`, `checkedAt` and the evaluation source ordinal. A forecast
+response additionally includes the current read's `source.cutoffAt` and source
+watermark. Reading a saved forecast does not recalculate it: its target may have
+expired or source inputs may have changed while a worker refresh is pending.
+Equal source ordinals alone cannot establish freshness because time can change
+target eligibility without changing source data. Retain the separate revision,
+evaluation and response dates when displaying saved results.
+
+Comparisons are explicitly `kind: "transient-comparison"`. Two to four distinct
+players share one UTC cutoff and source ordinal in a repeatable-read, read-only
+snapshot. The default requires matching positions. Explicit cross-position
+opt-in shows a notice and only the shared per-90 projections, alongside distinct
+rating/form outputs. Each player's `canonicalInputHash` and `canonicalStatus`
+refer to the full model evaluation before unshared outputs are removed from the
+displayed `result`. Its displayed availability can therefore differ from the
+canonical status. `storedRevision` separately identifies any previously saved
+result; comparison does not create revisions or request provider data.
+
+Administrator metric corrections append manual source/revision and audit
+evidence, then request an asynchronous refresh. Older or equal-time provider
+archives skip the protected fixture, including header changes and omitted player
+rows, while retaining import evidence and a
+`superseded_by_manual_correction` issue. The correction history preserves that
+protection after a strictly newer provider observation becomes current. A later
+provider observation may supersede the manual values; prior revisions and the
+reason/actor audit remain available. Provider archives are never edited.
+An archive already superseded by a newer observation of the same action/resource
+can instead be rejected earlier with `superseded_archive`.
+
 ## Verification
 
 `npm run test:unit` checks formulas and model boundaries without services.
@@ -156,4 +195,9 @@ disposable PostgreSQL 17 cluster. It requires the same guarded `_test` database,
 suite after `npm run test:db` inside that recipe's subshell, before cleanup. The
 suite clears only the verified test cluster's application tables and uses synthetic
 data; it must never run against a demo or shared cluster. CI runs it after the
-separate PostgreSQL/MongoDB ingestion suite. No provider credential is needed.
+separate PostgreSQL/MongoDB ingestion suite. `npm run test:api` additionally checks
+stored/read date distinctions, catalogue filtering, shared comparison projections,
+reader permissions, correction replay protection and built-server authorization.
+It requires a production build and the guarded PostgreSQL/MongoDB environment in
+the [combined integration recipe](ingestion.md#isolated-integration-tests).
+No provider credential is needed.

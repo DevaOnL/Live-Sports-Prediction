@@ -22,7 +22,8 @@ Install using `npm ci` and copy `.env.example` to the ignored local `.env`.
 Replace every password placeholder with an independent random value of at least
 16 characters. Keep the provider-issued key in `APIFOOTBALL_API_KEY`; never put it
 in a browser bundle, command argument, committed file, or provider response dump.
-The preview and idle worker need no API key.
+Login, stored-data reads and the idle worker need no provider API key. Web
+sessions separately require the authentication settings in [api.md](api.md).
 
 Start the databases, provision their roles, and explicitly apply migrations:
 
@@ -33,19 +34,24 @@ npm run db:migrate
 npm run mongo:provision
 ```
 
-`db:migrate` includes ingestion, roster and forecast storage. It checks all
-previously applied checksums before applying new files. Preserve existing volumes during upgrades.
+`db:migrate` applies all pending SQL files, including ingestion, forecast/reporting
+storage and `009_auth_rate_limit.sql` for web sessions. It checks previously
+applied checksums before applying new files. Preserve existing volumes during upgrades.
 MongoDB provisioning creates or updates collection validators/indexes and the
 restricted `MONGO_WORKER_USER`, whose default is `lsp_ingestion`, in `MONGO_DB`.
 The administrative commands use local bootstrap/migration credentials.
 
 Set `INGESTION_ENABLED=true` in `.env`. The worker connects as PostgreSQL
 `lsp_writer` with `POSTGRES_WRITER_PASSWORD` and as the restricted MongoDB user
-with `MONGO_WORKER_PASSWORD`. It receives no bootstrap or migrator credentials.
-The app has no database connections or credentials.
+with `MONGO_WORKER_PASSWORD`. The Compose worker receives these runtime
+credentials and the provider key, with no bootstrap or migrator credentials.
+The Compose app receives restricted reader/writer/auth SQL credentials and its
+authentication secret; it receives no provider, MongoDB or administrative secrets.
 
 For host-side commands, use the loopback database hosts/ports in `.env`. Compose
-uses the internal service hostnames for its worker. To start the enabled worker:
+uses internal database service hostnames. Local development and CLI processes
+load the ignored `.env`; the Compose environment explicitly limits container
+credentials. To start the enabled worker:
 
 ```bash
 docker compose up -d --build worker
@@ -63,10 +69,18 @@ The CLI uses the same restricted identities and shared provider budget:
 | Command | Operation |
 | --- | --- |
 | `npm run ingest -- sync` | Import teams, the full covered-season event schedule in UTC, and provider standings for both competitions; enqueue required detailed statistics and standings work |
-| `npm run ingest -- once` | Process a bounded batch of queued ingestion work |
+| `npm run ingest -- once` | Process at most ten queued source, standings or forecast jobs |
 | `npm run ingest -- reconcile` | Recover SQL/import metadata and hydrate the latest previously committed roster observations offline |
 | `npm run ingest -- status` | Show fixture/archive states, shared budget use, standings reconciliation, queue counts, and failed job identifiers with safe failure codes |
 | `npm run ingest -- retry JOB_UUID` | Requeue a failed ingestion job after correcting its cause; replace `JOB_UUID` with its identifier from status |
+
+Authenticated administrators can also submit import, fixture-statistics, local
+forecast-refresh and failed-job retry requests through the [API](api.md).
+Commands use an idempotent request UUID and commit their actor audit with the
+queue change. A 202 response means accepted; inspect job state for completion.
+`source.sync` jobs run the same allowlisted import and statistics scheduling as
+the CLI. The web server queues work; the enabled worker uses its own provider
+credentials and the existing shared request budget.
 
 The enabled worker synchronizes every 15 minutes and processes durable jobs
 between polls. Each scheduled sync uses six provider calls: teams, events, and
@@ -112,15 +126,34 @@ Service and connection failures remain retryable.
 Repeated content can produce new observations without unnecessary
 canonical changes; genuine corrections append revisions.
 
+Manual appearance corrections are SQL records with an explicit manual source,
+new normalized revision, reason, actor and before/after audit. They emit a
+canonical refresh event without changing provider archive bytes or inventing a
+provider import marker. Only metrics on known-played finalized appearances with
+valid covered membership can be corrected; optimistic revision checks reject
+stale edits. The API does not repair unknown participation, membership or finality.
+
+Before applying provider fixture updates, ingestion checks retained manual
+correction history. A provider observation retrieved at or before a correction
+skips that entire fixture's header and appearance changes, including absent
+player rows, and records `superseded_by_manual_correction` in its import issues.
+Its immutable archive/source and SQL import evidence remain available; other
+fixtures in the observation can import normally. The earlier whole-observation
+supersession check can instead report `superseded_archive` when newer data for
+the same action/resource is already imported. This protection also applies
+to older cross-endpoint replays after newer provider values become current.
+Strictly newer provider observations may supersede manual values while retaining
+the correction revision and audit history.
+
 The MongoDB runtime role can read/insert raw archives but cannot update/delete
 them. Validation/import state is separately mutable in `import_metadata`, with
 `pending`, `imported`, `invalid`, and `failed` states and associated issues. Strict
 collection validators and indexes are provisioned administratively. Do not repair
 an import by editing authoritative raw bytes or resetting database volumes.
 
-Outbox dispatch creates supported `fixture.statistics` and `standings.rebuild`
-jobs idempotently. Claims use database locking and a 120-second lease renewed
-every 30 seconds. Expired leases return to the queue while attempts remain.
+Outbox dispatch creates supported `source.sync`, `fixture.statistics` and
+`standings.rebuild` jobs idempotently. Claims use database locking and a 120-second
+lease renewed every 30 seconds. Expired leases return to the queue while attempts remain.
 Transient failures use exponential backoff; permanent provider errors and invalid
 job payloads stop immediately. The default maximum is five attempts. Shared-budget exhaustion
 defers a job without spending its processing attempt. Provider retry dates are
@@ -129,7 +162,10 @@ Canonical, standings and roster changes are coalesced into local `forecast.refre
 jobs. Changes arriving during a running refresh remain pending for a follow-up.
 An automatic minute check handles target expiry even without new provider data.
 Forecast work takes priority over source-detail jobs and uses no provider budget.
-The worker performs a local refresh pass before reconciliation and source polling.
+An independent local queue loop runs every five seconds while reconciliation or
+source requests are in flight. Saved forecast reads and catalogue availability
+still describe the last completed evaluation; a healthy worker or equal source
+ordinal does not prove that an individual result is current at the response time.
 Unrelated outbox event types remain available to their consumers. See
 [forecasting](forecasting.md) for model behavior and persistence.
 
@@ -257,12 +293,23 @@ after `npm ci`.
   export MONGO_TEST_HOST_ID="$(docker exec "$ingestion_test_mongo" sh -c \
     'mongosh --quiet --host 127.0.0.1 --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "print(db.adminCommand({ hostInfo: 1 }).system.hostname)"')"
   npm run test:ingestion
+  npm run test:forecast
+  npm run test:reporting
+  npm run test:auth
+  npm run build
+  npm run test:api
 )
 ```
 
 The subshell removes only its two temporary containers on exit. It does not reset
 project volumes. Test output describes the checks actually run; this setup recipe
 does not establish live-provider availability or a successful real-data import.
+The auth suite uses SQL sessions, roles, CLI administration and shared login
+limits. The API suite checks scoped reader snapshots, audited administrator
+commands, manual-correction replay protection and real HTTP behavior against the
+built app. HTTP tests seed synthetic archives and need both server identity
+markers, even though the web process itself has no MongoDB connection. These
+suites do not make provider requests.
 
 Contradictory same-player lineup clubs preserve unknown participation and clear
 stale membership and metrics. Detailed statistics in that contradictory response

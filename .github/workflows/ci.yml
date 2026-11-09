@@ -125,3 +125,9 @@ jobs:
         run: npm run test:reporting
       - name: Run isolated database demonstrations
         run: npm run demo
+      - name: Verify database sessions and authorization storage
+        run: npm run test:auth
+      - name: Build the application for HTTP integration
+        run: npm run build
+      - name: Verify protected reads and administrator actions
+        run: npm run test:api

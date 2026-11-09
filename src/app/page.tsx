@@ -15,7 +15,7 @@ export default function Home() {
         <nav aria-label="Main navigation">
           <a href="#coverage">Coverage</a>
           <a href="#methodology">Methodology</a>
-          <a className="button button-small" href="#about">About the project <span aria-hidden="true">↓</span></a>
+          <a className="button button-small" href="/login">Sign in <span aria-hidden="true">→</span></a>
         </nav>
       </header>
 
@@ -32,7 +32,7 @@ export default function Home() {
             <p className="eyebrow">A transparent starting point</p>
             <h2 id="foundation-title">Every forecast<br />starts with evidence.</h2>
             <p>The approach uses a player&apos;s latest five eligible appearances in covered leagues, with at least 60 minutes played in each completed match. Opponent strength adds context. Missing history keeps a forecast unavailable.</p>
-            <span className="foundation-label">Preview · forecasts and comparisons unavailable</span>
+            <span className="foundation-label">Methodology preview</span>
           </div>
           <div className="principles" aria-label="Planned prediction principles">
             <div><span className="principle-number">05</span><p>Latest eligible league appearances</p></div>
@@ -51,7 +51,7 @@ export default function Home() {
               <article className="competition-card" key={competition.name}>
                 <div className="competition-top"><span>{competition.country}</span><span>{competition.teams} clubs</span></div>
                 <h3>{competition.name}</h3>
-                <p>Planned coverage · player data is not connected yet</p>
+                <p>Covered regular-season competition · 2026/27</p>
                 <div className="tier-line"><span>Upper / middle / lower</span><strong>{competition.tiers}</strong></div>
               </article>
             ))}

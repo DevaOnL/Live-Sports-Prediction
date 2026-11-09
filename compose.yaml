@@ -10,6 +10,14 @@ services:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
       PORT: "3000"
+      AUTH_BASE_URL: ${AUTH_BASE_URL:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-sports}
+      POSTGRES_READER_PASSWORD: ${POSTGRES_READER_PASSWORD:-}
+      POSTGRES_WRITER_PASSWORD: ${POSTGRES_WRITER_PASSWORD:-}
+      POSTGRES_AUTH_PASSWORD: ${POSTGRES_AUTH_PASSWORD:-}
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -17,7 +25,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/api/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); if (body.status !== 'ok' || body.service !== 'web' || body.scope !== 'process-only' || body.checks?.process !== 'up' || body.features?.databaseIntegration !== false || body.features?.ingestion !== false || body.features?.predictions !== false || body.features?.authentication !== false) process.exit(1); }).catch(() => process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/api/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); const configured = body.features?.authentication === true; if (body.status !== 'ok' || body.service !== 'web' || body.scope !== (configured ? 'application' : 'process-only') || body.checks?.process !== 'up' || body.features?.databaseIntegration !== configured || body.features?.ingestion !== false || body.features?.predictions !== configured) process.exit(1); }).catch(() => process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5

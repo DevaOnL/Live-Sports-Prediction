@@ -19,7 +19,10 @@ export async function createRuntime(needsProvider = true) {
     const handle = async (job: IngestionJob) => {
       if (job.kind === "fixture.statistics") await pipeline.statistics(job.payload.leagueId, job.payload.fixtureId);
       else if (job.kind === "standings.rebuild") await pipeline.store.rebuild(coverageFor(job.payload.leagueId));
-      else await forecasts.refreshAll();
+      else if (job.kind === "source.sync") {
+        await pipeline.sync();
+        await queue.scheduleStatistics();
+      } else await forecasts.refreshAll();
     };
     return {
       pool, mongo, db, pipeline, queue, forecasts, handle,

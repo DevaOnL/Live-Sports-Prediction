@@ -16,6 +16,7 @@
 !/scripts/ingest.ts
 !/scripts/forecast.ts
 !/scripts/demo.ts
+!/scripts/users.ts
 !/tests/
 /tests/*
 !/tests/database.test.ts
@@ -28,6 +29,11 @@
 !/tests/jobs.test.ts
 !/tests/worker.test.ts
 !/tests/reporting.database.test.ts
+!/tests/auth.database.test.ts
+!/tests/api-read.database.test.ts
+!/tests/api-admin.database.test.ts
+!/tests/api-http.database.test.ts
+!/tests/http.test.ts
 !/tests/ingestion.database.test.ts
 !/docs/
 /docs/*
@@ -35,6 +41,7 @@
 !/docs/ingestion.md
 !/docs/forecasting.md
 !/docs/demo.md
+!/docs/api.md
 !/README.md
 !/package.json
 !/package-lock.json
