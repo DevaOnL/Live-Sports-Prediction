@@ -1,0 +1,89 @@
+name: live-sports-prediction
+
+services:
+  app:
+    build:
+      context: .
+      target: web
+    init: true
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); if (body.status !== 'ok' || body.service !== 'web' || body.scope !== 'process-only' || body.checks?.process !== 'up' || body.features?.databaseIntegration !== false || body.features?.ingestion !== false || body.features?.predictions !== false || body.features?.authentication !== false) process.exit(1); }).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      target: worker
+    init: true
+    environment:
+      NODE_ENV: production
+      WORKER_PORT: "4001"
+    expose:
+      - "4001"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4001/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); if (body.status !== 'alive' || body.service !== 'worker' || body.scope !== 'process-only' || body.jobsEnabled !== false || body.databaseConnections !== false) process.exit(1); }).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sports}
+      POSTGRES_USER: ${POSTGRES_USER:-sports_bootstrap}
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Set POSTGRES_BOOTSTRAP_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongo:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_BOOTSTRAP_USER:-bootstrap}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_BOOTSTRAP_PASSWORD:?Set MONGO_BOOTSTRAP_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "mongosh --quiet --host 127.0.0.1 --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'if (db.runCommand({ ping: 1 }).ok !== 1) quit(1)' >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  mongo-data:
+  mongo-config:
