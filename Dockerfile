@@ -35,6 +35,7 @@ ENV NODE_ENV=production \
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --chown=node:node src/worker ./src/worker
+COPY --chown=node:node src/server ./src/server
 
 USER node
 EXPOSE 4001

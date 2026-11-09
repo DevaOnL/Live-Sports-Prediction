@@ -3,11 +3,11 @@
 A football player analysis project built around five qualifying league appearances,
 with opponent strength and competition context informing an explainable forecast.
 
-The current application provides a responsive preview, an idle worker, and a
-containerized PostgreSQL/MongoDB environment. PostgreSQL includes a relational
-schema, authentication storage, restricted database roles, and explicit migration
-tooling. Match imports, forecasts, comparisons, and application login are not
-implemented yet. Preview screens clearly label forecast availability.
+The application provides a responsive preview and a recoverable football-data
+worker backed by PostgreSQL and MongoDB. Imports preserve source responses, normalize
+fixtures and player statistics, and reconstruct historical standings. Forecast
+execution, comparisons, and application login remain future work. Preview screens
+label forecast availability.
 
 ## Requirements
 
@@ -23,7 +23,8 @@ cp .env.example .env
 
 Replace all placeholder passwords in `.env` with independent random values of at
 least 16 characters.
-Keep that file local. No football API credential is needed to run this application.
+Keep that file local and ignored by Git. Leave `INGESTION_ENABLED=false` to run the
+preview and idle worker without a football API credential.
 
 ```bash
 docker compose config --quiet
@@ -31,10 +32,10 @@ docker compose up --build -d --wait
 ```
 
 Open <http://localhost:3000>. PostgreSQL and MongoDB bind to loopback ports 5432
-and 27017. The worker health listener is internal on port 4001. App and worker
-processes receive no database credentials and do not establish database connections.
-Their health endpoints report process liveness; database health is checked
-separately with authentication.
+and 27017. The worker health listener is internal on port 4001. The app
+process receives no database credentials. An enabled worker receives only the
+restricted PostgreSQL writer and MongoDB ingestion credentials. Health endpoints
+report process liveness; database health is checked separately with authentication.
 
 ```bash
 docker compose ps
@@ -67,6 +68,32 @@ constraints, role grants, migration behavior, and an isolated PostgreSQL test
 recipe. Database tests create temporary databases and require a verified disposable
 cluster. Run them only using that recipe or the dedicated CI service.
 
+## Import covered football data
+
+Use APIFootball.com's permanent free plan and put its API key in the local `.env`
+as `APIFOOTBALL_API_KEY`. Provision the restricted MongoDB identity after both
+database services are healthy:
+
+```bash
+npm run mongo:provision
+```
+
+Set `INGESTION_ENABLED=true` locally, then run an initial import and queued detail
+work. These commands use the restricted runtime identities:
+
+```bash
+npm run ingest -- sync
+npm run ingest -- once
+npm run ingest -- status
+```
+
+Recreate the worker after changing its environment with
+`docker compose up -d --build worker`. The enabled worker polls every 15 minutes,
+shares a 120-request rolling-hour budget with the CLI, and processes durable jobs.
+The initial backlog may take several request windows. Read the
+[ingestion guide](docs/ingestion.md) for coverage, missing-data behavior, recovery,
+and isolated PostgreSQL/MongoDB verification.
+
 ## Development
 
 Stop the app container before running the local development server on port 3000:
@@ -76,13 +103,14 @@ docker compose stop app
 npm run dev
 ```
 
-Run the idle worker separately with `npm run worker`. It exposes `GET /health`
-without performing imports or background jobs. Web health is available at
-`GET /api/health`.
+Run the worker separately with `npm run worker`. With ingestion disabled, it
+exposes `GET /health` without database connections or jobs. With ingestion enabled,
+it runs imports and queued processing. Web health is available at `GET /api/health`.
 
 ```bash
 npm run lint
 npm run typecheck
+npm run test:unit
 npm run build
 ```
 
@@ -99,15 +127,17 @@ Opponent and own-team strength provide context for an overall rating and selecte
 position-specific statistics. Counts represent decimal estimates under a
 90-minute playing-time assumption. Missing data must remain distinct from zero.
 
-The initial intended data coverage is regular-season Championship and Ligue 2,
-2026/27, using APIFootball.com's permanent free plan. Data integration and the
-forecast calculations are not present in this application yet. Forecasts will be
-heuristic estimates rather than guaranteed outcomes or calibrated probabilities.
+Data coverage is restricted to regular-season Championship (153) and Ligue 2
+(164), 2026/27, using APIFootball.com's permanent free plan. Free-plan availability
+can change; missing source data remains explicit. Forecast calculations are not
+implemented. Future forecasts will be heuristic estimates rather than guaranteed
+outcomes or calibrated probabilities.
 
 ## Technology
 
 Next.js and TypeScript provide the web interface and a shared language for server
 and worker code. PostgreSQL stores canonical relational records and enforces
-constraints; MongoDB is intended for source archives. Docker Compose provides a
-reproducible local environment with persistent database volumes. Inter is
+constraints; MongoDB stores immutable source archives and separate import metadata.
+Docker Compose provides a reproducible local environment with persistent database
+volumes. Inter is
 self-hosted through the application bundle.

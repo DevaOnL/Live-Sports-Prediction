@@ -31,6 +31,17 @@ services:
     environment:
       NODE_ENV: production
       WORKER_PORT: "4001"
+      INGESTION_ENABLED: ${INGESTION_ENABLED:-false}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-sports}
+      POSTGRES_WRITER_PASSWORD: ${POSTGRES_WRITER_PASSWORD:-}
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      MONGO_DB: ${MONGO_DB:-sports}
+      MONGO_WORKER_USER: ${MONGO_WORKER_USER:-lsp_ingestion}
+      MONGO_WORKER_PASSWORD: ${MONGO_WORKER_PASSWORD:-}
+      APIFOOTBALL_API_KEY: ${APIFOOTBALL_API_KEY:-}
     expose:
       - "4001"
     healthcheck:
@@ -38,7 +49,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:4001/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); if (body.status !== 'alive' || body.service !== 'worker' || body.scope !== 'process-only' || body.jobsEnabled !== false || body.databaseConnections !== false) process.exit(1); }).catch(() => process.exit(1))"
+        - "fetch('http://127.0.0.1:4001/health', { signal: AbortSignal.timeout(3000) }).then(async response => { if (!response.ok) process.exit(1); const body = await response.json(); const enabled = process.env.INGESTION_ENABLED === 'true'; if (body.status !== 'alive' || body.service !== 'worker' || body.scope !== (enabled ? 'ingestion' : 'process-only') || body.jobsEnabled !== enabled || body.databaseConnections !== enabled || body.predictionsEnabled !== false) process.exit(1); }).catch(() => process.exit(1))"
       interval: 15s
       timeout: 5s
       retries: 5

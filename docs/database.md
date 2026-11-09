@@ -4,14 +4,16 @@ PostgreSQL 17 stores canonical football records, relational constraints, source
 provenance, historical standings, authentication storage, and durable processing
 metadata. The executable definitions are
 [`001_football.sql`](../db/migrations/001_football.sql),
-[`002_auth.sql`](../db/migrations/002_auth.sql), and
-[`003_grants.sql`](../db/migrations/003_grants.sql).
+[`002_auth.sql`](../db/migrations/002_auth.sql),
+[`003_grants.sql`](../db/migrations/003_grants.sql), and
+[`004_ingestion.sql`](../db/migrations/004_ingestion.sql).
 
-The app and worker currently provide process scaffolds without database
-connections. Login routes, provider ingestion, job processing, standings
-reconstruction, and forecasts are not implemented. Authentication tables provide
-storage compatible with Better Auth's core shape; they do not provide a login
-flow by themselves.
+The app remains a process-only preview. An explicitly enabled worker imports
+covered provider data, reconstructs standings, and processes durable ingestion
+jobs using restricted runtime identities. Login routes and forecasts are not
+implemented. Authentication tables provide storage compatible with Better Auth's
+core shape; they do not provide a login flow by themselves. See the
+[ingestion guide](ingestion.md) for the MongoDB archive and recovery contract.
 
 ## Entity relationships
 
@@ -51,9 +53,9 @@ readability. `auth.verification` and the migration ledger are independent tables
 ## Tables and keys
 
 Football and processing tables live in `sports`, authentication tables in `auth`,
-and the migration ledger in `infra`. Every `sports` table has a generated UUID
-primary key named `id`, except `season_clubs` and `standings_rows`, which use the
-composite keys below. External identifiers remain text; `provider` defaults to
+and the migration ledger in `infra`. Most `sports` tables have a generated UUID
+primary key named `id`; `season_clubs` and `standings_rows` use composite keys,
+and `ingestion_batches` uses its archive identifier. External identifiers remain text; `provider` defaults to
 `apifootball`. Authentication primary keys are nonempty text.
 
 | Table | Keys, relationships, and stored data |
@@ -66,7 +68,7 @@ composite keys below. External identifiers remain text; `provider` defaults to
 | `sports.player_memberships` | Player FK and registered season-club FK; half-open interval `[valid_from, valid_until)`, optionally open-ended; unique `(player_id, club_id, season_id, valid_from)` |
 | `sports.fixtures` | Unique `(provider, provider_id)`; season and two registered season-club FKs; nullable kickoff/scores; separate fixture and statistics statuses |
 | `sports.appearances` | Unique `(fixture_id, player_id)`; player FK; composite fixture-season and membership-player-club-season FKs; optional club/membership; participation, minutes, rating, and eight count metrics |
-| `sports.source_revisions` | Unique MongoDB archive reference; provider, action, resource key, lowercase SHA-256 hash, retrieval time; unique `(provider, action, resource_key, content_sha256)` |
+| `sports.source_revisions` | Unique MongoDB archive reference; provider, action, resource key, lowercase SHA-256 hash, retrieval time; unique `(provider, action, resource_key, content_sha256, retrieved_at)` retains distinct observations of matching content |
 | `sports.normalized_revisions` | Source revision FK; entity type/key, content hash, optional same-entity parent; unique increasing identity ordinal; unique `(source_revision_id, entity_type, entity_key, content_sha256)` |
 | `sports.standings_snapshots` | Season and required normalized revision FKs; local cutoff date, UTC cutoff instant, completeness flag; unique `(season_id, cutoff_local_date, normalized_revision_id)` |
 | `sports.standings_rows` | PK `(snapshot_id, club_id)`; composite snapshot-season and registered season-club FKs; position/uncertainty, played/wins/draws/losses, goals, points |
@@ -74,6 +76,8 @@ composite keys below. External identifiers remain text; `provider` defaults to
 | `sports.outbox` | Unique deduplication key; event and aggregate identifiers, JSON object payload, creation and optional publication times |
 | `sports.jobs` | Outbox FK; unique deduplication key; kind, JSON object payload, status, attempts/limit, schedule, lease, error, completion time |
 | `sports.audit_log` | Optional normalized revision FK; actor type/identifier, action, entity type/key, JSON object detail, occurrence time |
+| `sports.ingestion_batches` | PK `archive_id`; source and optional normalized revision FKs; committed fixture/appearance counts and validation issues; durable SQL import marker |
+| `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-hour budget index |
 | `auth."user"` | Text PK; case-insensitive unique email, name, verification flag, optional image, `viewer`/`admin` role, creation/update times |
 | `auth.session` | Text PK; unique nonempty token; user FK with cascading deletion; expiry after creation and optional client metadata |
 | `auth.account` | Text PK; user FK with cascading deletion; unique `("providerId", "accountId")`; optional password/token fields |
@@ -116,7 +120,8 @@ provider response storage reserved for MongoDB.
 - Jobs enforce coherent attempts, leases, and completion state. A ready job has
   attempts remaining; a running job has an attempt and a complete lease; only
   terminal states have a completion time. Publication/completion cannot precede
-  creation. These checks do not execute jobs or publish events.
+  creation. The worker executes supported ingestion jobs and publishes their
+  outbox records; the constraints enforce the stored lifecycle independently.
 
 Context-changing writes require PostgreSQL's default `READ COMMITTED` isolation:
 appearance inserts/updates, updates to existing fixture/membership context,
@@ -150,6 +155,8 @@ table, and function privileges are revoked; runtime roles receive explicit grant
 The writer's job update columns are `status`, `attempts`, `max_attempts`,
 `run_after`, `locked_by`, `locked_until`, `last_error`, and `completed_at`.
 Provenance, snapshots/rows, adjustments, and audit are append-only for that role.
+Ingestion batch markers and provider request reservations are also append-only;
+the writer can select and insert them, but cannot update or delete them.
 The auth role cannot insert or update `auth."user".role`; assigning an admin role
 requires a controlled administrator. Audit actor identifiers are durable text,
 so deleting an authentication user does not erase attribution. Database grants
@@ -194,6 +201,13 @@ For an existing managed database, preserve its data and apply only new migration
 ```bash
 npm run db:migrate
 ```
+
+This includes `004_ingestion.sql`, which adds cross-store commit markers and the
+shared provider request ledger. Apply it before enabling ingestion. MongoDB
+collection validators, indexes, and restricted runtime privileges are provisioned
+separately with `npm run mongo:provision`; that command requires the local MongoDB
+bootstrap credentials. The app receives none of these credentials, and the worker
+receives only the runtime writer/ingestion credentials.
 
 Do not remove volumes to upgrade a schema. Container replacement and ordinary
 `docker compose down` preserve named volumes. Editing `.env` does not rotate the
@@ -274,4 +288,6 @@ Run it after `npm ci`:
 
 The [CI workflow](../.github/workflows/ci.yml) also runs the database suite in an
 isolated PostgreSQL service. Lint, typecheck, and build require no database or
-provider credentials.
+provider credentials. The separate [ingestion integration recipe](ingestion.md#isolated-integration-tests)
+uses disposable PostgreSQL and MongoDB instances and exercises cross-store
+recovery without a provider API key.

@@ -34,6 +34,8 @@ jobs:
         run: npm run lint
       - name: Type check
         run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
       - name: Build
         run: npm run build
 
@@ -55,6 +57,18 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 15
+      mongo:
+        image: mongo:8
+        env:
+          MONGO_INITDB_ROOT_USERNAME: bootstrap
+          MONGO_INITDB_ROOT_PASSWORD: ci-only-mongo-bootstrap-password
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok === 1 ? 0 : 1)'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
     env:
       NODE_ENV: test
       POSTGRES_HOST: 127.0.0.1
@@ -67,6 +81,15 @@ jobs:
       POSTGRES_WRITER_PASSWORD: ci-only-writer-password
       POSTGRES_AUTH_PASSWORD: ci-only-auth-password
       POSTGRES_MIGRATOR_PASSWORD: ci-only-migrator-password
+      MONGO_HOST: 127.0.0.1
+      MONGO_PORT: "27017"
+      MONGO_DB: sports_test
+      MONGO_TEST_PORT: "27017"
+      MONGO_TEST_DATABASE: sports_test
+      MONGO_BOOTSTRAP_USER: bootstrap
+      MONGO_BOOTSTRAP_PASSWORD: ci-only-mongo-bootstrap-password
+      MONGO_WORKER_USER: lsp_ingestion
+      MONGO_WORKER_PASSWORD: ci-only-mongo-worker-password
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -87,3 +110,11 @@ jobs:
           printf 'POSTGRES_TEST_CLUSTER_ID=%s\n' "$test_cluster_id" >> "$GITHUB_ENV"
       - name: Verify migrations, constraints, and database roles
         run: npm run test:db
+      - name: Identify the disposable MongoDB container
+        env:
+          MONGO_CONTAINER: ${{ job.services.mongo.id }}
+        run: |
+          mongo_test_host=$(docker exec "$MONGO_CONTAINER" hostname)
+          printf 'MONGO_TEST_HOST_ID=%s\n' "$mongo_test_host" >> "$GITHUB_ENV"
+      - name: Verify archives, ingestion, recovery, and jobs
+        run: npm run test:ingestion
