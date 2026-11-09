@@ -1,9 +1,9 @@
 # Sessions and application API
 
 The server exposes authenticated football reads and administrator operations.
-The website provides sign-in and account/logout screens; the catalogue, forecast,
-comparison and operational dashboards are not yet product screens. The root page
-is a methodology preview. API results preserve unavailable values and explanations.
+The website provides sign-in, an overview, player discovery and detail, comparison,
+administrator operations, and account/logout screens. The root page explains the
+methodology. API results preserve unavailable values and explanations.
 
 ## Configure local access
 
@@ -112,6 +112,12 @@ changes refresh forecasts asynchronously; equal source ordinals alone do not pro
 freshness because a target can expire with time. Keep these dates and availability
 reasons visible when consuming the API.
 
+Each recent observed appearance includes its current `revisionId` (nullable when
+no revision exists) and `membershipKnown`. These fields describe the current
+observation, separately from the immutable forecast input. The administrator
+correction form obtains its optimistic revision token from this read endpoint;
+it reloads after a 409 rather than silently overwriting a concurrent change.
+
 Comparison accepts 2–4 unique players. Its default requires matching positions;
 set `allowCrossPosition=true` to compare different positions with an explicit
 notice and only shared projected metrics. Rating and adjusted form remain distinct.
@@ -130,6 +136,7 @@ The canonical input/provenance remains available to explain the five-match windo
 | `GET /api/admin/status` | Coverage/import/job aggregates and the shared provider request budget |
 | `GET /api/admin/jobs` | Bounded `page`, `pageSize`, optional `status` and `kind` |
 | `GET /api/admin/audit` | Bounded `page`, `pageSize`, safe actor/action/correction evidence |
+| `GET /api/admin/imports` | Bounded `page`, `pageSize`, committed import summaries and sanitized validation issues |
 | `POST /api/admin/imports` | `{requestId}` queues a source synchronization |
 | `POST /api/admin/statistics` | `{requestId,leagueId,fixtureId}` queues covered fixture details |
 | `POST /api/admin/forecasts/refresh` | `{requestId}` queues a local forecast refresh |
@@ -143,6 +150,13 @@ return 202 and mean accepted, not completed. Inspect jobs for completion/retry.
 The worker executes source synchronization and statistics fetches using its own
 existing provider credentials and shared rolling-hour budget. The web process
 never fetches provider data or bypasses that budget. Forecast refresh is local.
+
+Job summaries expose `outboxId` to correlate source commands. Forecast refresh
+commands can coalesce into shared work, so a command does not guarantee a distinct
+completed job. Committed import pages expose counts, dates, safe resource
+identifiers and up to 50 allowlisted issue previews per batch, with `issueTotal`
+and an explicit truncation flag. They expose no raw provider payloads or keys.
+The application rolling-hour request budget is separate from provider-side limits.
 
 Corrections require a finalized, known-played appearance with known membership in
 approved coverage and its current `expectedRevisionId`. Only `minutes`, `rating`,

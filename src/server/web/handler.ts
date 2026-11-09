@@ -74,6 +74,10 @@ export async function handleApi(request: Request, segments: string[]): Promise<R
       if (principal.role !== "admin") throw new HttpError(403, "FORBIDDEN", "Administrator access is required.");
       if (request.method === "GET") {
         if (path === "admin/status") { query(request, []); return response({ data: await runtime.admin.status() }); }
+        if (path === "admin/imports") {
+          const q = query(request, ["page", "pageSize"]);
+          return response({ data: await runtime.admin.imports({ page: optionalNumber(q.get("page")), pageSize: optionalNumber(q.get("pageSize")) }) });
+        }
         if (path === "admin/jobs" || path === "admin/audit") {
           const q = query(request, path === "admin/jobs" ? ["status", "kind", "page", "pageSize"] : ["page", "pageSize"]);
           const options = { page: optionalNumber(q.get("page")), pageSize: optionalNumber(q.get("pageSize")) };

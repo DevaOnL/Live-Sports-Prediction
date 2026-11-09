@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { returnPath } from "../src/lib/navigation";
 import { isPublicApiError } from "../src/server/api/error";
 import { enforceOrigin, HttpError, keys, optionalNumber, query, readJson, response } from "../src/server/web/http";
 
@@ -64,4 +65,10 @@ test("session-sensitive JSON is never cacheable or content-sniffable", async () 
   assert.equal(result.headers.get("vary"), "Cookie");
   assert.equal(result.headers.get("x-content-type-options"), "nosniff");
   assert.deepEqual(await result.json(), { value: null });
+});
+
+test("login return destinations stay inside allowed product routes", () => {
+  for (const value of [null, "https://foreign.example", "//foreign.example/overview", "javascript:alert(1)", "/api/admin/imports", "/login", "/overview\\evil", "/overview\n", "/players/1#redirect"]) assert.equal(returnPath(value), "/overview");
+  assert.equal(returnPath("/players/8001"), "/players/8001");
+  assert.equal(returnPath("/compare?playerId=8001&playerId=8002"), "/compare?playerId=8001&playerId=8002");
 });

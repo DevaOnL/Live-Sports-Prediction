@@ -143,6 +143,7 @@ test("import and forecast commands queue once and return the original outcome af
   assert.deepEqual((await pool.query("SELECT payload FROM sports.outbox WHERE id=$1", [first.eventId])).rows[0].payload, {});
   const queue = new JobQueue(pool, "admin-command-test", true);
   assert.equal(await queue.dispatch(), 1);
+  assert.equal((await service.jobs()).items[0].outboxId, first.eventId);
   await queue.runOnce(async (job) => { assert.equal(job.kind, "source.sync"); });
   assert.deepEqual(await service.requestImport(actor, requestId), first);
   await assert.rejects(service.requestRefresh(actor, requestId), rejected(409, "request_conflict"));
@@ -425,6 +426,7 @@ test("operational lists are bounded, filtered and sanitize arbitrary stored payl
   assert.equal(jobs.items.length, 1);
   assert.equal(jobs.items[0].lastError, "processing_failed");
   assert.deepEqual(jobs.items[0].payload, {});
+  assert.match(jobs.items[0].outboxId!, /^[0-9a-f-]{36}$/);
   assert.equal((await service.jobs({ status: "failed" })).total, 0);
   assert.equal((await service.jobs({ page: 10_000, pageSize: 100 })).items.length, 0);
   const audits = await service.audit({ pageSize: 100 });
@@ -440,6 +442,50 @@ test("operational lists are bounded, filtered and sanitize arbitrary stored payl
   assert.deepEqual(status.coverage[0], { leagueId: "153", season: "2026/27", fixtures: 1, finalFixtures: 1, incompleteStatistics: 0 });
 });
 
+test("committed imports bound issue previews and disclose only approved codes, resource identities and counts", async () => {
+  const issues = [
+    { code: "missing_metric", resource: "fixture:900001/player:8001", field: "player_rating", rawPayload: "unexposed-value" },
+    { code: "unexposed-value", resource: "https://example.test/?APIkey=unexposed-value" },
+    { code: "invalid_number", resource: { apiKey: "unexposed-value" } },
+    null, "unexposed-value",
+    ...Array.from({ length: 51 }, () => ({ code: "missing_statistics", resource: "900001" })),
+  ];
+  await pool.query(`INSERT INTO sports.ingestion_batches(archive_id,source_revision_id,fixture_count,appearance_count,issues_json,committed_at)
+    VALUES ($1,$2,3,22,$3,'2026-08-03T00:00:00Z')`, ["a".repeat(64), originalSource, JSON.stringify(issues)]);
+  const hostileSource = (await pool.query(`INSERT INTO sports.source_revisions(action,resource_key,archive_ref,content_sha256,retrieved_at)
+    VALUES ('unexposed-value','unexposed-value','unexposed-value',$1,'2026-08-04T00:00:00Z') RETURNING id`, ["c".repeat(64)])).rows[0].id;
+  await pool.query(`INSERT INTO sports.ingestion_batches(archive_id,source_revision_id,fixture_count,appearance_count,issues_json,committed_at)
+    VALUES ($1,$2,0,0,'[]','2026-08-05T00:00:00Z')`, ["b".repeat(64), hostileSource]);
+  const latest = await service.imports({ page: 1, pageSize: 1 });
+  assert.equal(latest.total, 2);
+  assert.equal(latest.items.length, 1);
+  assert.equal(latest.items[0].id, hostileSource);
+  assert.equal(latest.items[0].action, "unknown");
+  assert.equal(latest.items[0].issueTotal, 0);
+  assert.equal(latest.items[0].issuesTruncated, false);
+  const imported = (await service.imports({ page: 2, pageSize: 1 })).items[0];
+  assert.equal(imported.id, originalSource);
+  assert.equal(imported.action, "get_events");
+  assert.deepEqual(imported.counts, { fixtures: 3, appearances: 22 });
+  assert.equal(imported.retrievedAt, "2026-08-02T12:00:00.000Z");
+  assert.equal(imported.committedAt, "2026-08-03T00:00:00.000Z");
+  assert.equal(imported.issueTotal, 56);
+  assert.equal(imported.issues.length, 50);
+  assert.equal(imported.issuesTruncated, true);
+  assert.deepEqual(imported.issues.slice(0, 5), [
+    { code: "missing_metric", resource: "fixture:900001/player:8001" },
+    { code: "validation_issue", resource: "unavailable" },
+    { code: "invalid_number", resource: "unavailable" },
+    { code: "validation_issue", resource: "unavailable" },
+    { code: "validation_issue", resource: "unavailable" },
+  ]);
+  assert(!JSON.stringify([latest, imported]).includes("unexposed-value"));
+  assert(!JSON.stringify(imported).includes("rawPayload"));
+  assert(!JSON.stringify(imported).includes("archive"));
+  assert.deepEqual((await service.imports({ page: 10_000, pageSize: 100 })).items, []);
+  await assert.rejects(reader.query("SELECT * FROM sports.ingestion_batches"), { code: "42501" });
+});
+
 test("strict identifiers, command fields and pagination reject malformed or expanded requests before SQL changes", async () => {
   const before = await state();
   for (const id of ["0", "01", "-1", "9007199254740992", "1 OR 1=1", "1;DELETE FROM sports.players"]) {
@@ -452,6 +498,7 @@ test("strict identifiers, command fields and pagination reject malformed or expa
   for (const options of [{ page: 0 }, { page: 10_001 }, { pageSize: 0 }, { pageSize: 101 }, { page: 1.1 }, { pageSize: Number.NaN }]) {
     await assert.rejects(service.jobs(options), rejected(400));
     await assert.rejects(service.audit(options), rejected(400));
+    await assert.rejects(service.imports(options), rejected(400));
   }
   await assert.rejects(service.jobs({ status: "ready' OR true --" }), rejected(400));
   await assert.rejects(service.jobs({ kind: "unknown.consumer" }), rejected(400));
@@ -463,6 +510,7 @@ test("reader credentials cannot execute administration and writer access preserv
   const restricted = new AdminService(reader);
   await assert.rejects(restricted.requestImport(actor, randomUUID()), rejected(503, "admin_unavailable"));
   await assert.rejects(restricted.correctAppearance(actor, correction()), rejected(503, "admin_unavailable"));
+  await assert.rejects(restricted.imports(), rejected(503, "admin_unavailable"));
   await assert.rejects(reader.query("UPDATE sports.appearances SET goals=0"), { code: "42501" });
   await assert.rejects(reader.query("INSERT INTO sports.outbox(event_type,aggregate_type,aggregate_id,deduplication_key) VALUES ('source.sync','request',$1,$2)", [randomUUID(), randomUUID()]), { code: "42501" });
   await assert.rejects(pool.query("UPDATE sports.source_revisions SET provider='manual'"), { code: "42501" });

@@ -49,6 +49,32 @@ const errorCodes = new Set([
   "request_budget_unavailable", "transport_failed", "request_timeout", "http_rate_limit", "http_unavailable", "http_rejected",
   "redirect_rejected", "response_too_large", "credential_echo", "provider_rate_limit", "provider_unavailable", "provider_rejected",
 ]);
+const sourceActions = new Set(["get_teams", "get_events", "get_statistics", "get_standings"]);
+const issueCodes = new Set([
+  "invalid_number", "unsupported_league", "unsupported_season", "unsupported_stage", "invalid_player", "unknown_position",
+  "missing_metric", "conflicting_participation", "unknown_participation", "unknown_status", "missing_date", "invalid_date",
+  "unsupported_season_date", "unknown_kickoff", "invalid_time", "duplicate_player", "conflicting_membership", "mismatched_fixture",
+  "unknown_membership", "missing_player_statistics", "incomplete_participant_coverage", "incomplete_statistics", "invalid_identifier",
+  "invalid_club", "missing_result", "missing_statistics", "duplicate_club", "missing_roster", "conflicting_roster_membership",
+  "ambiguous_roster_membership", "incomplete_roster_coverage", "invalid_standing", "duplicate_standing", "incomplete_standing",
+  "inconsistent_standing", "unsupported_request_scope", "invalid_json", "unsupported_timezone", "invalid_payload", "invalid_fixture",
+  "duplicate_fixture", "conflicting_fixture", "missing_fixture_context", "unsupported_action", "empty_payload",
+  "relational_validation_failed", "sql_or_marker_unavailable", "superseded_archive", "superseded_by_manual_correction",
+  "missing_standings_reference", "standings_reference_mismatch", "unknown_standings_reference_club", "standings_reference_incomplete",
+  "appearance_context_unknown",
+]);
+const importIssueLimit = 50;
+
+function safeIssue(value: unknown): { code: string; resource: string } {
+  const item = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  const code = typeof item.code === "string" && issueCodes.has(item.code) ? item.code : "validation_issue";
+  // Source resources consist only of fixed action names and validated IDs.
+  // Archive keys, JSON request parameters and arbitrary stored strings stay private.
+  const resource = typeof item.resource === "string" && (sourceActions.has(item.resource)
+    || /^(?:(?:fixture|club|player|standing):)?[1-9]\d{0,17}(?:(?:\/player:|:)[1-9]\d{0,17})?$/.test(item.resource))
+    ? item.resource : "unavailable";
+  return { code, resource };
+}
 
 function invalid(): never { throw new AdminError(400, "invalid_request", "Invalid administration request"); }
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -245,14 +271,38 @@ export class AdminService {
       const condition = "kind=ANY($1::text[]) AND ($2::text IS NULL OR status=$2) AND ($3::text IS NULL OR kind=$3)";
       const [count, rows] = await Promise.all([
         this.pool.query(`SELECT count(*)::integer AS total FROM sports.jobs WHERE ${condition}`, parameters),
-        this.pool.query(`SELECT id,kind,status,payload,attempts,max_attempts,run_after,locked_until,last_error,created_at,completed_at
+        this.pool.query(`SELECT id,outbox_id,kind,status,payload,attempts,max_attempts,run_after,locked_until,last_error,created_at,completed_at
           FROM sports.jobs WHERE ${condition} ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5`, [...parameters, pageSize, offset]),
       ]);
       return { page, pageSize, total: count.rows[0].total as number, items: rows.rows.map((row) => ({
-        id: row.id as string, kind: row.kind as Kind, status: row.status as Status, payload: safePayload(row.kind, row.payload) ?? {},
+        id: row.id as string, outboxId: typeof row.outbox_id === "string" && uuidPattern.test(row.outbox_id) ? row.outbox_id : null,
+        kind: row.kind as Kind, status: row.status as Status, payload: safePayload(row.kind, row.payload) ?? {},
         attempts: row.attempts as number, maxAttempts: row.max_attempts as number, runAfter: iso(row.run_after),
         lockedUntil: iso(row.locked_until), lastError: row.last_error === null ? null : errorCodes.has(row.last_error) ? row.last_error as string : "processing_failed",
         createdAt: iso(row.created_at), completedAt: iso(row.completed_at),
+      })) };
+    });
+  }
+
+  async imports(options: AdminPagination = {}) {
+    const { page, pageSize, offset } = pagination(options);
+    return this.read(async () => {
+      const [count, rows] = await Promise.all([
+        this.pool.query("SELECT count(*)::integer AS total FROM sports.ingestion_batches"),
+        this.pool.query(`SELECT b.source_revision_id,s.action,s.retrieved_at,b.committed_at,b.fixture_count,b.appearance_count,
+          jsonb_array_length(b.issues_json) AS issue_total,
+          (SELECT coalesce(jsonb_agg(jsonb_build_object('code',left(entry->>'code',64),
+            'resource',left(entry->>'resource',160))),'[]'::jsonb)
+            FROM (SELECT value AS entry FROM jsonb_array_elements(b.issues_json) LIMIT $3) bounded) AS issues
+          FROM sports.ingestion_batches b JOIN sports.source_revisions s ON s.id=b.source_revision_id
+          ORDER BY b.committed_at DESC,b.archive_id DESC LIMIT $1 OFFSET $2`, [pageSize, offset, importIssueLimit]),
+      ]);
+      return { page, pageSize, total: count.rows[0].total as number, items: rows.rows.map((row) => ({
+        id: row.source_revision_id as string, action: sourceActions.has(row.action) ? row.action as string : "unknown",
+        retrievedAt: iso(row.retrieved_at), committedAt: iso(row.committed_at),
+        counts: { fixtures: row.fixture_count as number, appearances: row.appearance_count as number },
+        issues: (row.issues as unknown[]).map(safeIssue), issueTotal: row.issue_total as number,
+        issuesTruncated: row.issue_total > importIssueLimit,
       })) };
     });
   }

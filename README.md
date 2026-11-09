@@ -7,8 +7,8 @@ The application provides database-backed sign-in, authenticated football APIs,
 player comparison, administrator operations, and a recoverable data worker.
 Imports preserve source responses, normalize fixtures and player statistics,
 reconstruct historical standings, and save forecasts with immutable input
-evidence. The website has a methodology preview and login/account screens;
-catalogue, forecast, comparison and administrator dashboards remain future work.
+evidence. The website includes an overview, searchable player catalogue, detailed
+forecast evidence, player comparisons, and restricted administrator operations.
 
 ## Requirements
 
@@ -92,9 +92,14 @@ Use the [session/API guide](docs/api.md) for the administrator creation command,
 password changes, role changes and session revocation. There is no public signup
 or password-reset endpoint. Open <http://localhost:3000/login> using the exact
 configured origin. Sessions use HttpOnly cookies and authoritative SQL roles;
-viewers cannot perform administrator operations. The app has authenticated
-catalogue/detail/forecast/comparison APIs and audited administrator queue and
-correction APIs, documented in that guide.
+viewers cannot perform administrator operations. Sign-in opens `/overview`.
+Use `/players` to filter covered players and select two to four for `/compare`.
+Player pages separate the saved five-match window from current observations and
+show missing evidence, output units, target context and freshness warnings.
+Administrators can use `/admin` to inspect imports, jobs and audit records, queue
+work, retry failures, and apply revisions with conflict checks. Queue acceptance
+does not mean processing has completed. The underlying APIs are documented in
+the session/API guide.
 
 `GET /api/health` reports process liveness and configured feature flags without
 querying a database. It does not prove database readiness or forecast freshness.
@@ -187,10 +192,16 @@ The lockfile pins npm dependency versions. GitHub Actions runs installation, lin
 type checking, and the production build without database or API credentials. A
 separate job verifies migrations, constraints, ingestion, forecast persistence,
 refresh processing, reporting permissions, sessions/roles, authenticated HTTP APIs,
-and isolated database demonstrations against disposable PostgreSQL 17 and MongoDB 8
-services. `npm run test:auth` needs the guarded PostgreSQL test recipe;
+browser journeys, and isolated database demonstrations against disposable
+PostgreSQL 17 and MongoDB 8 services. `npm run test:auth` needs the guarded PostgreSQL test recipe;
 `npm run test:api` also needs the guarded MongoDB server and a preceding
 `npm run build`. See the database and ingestion guides before running either.
+With the same isolated cluster guards, run `npx playwright install chromium` and
+`npm run test:ui` for real browser checks of viewer/admin flows and responsive
+layouts. Linux hosts may need `npx playwright install --with-deps chromium`.
+An existing compatible browser can be selected with
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Browser tests seed synthetic data, block
+external browser requests and do not call the football provider.
 
 ## Methodology
 

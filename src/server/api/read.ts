@@ -254,14 +254,20 @@ export class ReadService {
         fixture_id: string; league_id: string; season: string; kickoff_at: Date | null; status: string; statistics_status: string;
         home_id: string; home_name: string; away_id: string; away_name: string; club_id: string | null; club_name: string | null;
         participation: string; minutes: number | null; rating: string | null; goals: number | null; assists: number | null;
+        revision_id: string | null; membership_known: boolean;
         shots_on_target: number | null; key_passes: number | null; tackles: number | null; interceptions: number | null; saves: number | null; goals_conceded: number | null;
       }>(`WITH ${APPROVED} SELECT f.provider_id AS fixture_id,a.league_id,a.label AS season,f.kickoff_at,f.status,f.statistics_status,
           home.provider_id AS home_id,home.name AS home_name,away.provider_id AS away_id,away.name AS away_name,
           club.provider_id AS club_id,club.name AS club_name,x.participation,x.minutes,x.rating,x.goals,x.assists,
+          x.normalized_revision_id AS revision_id,coalesce(club.provider='apifootball'
+            AND x.club_id IN (f.home_club_id,f.away_club_id) AND m.player_id=x.player_id
+            AND m.club_id=x.club_id AND m.season_id=x.season_id AND isfinite(f.kickoff_at)
+            AND f.kickoff_at>=m.valid_from AND (m.valid_until IS NULL OR f.kickoff_at<m.valid_until),false) AS membership_known,
           x.shots_on_target,x.key_passes,x.tackles,x.interceptions,x.saves,x.goals_conceded
         FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id JOIN approved a ON a.season_id=f.season_id
         JOIN sports.clubs home ON home.id=f.home_club_id JOIN sports.clubs away ON away.id=f.away_club_id
-        LEFT JOIN sports.clubs club ON club.id=x.club_id WHERE x.player_id=$1 AND f.provider='apifootball'
+        LEFT JOIN sports.clubs club ON club.id=x.club_id LEFT JOIN sports.player_memberships m ON m.id=x.membership_id
+        WHERE x.player_id=$1 AND f.provider='apifootball'
         ORDER BY f.kickoff_at DESC NULLS FIRST,f.provider_id COLLATE "C" DESC LIMIT 50`, [identity.row.sql_id])).rows;
       const observedAppearances = rows.map((row) => ({
         fixtureId: row.fixture_id, leagueId: row.league_id, season: row.season, kickoffAt: row.kickoff_at ? iso(row.kickoff_at) : null,
@@ -269,6 +275,7 @@ export class ReadService {
         homeClub: { id: row.home_id, name: row.home_name }, awayClub: { id: row.away_id, name: row.away_name },
         club: row.club_id ? { id: row.club_id, name: row.club_name! } : null,
         participation: row.participation, minutes: row.minutes, rating: row.rating === null ? null : Number(row.rating),
+        revisionId: row.revision_id, membershipKnown: row.membership_known,
         metrics: { goals: row.goals, assists: row.assists, shotsOnTarget: row.shots_on_target, keyPasses: row.key_passes,
           tackles: row.tackles, interceptions: row.interceptions, saves: row.saves, goalsConceded: row.goals_conceded },
       }));

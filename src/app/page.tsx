@@ -24,7 +24,7 @@ export default function Home() {
           <p className="eyebrow"><span className="status-dot" /> A considered view of football</p>
           <h1 id="hero-title">The next match.<br /><span>A clearer perspective.</span></h1>
           <p className="hero-copy">Five qualifying appearances. The opposition in context.<br className="desktop-break" /> A more considered view of player performance.</p>
-          <a className="text-link" href="#methodology">Explore the approach <span aria-hidden="true">↓</span></a>
+          <a className="text-link" href="/overview">Open the workspace <span aria-hidden="true">↓</span></a>
         </section>
 
         <section className="foundation" id="methodology" aria-labelledby="foundation-title">
@@ -32,9 +32,9 @@ export default function Home() {
             <p className="eyebrow">A transparent starting point</p>
             <h2 id="foundation-title">Every forecast<br />starts with evidence.</h2>
             <p>The approach uses a player&apos;s latest five eligible appearances in covered leagues, with at least 60 minutes played in each completed match. Opponent strength adds context. Missing history keeps a forecast unavailable.</p>
-            <span className="foundation-label">Methodology preview</span>
+            <span className="foundation-label">Explainable estimates · evidence included</span>
           </div>
-          <div className="principles" aria-label="Planned prediction principles">
+          <div className="principles" aria-label="Prediction principles">
             <div><span className="principle-number">05</span><p>Latest eligible league appearances</p></div>
             <div><span className="principle-number">60<span> min</span></span><p>Minimum time played per appearance</p></div>
             <div><span className="principle-number">01</span><p>Shared cutoff for a fair comparison</p></div>
@@ -71,7 +71,7 @@ export default function Home() {
             <article className="competition-card">
               <div className="competition-top"><span>Looking ahead</span></div>
               <h3>Make the estimate clear.</h3>
-              <p>Forecasts are estimates for a confirmed future fixture. A form index summarizes adjusted past performance. Each will be labeled separately, with missing data and uncertainty visible.</p>
+              <p>Forecasts are estimates for a confirmed future fixture. A form index summarizes adjusted past performance. Each is labeled separately, with missing data and uncertainty visible.</p>
             </article>
           </div>
         </section>

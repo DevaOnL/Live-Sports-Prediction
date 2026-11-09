@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { returnPath } from "@/lib/navigation";
 
 export function LoginForm() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export function LoginForm() {
         return;
       }
       form.reset();
-      router.replace("/account");
+      router.replace(returnPath(new URLSearchParams(window.location.search).get("next")));
       router.refresh();
     } catch { setError("Sign-in is temporarily unavailable. Please try again shortly."); }
     finally { setPending(false); }
