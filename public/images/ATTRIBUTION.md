@@ -10,6 +10,15 @@ player, fixture, club or provider observation.
 
 Source: Unsplash. License: https://unsplash.com/license
 
+## Player catalogue
+
+- `players-editorial.jpg`: Barcelona celebration photograph, served at its original
+  1440 × 810 resolution without changing the decoded image pixels.
+- Credit: Lluís Gené / AFP via Getty Images.
+  Copyright: AFP or its licensors.
+- [Rights statement from the source metadata](https://www.gettyimages.com/eula)
+  No open reuse license is stated; the Unsplash license above does not cover this image.
+
 ## Player comparison
 
 - `comparison-editorial.webp`: Kylian Mbappé (left) and Lamine Yamal (right),

@@ -59,8 +59,8 @@ svg { flex-shrink: 0; }
 .visual-link { min-width: 0; }
 .visual-link-art { position: relative; height: 250px; background: var(--cream); border: 6px solid #fff; outline: 2px solid; border-radius: 15px; overflow: hidden; box-shadow: 7px 8px var(--ink); }
 .visual-link-art .football-art { height: 100%; width: 100%; object-fit: cover; }
-.comparison-link-art { background: var(--ink); }
-.comparison-link-art img { object-fit: contain; }
+.editorial-link-art { background: var(--ink); }
+.editorial-link-art img { object-fit: contain; }
 .visual-link h2 { display: flex; justify-content: space-between; gap: 10px; margin: -26px 0 0 15px; position: relative; font-size: 30px; }
 .visual-link h2 span { background: #080808; color: #fff; padding: 7px; }
 .visual-link:hover h2 span { color: var(--yellow); }
