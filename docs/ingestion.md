@@ -338,6 +338,7 @@ its identity markers and temporary services remain available until they finish.
   npm run test:db
   npm run test:ingestion
   npm run test:forecast
+  npm run test:replay
   npm run test:evaluation
   npm run test:reporting
   npm run test:auth

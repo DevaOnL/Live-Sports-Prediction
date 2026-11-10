@@ -3,8 +3,10 @@
 This guide maps the DBMS demonstration requirements and football behavior to
 implemented artifacts and repeatable checks. Commands describe how to reproduce
 evidence; a source link or screenshot alone does not demonstrate a database
-operation. The real historical sixth-match replay is still pending. Existing
-window/recovery tests and the self-contained database demonstration are synthetic.
+operation. The [real-data sixth-appearance replay](replay.md) demonstrates window
+replacement and queued refresh in an isolated clone at a present cutoff. Existing
+window/recovery tests and the self-contained database demonstration use synthetic
+data; the replay does not establish historical forecast issuance or accuracy.
 
 ## Reproduction prerequisites
 
@@ -24,6 +26,12 @@ With a Linux Docker engine capable of running PostgreSQL 17 and MongoDB 8,
 random credentials, synthetic data and temporary storage; no `.env`, provider
 key or existing application stack is required. See the
 [demonstration guide](demo.md) for expected results and cleanup behavior.
+
+`npm run replay --silent` separately reads genuine imported football records
+through `lsp_reader` and performs a sixth-appearance arrival demonstration in its
+own PostgreSQL 17 clone. It needs the source reader connection and suitable real
+evidence, makes no provider calls and leaves source records unchanged. See the
+[replay prerequisites and interpretation](replay.md).
 
 All `test:db`, `test:ingestion`, `test:forecast`, `test:reporting`, `test:auth`,
 `test:api`, `test:evaluation`, `test:worker`, `test:ui` and
@@ -56,7 +64,7 @@ source commands require the enabled worker and approved provider configuration.
 | Next.js interface | [`src/app`](../src/app/), [`src/components`](../src/components/) | Visit `/login`, `/overview`, `/players`, `/players/PLAYER_ID`, `/compare`, `/account` and admin-only `/admin`; `npm run test:ui` exercises actual browser journeys and responsive layouts |
 | Backend/API and database integration | [`handler.ts`](../src/server/web/handler.ts), [`src/server/api`](../src/server/api/), [API contract](api.md) | `npm run test:api` exercises a built HTTP server with actual SQL reads, shared-snapshot comparison, audited/idempotent commands and correction conflict handling; `npm run test:worker` exercises the worker's cross-store/recovery path |
 | Frontend authentication, at least two roles and database RBAC | [`src/server/auth`](../src/server/auth/), [`003_grants.sql`](../db/migrations/003_grants.sql), [`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql), [`users.ts`](../scripts/users.ts) | Create viewer/admin accounts through the stdin-only CLI, sign in and inspect role-aware navigation; `npm run test:auth` checks sessions/revocation/throttling and SQL role boundaries, while `npm run test:api` denies unauthenticated requests, forged roles and viewer admin actions. Reader SQL writes are rejected |
-| Documentation and Git/GitHub | [`README.md`](../README.md), technical [`docs`](./), [CI workflow](../.github/workflows/ci.yml), repository commit/PR history | Follow setup and demo prerequisites from a clean checkout; inspect published commits/PR checks. CI runs the locked install, static/build checks and isolated integration/browser demonstrations. Final clean-checkout handover and real historical replay remain outstanding |
+| Documentation and Git/GitHub | [`README.md`](../README.md), technical [`docs`](./), [CI workflow](../.github/workflows/ci.yml), repository commit/PR history | Follow setup, synthetic demo and [real-data replay](replay.md) prerequisites from a clean checkout; inspect published commits/PR checks. CI runs the locked install, static/build checks and isolated integration/browser demonstrations; the real-data replay requires an already imported source snapshot |
 
 Viewer/admin are application roles loaded from SQL on every protected request.
 The reader/writer/auth/migrator database logins have separate grants; users do not
@@ -69,7 +77,7 @@ migrator credentials. See [privilege boundaries](architecture.md#authentication-
 | Requirement or resolved rule | Implementation and evidence | Reproduction/status |
 | --- | --- | --- |
 | Latest five eligible appearances, each at least 60 minutes | [`engine.ts`](../src/server/forecast/engine.ts), [`inputs.ts`](../src/server/forecast/inputs.ts), [history rules](forecasting.md#history-membership-and-availability) | `npm run test:unit` and `npm run test:forecast` check finality, membership, minutes, ordering and exact-five selection; player detail exposes the saved five separately from current observed history |
-| Replace the oldest eligible appearance regardless of performance | [`forecast.test.ts`](../tests/forecast.test.ts), [`forecast.database.test.ts`](../tests/forecast.database.test.ts) | Synthetic tests cover replacement, short appearances, DNP and deterministic revisions. A real isolated historical sixth-match replay, with before/after window and refreshed revision, is **pending** |
+| Replace the oldest eligible appearance regardless of performance | [`forecast.test.ts`](../tests/forecast.test.ts), [`forecast.database.test.ts`](../tests/forecast.database.test.ts), [`replay.ts`](../scripts/replay.ts) | Synthetic tests cover replacement, short appearances, DNP and deterministic revisions. `npm run replay --silent` withholds one real latest eligible appearance in an owned clone, verifies the honest incomplete-history baseline, restores the exact row and checks queued refresh advances the five and appends a revision matching the untouched snapshot; [protocol and limits](replay.md) |
 | Dynamic refresh after new source evidence or target expiry | [`jobs.ts`](../src/server/ingestion/jobs.ts), [`store.ts`](../src/server/forecast/store.ts), [`src/worker`](../src/worker/) | `npm run test:forecast` and `npm run test:worker` verify coalescing, retries, leases, restart recovery and local progress during source stalls; queue acceptance is distinct from completion |
 | Upper/middle/lower opposition with asymmetric team context | [`standings.ts`](../src/server/ingestion/standings.ts), [`engine.ts`](../src/server/forecast/engine.ts), [formulas](forecasting.md#context-and-formulas) | `npm run test:unit` checks competition-local cutoffs, deductions/ties, scaled tier boundaries and difficulty from opponent strength minus own-team strength |
 | Competition coefficient 2 or 1.5 | [`coverage.ts`](../src/server/ingestion/coverage.ts), model tests | Only the named top five **top divisions** use 2; both covered second divisions use 1.5. Formula tests do not enable additional data coverage |
@@ -99,7 +107,7 @@ On **2026-11-10**, the documented combined integration recipe and service-free
 unit suite passed **329 tests with no failures or skips** using isolated
 PostgreSQL 17/MongoDB 8, Node.js 24.13.1 and npm 11.8.0. The locked install, lint,
 typecheck, production build and independent synthetic database demo passed too.
-The executable application code matches
+For that verification, the executable application code matched
 [`fdd411f`](https://github.com/DevaOnL/Live-Sports-Prediction/commit/fdd411f338e3800fe661061baddfaf67c9c31616),
 whose [CI run](https://github.com/DevaOnL/Live-Sports-Prediction/actions/runs/42804478897)
 also passed all 329 tests. The committed [workflow](../.github/workflows/ci.yml)
@@ -136,7 +144,8 @@ reasons. A saved revision and a current comparison can therefore differ in
 availability. Neither screen substitutes missing evidence with invented values.
 
 The offline database demo uses clearly labeled synthetic football data to make
-SQL/NoSQL behavior repeatable. It does not establish provider completeness,
-forecast accuracy or completion of the real historical sixth-match replay.
+SQL/NoSQL behavior repeatable. The separate [real-data replay](replay.md) uses
+observed records in a disposable clone and a fixed present cutoff. Neither
+demonstration establishes provider completeness or predictive accuracy.
 Interactive football availability depends on the actual imported evidence and
 worker progress. Preserve these distinctions when demonstrating the application.

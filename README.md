@@ -179,6 +179,13 @@ credentials, and no football API calls. Existing project databases and volumes
 are untouched. The [demonstration guide](docs/demo.md) maps each example to its
 source, expected result, and safety checks.
 
+Run `npm run replay --silent` to demonstrate a real historical sixth appearance
+using an already imported source. It reads through `lsp_reader` and writes only
+to its own temporary PostgreSQL clone. The intentionally withheld appearance
+first produces incomplete history; restoring it advances the selected five and
+creates a refreshed revision. The [replay guide](docs/replay.md) explains
+prerequisites, isolation and the distinction from historical accuracy.
+
 ## Development
 
 Stop the app container before running the local development server on port 3000:
@@ -206,7 +213,7 @@ npm run build
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
 type checking, and the production build without database or API credentials. A
 separate job verifies migrations, constraints, ingestion, forecast persistence,
-refresh processing, frozen evaluation, worker crash recovery, reporting permissions,
+refresh processing, observation replay, frozen evaluation, worker crash recovery, reporting permissions,
 sessions/roles, authenticated HTTP APIs,
 browser journeys, and isolated database demonstrations against disposable
 PostgreSQL 17 and MongoDB 8 services. `npm run test:auth` needs the guarded PostgreSQL test recipe;
@@ -258,6 +265,7 @@ self-hosted through the application bundle.
 | [Evaluation](docs/evaluation.md) | Frozen historical coverage and private forward measurement |
 | [Deployment](docs/deployment.md) | Local/HTTPS operation, upgrades, coordinated backups and restore |
 | [Database demonstrations](docs/demo.md) | Executable SQL and MongoDB examples with isolated synthetic data |
+| [Historical observation replay](docs/replay.md) | Real-data sixth-appearance window replacement in an isolated PostgreSQL clone |
 | [Requirement traceability](docs/requirements.md) | Assignment deliverables, executable evidence and limitations |
 
 ## Interface examples

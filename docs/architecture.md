@@ -38,6 +38,7 @@ flowchart LR
 | Worker | Source polling, archive reconciliation, statistics jobs, standings reconstruction and local forecast refresh | [`src/worker`](../src/worker/), [`runtime.ts`](../src/server/ingestion/runtime.ts) |
 | Forecast engine/store | Exact-five selection, context and missing-data rules, deterministic calculation, immutable revisions and current heads | [`src/server/forecast`](../src/server/forecast/), [model guide](forecasting.md) |
 | Evaluation tools | Frozen historical scoring and separately versioned forward capture/scoring without sports-data writes or provider requests | [`evaluate.ts`](../scripts/evaluate.ts), [`measure.ts`](../scripts/measure.ts), [evaluation guide](evaluation.md) |
+| Real-data replay | Read a source snapshot with the restricted reader, then demonstrate sixth-appearance arrival and queued refresh in an owned disposable PostgreSQL clone | [`replay.ts`](../scripts/replay.ts), [replay guide](replay.md) |
 
 The browser receives application responses, not database connections or provider
 credentials. Administrator source commands enter SQL work queues; the web process
@@ -109,6 +110,16 @@ time, latest check and current read watermark, and warn about changed inputs or
 expired targets. Comparison instead computes two to four players from one current
 read-only snapshot, persists no revision and makes no provider request. Its
 canonical result and any prior stored revision are labeled separately.
+
+The [real-data replay](replay.md) copies a current reader-only canonical snapshot
+into an owned PostgreSQL 17 container with temporary storage. It preserves actual
+source/roster times and the present cutoff, withholds one latest eligible
+appearance, and requires the baseline to expose the resulting history gap. After
+restoring the exact row, the normal queue/store path must append a revision with
+the latest five and match the untouched snapshot's calculation. All writes stay
+in that clone; no provider calls or source database writes occur. This demonstrates
+data arrival and refresh on real records, not a forecast issued before the
+restored match or an accuracy measurement.
 
 ## Authentication and privileges
 
@@ -189,7 +200,7 @@ Current model limits are material: the frozen historical evaluation scored
 was absent. Error statistics remain unavailable. A separate prospective protocol
 keeps private pre-matchday captures and awaits real outcomes; pending outcomes
 are not measured accuracy. Missing history, metrics, club evidence, fixtures and
-standings continue to block dependent outputs. The real historical sixth-match
-demonstration remains to be completed; the existing database demo and replay tests
-use synthetic data. See [evaluation](evaluation.md) and
+standings continue to block dependent outputs. The [sixth-appearance replay](replay.md)
+provides a separate real-data arrival demonstration in an isolated clone; the
+database demo and regression tests use synthetic data. See [evaluation](evaluation.md) and
 [requirement traceability](requirements.md) for the evidence and remaining limits.
