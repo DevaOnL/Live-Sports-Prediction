@@ -146,7 +146,7 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     await page.goto(web.origin);
     await page.keyboard.press("Tab");
     await focusControl(page.getByRole("link", { name: "Live Sports Prediction home", exact: true }));
-    await focusControl(page.getByRole("link", { name: "Photos: Unsplash", exact: false }));
+    await focusControl(page.getByRole("link", { name: "Photo credits", exact: false }));
     await semantics(page);
     await keyboardLogin(page, "viewer", true);
     const navigation = page.getByRole("navigation", { name: "Workspace navigation", exact: true });
