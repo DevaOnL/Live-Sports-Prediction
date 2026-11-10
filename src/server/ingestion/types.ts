@@ -15,7 +15,7 @@ export type Appearance = {
 };
 export type Fixture = {
   id: string; leagueId: string; season: string; home: Club; away: Club;
-  kickoffAt: string | null; status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled";
+  kickoffAt: string | null; status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled" | "suspended";
   statisticsStatus: "unknown" | "missing" | "partial" | "complete";
   homeScore: number | null; awayScore: number | null;
   detailed: boolean; appearances: Appearance[];

@@ -212,7 +212,7 @@ the archived second-division coefficient of 1.5 capped it at 75. Current missing
 ratings still prevent calculating this output. It is neither a percentile nor a
 probability or accuracy percentage.
 Select the earliest scheduled future fixture for the known current club within
-enabled coverage. Live, final, cancelled, postponed and unknown fixtures are
+enabled coverage. Live, final, cancelled, postponed, suspended and unknown fixtures are
 excluded. Once kickoff passes, the old fixture is no longer a future target.
 
 | Position | Projected statistics |
@@ -316,3 +316,9 @@ reader permissions, correction replay protection and built-server authorization.
 It requires a production build and the guarded PostgreSQL/MongoDB environment in
 the [combined integration recipe](ingestion.md#isolated-integration-tests).
 No provider credential is needed.
+
+A suspended match is explicitly unfinished. It contributes neither league points
+nor a qualifying appearance and cannot be selected as the next scheduled target.
+Its source status remains visible; resumption or finality requires a later provider
+observation. An unrelated suspended fixture does not make completed league
+results unknown or block otherwise supported count forecasts.

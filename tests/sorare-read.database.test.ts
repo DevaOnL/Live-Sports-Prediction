@@ -53,11 +53,11 @@ before(async () => {
 });
 after(async () => { await Promise.allSettled([writer?.end(), reader?.end(), administrator?.end()]); });
 
-async function importBatch(profile: SourceProfile, batch: Batch) {
+async function importBatch(profile: SourceProfile, batch: Batch, retrievedAt = "2026-08-10T11:00:00.000Z") {
   const text = JSON.stringify(batch);
   const observation = { action: "get_events" as const, resourceKey: randomUUID(), params: { league_id: batch.coverage.id, timezone: "UTC",
     ...(profile.provider === "sorare" ? { provider: "sorare" } : {}) },
-    text, contentSha256: createHash("sha256").update(text).digest("hex"), retrievedAt: "2026-08-10T11:00:00.000Z" };
+    text, contentSha256: createHash("sha256").update(text).digest("hex"), retrievedAt };
   const archive: ArchivedResponse = { ...observation, id: archiveId(observation) };
   await new IngestionStore(writer, profile).import(archive, batch);
 }
@@ -165,6 +165,47 @@ test("source forecast preparation preserves observations and missing outputs wit
   const comparison = await service.compare(currentPlayers.slice(0, 2).map((player) => player.id));
   assert(comparison.players.every(({ player }) => player.currentClub?.leagueId === CURRENT_SOURCE.coverage[0].id));
   assert(comparison.players.every(({ result }) => result.forecastRating.status === "unavailable" && result.projected90.goals?.status === "available"));
+});
+
+test("a fresh suspended observation clears only nonfinal gaps and preserves five-match count forecasts", async () => {
+  const cutoff = "2026-11-10T12:00:00.000Z";
+  const interrupted = fixtures.find((fixture) => fixture.home.id === currentClubs[0].id && fixture.status === "scheduled")!;
+  const update = (status: Fixture["status"]): Batch => ({ coverage: CURRENT_SOURCE.coverage[0], clubs: currentClubs,
+    players: currentPlayers, standings: [], issues: [], fixtures: [{ ...interrupted,
+      status, kickoffAt: "2026-08-06T15:00:00Z", statisticsStatus: "unknown", homeScore: null, awayScore: null }] });
+  const forecasts = new ForecastStore(writer, CURRENT_SOURCE);
+  await importBatch(CURRENT_SOURCE, update("unknown"), "2026-08-10T11:01:00.000Z");
+  assert.equal((await forecasts.refreshAll(cutoff)).unavailable, currentPlayers.length);
+  const before = (await forecasts.show(currentPlayers[0].id))!;
+  assert.equal(before.result.historyStatus, "incomplete_history");
+  assert(before.input.gaps.some((gap) => gap.fixtureId === interrupted.id && gap.code === "missing_appearance_evidence"));
+
+  await importBatch(CURRENT_SOURCE, update("suspended"), "2026-08-10T11:02:00.000Z");
+  const summary = await forecasts.refreshAll(cutoff);
+  assert.equal(summary.partial, currentPlayers.length);
+  assert.equal(summary.unavailable, 0);
+  const stored = (await writer.query(`SELECT status,home_score,away_score FROM sports.fixtures
+    WHERE provider='sorare' AND provider_id=$1`, [interrupted.id])).rows[0];
+  assert.deepEqual(stored, { status: "suspended", home_score: null, away_score: null });
+  await assert.rejects(writer.query(`UPDATE sports.fixtures SET status='unrecognized-provider-state'
+    WHERE provider='sorare' AND provider_id=$1`, [interrupted.id]), { code: "23514" });
+  for (const player of currentPlayers) {
+    const saved = (await forecasts.show(player.id))!;
+    assert.equal(saved.result.historyStatus, "ready");
+    assert.equal(saved.result.selected.length, 5);
+    assert.equal(saved.input.gaps.some((gap) => gap.fixtureId === interrupted.id), false);
+    assert.notEqual(saved.result.target?.fixtureId, interrupted.id);
+    assert.equal(saved.result.forecastRating.status, "unavailable", "suspension cannot create missing source ratings");
+    assert.equal(saved.result.projected90.goals?.status, "available");
+    assert.equal(saved.result.projected90.assists?.status, "available");
+    assert.equal(saved.result.projected90.shotsOnTarget?.status, "available");
+    assert.equal(saved.input.appearances.some((appearance) => appearance.fixtureId === interrupted.id), false);
+  }
+  const after = (await forecasts.show(currentPlayers[0].id))!;
+  assert.equal(after.parentId, before.id);
+  assert.notEqual(after.inputHash, before.inputHash);
+  assert.deepEqual((await administrator.query("SELECT result_json FROM sports.forecast_revisions WHERE id=$1", [before.id])).rows[0].result_json,
+    before.result, "the blocked prior revision remains immutable");
 });
 
 test("current explicit DNP with omitted minutes leaves five played appearances usable while unknown participation blocks", async () => {

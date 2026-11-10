@@ -80,7 +80,7 @@ upgrades explicitly with `npm run db:migrate` while preserving existing volumes;
 never edit an already-applied migration. Rerun provisioning only for deliberate
 role setup or password rotation.
 
-Existing installations must apply all migrations through `010_current_coverage.sql`
+Existing installations must apply all migrations through `011_suspended_fixtures.sql`
 before starting the current app and worker. This retains historical records while
 retiring the former active leagues. Preserve volumes and applied migration files.
 

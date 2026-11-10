@@ -208,18 +208,18 @@ test("unknown result status or kickoff cannot become a complete historical table
   }
 });
 
-test("known unfinished, postponed and cancelled fixtures add no invented results", () => {
-  for (const status of ["scheduled", "live", "postponed", "cancelled"] as const) {
+test("known unfinished, postponed, cancelled and suspended fixtures add no invented results", () => {
+  for (const status of ["scheduled", "live", "postponed", "cancelled", "suspended"] as const) {
     const data = setup();
     Object.assign(data.fixtures[0], { status, kickoffAt: "2026-08-01T14:00:00Z", homeScore: 9, awayScore: 0 });
     const result = data.table();
-    assert.equal(result.complete, status === "postponed" || status === "cancelled");
+    assert.equal(result.complete, ["postponed", "cancelled", "suspended"].includes(status));
     assert.equal(result.issues.some((issue) => issue.code === "unfinished_past_fixture"), status === "scheduled" || status === "live");
     assert.ok(result.rows.every((row) => row.played === 0 && row.points === 0));
   }
 });
 
-for (const status of ["postponed", "cancelled"] as const) test(`${status} fixtures without kickoff do not block results or bypass schedule guards`, () => {
+for (const status of ["postponed", "cancelled", "suspended"] as const) test(`${status} fixtures without kickoff do not block results or bypass schedule guards`, () => {
   const data = setup();
   Object.assign(data.fixtures[0], { status, kickoffAt: null, homeScore: 9, awayScore: 0 });
   for (const table of [data.table(), reconstructStandings(data.coverage, data.clubs, data.fixtures, "2026-08-03", { asOf: "2026-08-02T12:00:00Z" })]) {

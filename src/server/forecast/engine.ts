@@ -45,7 +45,7 @@ function eligibility(input: ForecastInput) {
   const gaps: EligibilityGap[] = [...input.gaps];
   const seen = new Set<string>();
   for (const appearance of orderedAppearances(input.appearances.filter((item) => item.covered))) {
-    if (["live", "postponed", "cancelled"].includes(appearance.status)) continue;
+    if (["live", "postponed", "cancelled", "suspended"].includes(appearance.status)) continue;
     const kickoff = instant(appearance.kickoffAt);
     const gap = (code: string, field?: string) => gaps.push({ code, fixtureId: appearance.fixtureId, kickoffAt: appearance.kickoffAt, ...(field ? { field } : {}) });
     if (!Number.isFinite(kickoff)) { gap("unknown_kickoff", "kickoffAt"); continue; }
@@ -205,7 +205,7 @@ function semanticContext(context: Context | null) {
 export function inputHash(input: ForecastInput, result: ForecastResult = evaluateForecast(input)): string {
   const window = eligibility(input);
   const selectedIds = new Set(window.selected.map((appearance) => appearance.fixtureId));
-  const relevantAppearances = input.appearances.filter((appearance) => appearance.covered && !["live", "postponed", "cancelled"].includes(appearance.status)
+  const relevantAppearances = input.appearances.filter((appearance) => appearance.covered && !["live", "postponed", "cancelled", "suspended"].includes(appearance.status)
     && window.relevant({ code: "evidence", fixtureId: appearance.fixtureId, kickoffAt: appearance.kickoffAt }))
     .map((appearance) => ({
       fixtureId: appearance.fixtureId, leagueId: appearance.leagueId, season: appearance.season,

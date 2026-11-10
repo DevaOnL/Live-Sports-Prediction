@@ -14,7 +14,7 @@ export type Context = {
 export type Match = {
   fixtureId: string; leagueId: string; season: string; competition: CompetitionCode;
   kickoffAt: string | null;
-  status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled";
+  status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled" | "suspended";
   homeClubId: string; awayClubId: string;
 };
 export type HistoryAppearance = Match & {

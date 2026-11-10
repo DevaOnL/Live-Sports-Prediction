@@ -222,6 +222,25 @@ test("scheduled score placeholders stay unknown and season-external fixtures sta
   assert(result.issues.some((issue) => issue.code === "incomplete_schedule"));
 });
 
+test("explicit suspension remains nonfinal while unrecognized fixture statuses remain unknown", () => {
+  for (const statusTyped of ["suspended", "unrecognized-provider-state"]) {
+    const result = normalizeSorareCapture(response("get_events", [
+      capture("past", { slug: coverage.id, after: null }, { competition: { slug: coverage.id,
+        pastGames: connection([{ ...game(), statusTyped, homeGoals: 9, awayGoals: 8 }]) } }),
+      capture("future", { slug: coverage.id, after: null }, { competition: { slug: coverage.id, futureGames: connection([]) } }),
+    ]), coverage);
+    const fixture = result.fixtures[0];
+    assert.equal(fixture.status, statusTyped === "suspended" ? "suspended" : "unknown");
+    assert.equal(fixture.homeScore, null);
+    assert.equal(fixture.awayScore, null);
+    assert.equal(fixture.statisticsStatus, "unknown");
+    assert.equal(fixture.detailed, false);
+    assert.deepEqual(fixture.appearances, []);
+    assert.equal(result.issues.some((issue) => issue.code === "unknown_status"), statusTyped !== "suspended");
+    assert(result.issues.some((issue) => issue.code === "incomplete_schedule"));
+  }
+});
+
 test("standings use actual contestant totals and the explicit season year", () => {
   const captures = [capture("standings", { slug: coverage.id, year: 2026 }, { competition: { slug: coverage.id,
     contestants: [{ anyTeam: club(1), matchesPlayed: 3, matchesWon: 2, matchesDrawn: 1, matchesLost: 0, goalsFor: 7, goalsAgainst: 2, points: 7, rank: 1 }] } })];

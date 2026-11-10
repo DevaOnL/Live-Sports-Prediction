@@ -41,7 +41,7 @@ npm run mongo:provision
 ```
 
 `db:migrate` checks applied checksums and applies pending files, including
-`010_current_coverage.sql`. Preserve existing volumes. MongoDB provisioning
+`011_suspended_fixtures.sql`. Preserve existing volumes. MongoDB provisioning
 configures validators, indexes and the restricted archive identity. These
 administrative commands use local bootstrap/migrator credentials.
 
@@ -340,3 +340,8 @@ stale membership and metrics. Detailed statistics in that contradictory response
 do not silently choose a club; a later consistent statistics response can recover
 known participation. The worker polls the local forecast queue independently of
 source requests, so a slow provider does not block local refreshes.
+
+Sorare's `suspended` state maps to the explicit canonical `suspended` status.
+Scores from that unfinished fixture are excluded from standings and five-match
+selection. A genuinely new schedule observation can update this state; imported
+archives are never retimestamped or altered to force a replay.

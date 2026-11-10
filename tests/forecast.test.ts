@@ -208,10 +208,10 @@ test("the cutoff excludes the target's own appearance and known nonfinal fixture
   close(result.forecastRating.value, 7);
 });
 
-test("known live, postponed and cancelled fixtures cannot enter history even with unknown kickoff", () => {
+test("known live, postponed, cancelled and suspended fixtures cannot enter history even with unknown kickoff", () => {
   const data = input();
   const originalHash = inputHash(data);
-  for (const status of ["live", "postponed", "cancelled"] as const) {
+  for (const status of ["live", "postponed", "cancelled", "suspended"] as const) {
     data.appearances.push(appearance(6, { fixtureId: status, status, kickoffAt: null, minutes: null, participation: "unknown" }));
   }
   const result = evaluateForecast(data);
@@ -326,6 +326,7 @@ test("next fixture requires known future schedule, club, league and season and r
   data.targets.unshift(
     target({ fixtureId: "cancelled", kickoffAt: "2026-09-21T12:00:00Z", status: "cancelled" }),
     target({ fixtureId: "postponed", kickoffAt: "2026-09-21T12:00:00Z", status: "postponed" }),
+    target({ fixtureId: "suspended", kickoffAt: "2026-09-21T12:00:00Z", status: "suspended" }),
     target({ fixtureId: "live", kickoffAt: "2026-09-21T12:00:00Z", status: "live" }),
     target({ fixtureId: "unknown", kickoffAt: null }),
     target({ fixtureId: "past", kickoffAt: "2026-09-20T12:00:00Z" }),

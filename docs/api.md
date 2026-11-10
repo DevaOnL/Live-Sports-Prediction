@@ -7,7 +7,7 @@ player discovery and comparison, with a compact method summary. API results pres
 
 ## Configure local access
 
-Apply pending migrations explicitly, through `010_current_coverage.sql`. Keep
+Apply pending migrations explicitly, through `011_suspended_fixtures.sql`. Keep
 existing volumes. Set these ignored `.env` variables before recreating the app:
 
 ```dotenv

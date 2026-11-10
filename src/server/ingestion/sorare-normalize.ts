@@ -159,7 +159,7 @@ export function normalizeSorareCapture(response: ProviderResponse, coverage: Cov
     if (kickoffAt.slice(0, 10) < coverage.startsOn || kickoffAt.slice(0, 10) > coverage.endsOn) return null;
     const home = club(value.homeTeam), away = club(value.awayTeam);
     if (!home || !away || home.id === away.id) { issue("invalid_fixture_clubs", value.id); return null; }
-    const statuses: Record<string, Fixture["status"]> = { played: "final", playing: "live", scheduled: "scheduled", postponed: "postponed", cancelled: "cancelled", suspended: "unknown" };
+    const statuses: Record<string, Fixture["status"]> = { played: "final", playing: "live", scheduled: "scheduled", postponed: "postponed", cancelled: "cancelled", suspended: "suspended" };
     const status = statuses[String(value.statusTyped)] ?? "unknown";
     if (status === "unknown") issue("unknown_status", value.id);
     const homeScore = status === "final" || status === "live" ? integer(value.homeGoals) : null;

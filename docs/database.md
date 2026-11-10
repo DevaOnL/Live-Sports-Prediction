@@ -11,13 +11,16 @@ metadata. The executable definitions are
 [`006_forecasts.sql`](../db/migrations/006_forecasts.sql),
 [`007_forecast_freshness.sql`](../db/migrations/007_forecast_freshness.sql),
 [`008_reporting.sql`](../db/migrations/008_reporting.sql),
-[`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql), and
-[`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql).
+[`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql),
+[`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql), and
+[`011_suspended_fixtures.sql`](../db/migrations/011_suspended_fixtures.sql).
 
 Current product coverage is Sorare Premier League/La Liga, 2026/27. Migration
 010 disables the former APIFootball competitions/seasons while preserving their
 canonical rows and immutable provenance. It adds nullable player/club lookup
 slugs and provider-aware reporting overloads without altering migrations 001–009.
+Migration 011 adds an explicit suspended fixture state; existing observations and
+applied migration files are unchanged.
 
 The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
 football reads and administrator operations. The interface includes login, a player
@@ -137,8 +140,8 @@ they do not invent provider archives or imported provider batches.
   and count metrics are nullable and nonnegative when present; minutes have no
   90-minute upper limit. Rating is nullable or within 0–10. A DNP permits only
   null/zero metrics. Missing values never receive an automatic zero default.
-- Fixture status is `unknown`, `scheduled`, `live`, `final`, `postponed`, or
-  `cancelled`. Statistics status is independently `unknown`, `missing`, `partial`,
+- Fixture status is `unknown`, `scheduled`, `live`, `final`, `postponed`,
+  `suspended`, or `cancelled`. Statistics status is independently `unknown`, `missing`, `partial`,
   or `complete`. A final fixture can still have missing scores or statistics.
 - A standings cutoff must equal midnight in the competition's validated timezone
   and fall within the season dates. Rows reference registered clubs in that same
@@ -257,7 +260,7 @@ For an existing managed database, preserve its data and apply only new migration
 npm run db:migrate
 ```
 
-Apply all pending files through `010_current_coverage.sql` before starting the
+Apply all pending files through `011_suspended_fixtures.sql` before starting the
 upgraded app/worker. Migration 009 adds the database-backed authentication limiter
 and its auth-role grants; 010 retires prior product coverage and adds
 source-aware reporting overloads and lookup slugs. The same command applies all

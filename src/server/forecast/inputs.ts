@@ -281,7 +281,7 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
       }
     }
     for (const fixture of fixtures) {
-      if (byFixture.has(fixture.sqlId) || fixture.status === "cancelled" || fixture.status === "postponed" || fixture.status === "live") continue;
+      if (byFixture.has(fixture.sqlId) || ["cancelled", "postponed", "live", "suspended"].includes(fixture.status)) continue;
       if (fixture.kickoffAt && (Date.parse(fixture.kickoffAt) >= cutoff || (historicalDate && localDate(fixture.kickoffAt, seasons.get(fixture.seasonId)!.coverage.timezone) >= historicalDate))) continue;
       const time = fixture.kickoffAt ? Date.parse(fixture.kickoffAt) : null;
       const checkpoint = time === null ? null : checkpoints.findLast((item) => item.at <= time);
