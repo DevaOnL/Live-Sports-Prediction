@@ -187,7 +187,7 @@ A validated explicit zero in a matching detailed stat is observed zero. A null
 with no such evidence stays missing; conflicting values also remain unknown and
 raise an issue. `wonTackle`/`won_tackle` is a different statistic from total
 tackles. Sorare's fantasy score does not supply a conventional 0–10 rating, and
-key passes are unsupported. Those canonical fields remain null. Counts and
+key passes are unsupported. Those primary fields remain null. Counts and
 minutes must be nonnegative integers; reported minutes above 90 are preserved.
 
 Finality comes from `game.statusTyped=played`. Actual participation uses player
@@ -199,6 +199,72 @@ explicit review issue and partial statistics status; they do not silently vanish
 from the latest-five window. Missing ratings/key passes can block their dependent
 outputs while other evidenced count projections and scouting strengths remain
 possible. None of this establishes predictive accuracy.
+
+## Optional match-stat supplementation
+
+[Highlightly Football Basic](https://highlightly.net/football-api/) is an optional
+registered free source for the same two leagues and season. Real Basic responses
+on **2026-11-10** included match ratings, key passes and total tackles for both
+leagues. This is a dated access observation. The service can omit fields or change
+coverage. Configure `HIGHLIGHTLY_API_KEY` only in the worker/ignored local `.env`;
+the app receives no provider keys. No payment or paid trial is required.
+
+Apply migration `012_appearance_enrichment.sql` before deploying this version.
+Run `npm run enrich -- 2` to process up to two match box scores, or enable the
+normal worker to backfill in bounded batches. All pages of the external fixture
+catalogue are cached for a UTC day and completed box scores for seven days.
+The supplementary catalogue can contain fewer than 380 fixtures; missing fixtures
+remain unmapped and never replace Sorare's complete schedule or establish DNP.
+A changed primary
+appearance or fixture revision immediately invalidates its prior supplements.
+Fetching prioritizes completing player windows; it never changes eligibility.
+
+The Basic allowance is **100 requests/day**, resetting at midnight UTC. A shared
+SQL-clock counter budgets actual attempts, spaces them by one second, honors the
+provider's remaining-count header and keeps five requests spare. Errors consume
+reservations. Other source requests use separate budgets. Existing final matches
+require several daily budgets to backfill; account rotation is not used. If the
+same key was used by local setup tools, record the last observed allowance with
+`EnrichmentStore.observeQuota` before starting concurrent consumers. The provider
+counter can only reduce the current day's remaining allowance.
+
+Each box score must match the league, season, home/away clubs, exact kickoff and
+final result. A player must match one unambiguous name or initial abbreviation
+within that club, plus exact minutes, goals, assists and shots on target. No
+edit-distance matching or name-only joins are used. Unsupported or ambiguous
+identities remain unused. All accepted fields retain their separate source,
+retrieval time and revision evidence; raw captures and matching evidence stay
+private. Sorare's explicit values take precedence. A missing value never becomes
+zero without explicit numeric evidence.
+
+| Effective field | Highlightly box-score field |
+| --- | --- |
+| `rating` | `matchRating`, finite raw value in 0–10; no rescaling |
+| `key_passes` | `statistics.passesKey` |
+| `tackles` | `statistics.tacklesTotal` |
+| `interceptions` | `statistics.interceptionsTotal` |
+
+Actual responses use a `statistics` object; the documentation also declares an
+array, so a single unambiguous statistics record is supported. Counts must be
+nonnegative integers. Highlightly calls `matchRating` a match performance rating
+but does not document its rating methodology or bounds. Only reported finite
+values in the model's 0–10 range are accepted; this does not establish calibration
+or equivalence with other rating vendors. All rating evidence for this source
+comes from that reported field, never Sorare's fantasy score. Goalkeeper saves
+and goals conceded are deliberately not supplemented: the real samples contained
+inconsistent zero goals-conceded values despite scored goals.
+
+Immutable MongoDB captures precede SQL supplement receipts, revisions and outbox
+events. Recovery is source-scoped. Effective reads are shared by profiles,
+forecast inputs, scouting and source-aware SQL reporting; the primary observation
+time stays separate from supplementary freshness. Original observations and old
+forecast revisions are preserved.
+
+[Highlightly's terms](https://highlightly.net/terms/), section 6.1, allow storing
+and displaying data in this application. They prohibit supplying it as a dataset,
+feed, export, proxy or reusable API for third parties' own applications or
+analysis. Application endpoints serve this product's authenticated interface;
+do not redistribute captures or offer a downstream data service.
 
 Standings reconstruct corrected results from strictly earlier competition-local
 dates, at local midnight; future context can use observed same-day finals before

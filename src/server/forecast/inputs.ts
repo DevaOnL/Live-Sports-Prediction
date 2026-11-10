@@ -15,6 +15,7 @@ type StoredAppearance = {
   goals: number | null; assists: number | null; shots_on_target: number | null; key_passes: number | null;
   tackles: number | null; interceptions: number | null; saves: number | null; goals_conceded: number | null;
   normalized_revision_id: string | null;
+  enrichment_provenance: Record<string, unknown>;
 };
 type Roster = { id: string; seasonId: string; observedAt: string; complete: boolean; sourceId: string; entries: Map<string, string[]> };
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
@@ -97,7 +98,7 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
         FROM sports.fixtures f JOIN sports.clubs h ON h.id=f.home_club_id JOIN sports.clubs a ON a.id=f.away_club_id
         WHERE f.provider=${provider} AND f.season_id=ANY($1::uuid[]) ORDER BY f.provider_id`, [seasonIds]);
   const appearanceRows = await client.query<StoredAppearance>(
-      `SELECT a.*,c.provider_id AS club_id FROM sports.appearances a
+      `SELECT a.*,c.provider_id AS club_id FROM sports.effective_appearances a
        JOIN sports.fixtures f ON f.id=a.fixture_id LEFT JOIN sports.clubs c ON c.id=a.club_id
        WHERE f.provider=${provider} AND f.season_id=ANY($1::uuid[]) AND a.player_id=ANY($2::uuid[]) ORDER BY a.player_id,a.fixture_id`,
       [seasonIds, players.rows.map((player) => player.id)]);
@@ -299,6 +300,12 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
     result.set(player.provider_id, { input, sourceOrdinal, provenance: observationOnly ? {} : {
       sourceOrdinal, playerRevisionId: player.normalized_revision_id,
       appearanceRevisionIds: [...new Set(stored.map((appearance) => appearance.normalized_revision_id).filter(Boolean))].sort(),
+      ...(stored.some((appearance) => Object.keys(appearance.enrichment_provenance).length) ? {
+        appearanceEnrichments: stored.filter((appearance) => Object.keys(appearance.enrichment_provenance).length).map((appearance) => ({
+          fixtureId: fixtureById.get(appearance.fixture_id)!.id, primaryRevisionId: appearance.normalized_revision_id,
+          fields: appearance.enrichment_provenance,
+        })),
+      } : {}),
       fixtureRevisionIds: [...new Set(fixtures.map((fixture) => fixture.revisionId).filter(Boolean))].sort(),
       rosterObservations: rosters.map((roster) => ({ snapshotId: roster.id, sourceRevisionId: roster.sourceId, observedAt: roster.observedAt, complete: roster.complete,
         leagueId: seasons.get(roster.seasonId)!.coverage.id, season: seasons.get(roster.seasonId)!.coverage.season,

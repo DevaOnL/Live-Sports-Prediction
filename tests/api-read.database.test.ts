@@ -203,7 +203,7 @@ test("scouting uses the full metric-eligible cohort across search, pages, profil
     const client = await reader.connect();
     return new Proxy(client, { get(target, key) {
       if (key === "query") return async (...args: unknown[]) => {
-        if (typeof args[0] === "string" && args[0].includes("FROM sports.appearances a") && args[0].includes("a.player_id=ANY")) {
+        if (typeof args[0] === "string" && args[0].includes("FROM sports.effective_appearances a") && args[0].includes("a.player_id=ANY")) {
           appearanceBatchSizes.push(((args[1] as unknown[])[1] as unknown[]).length);
         }
         return Reflect.apply(target.query, target, args);

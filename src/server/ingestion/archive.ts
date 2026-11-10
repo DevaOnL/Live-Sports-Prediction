@@ -69,10 +69,10 @@ export class ArchiveStore {
     return archived(document);
   }
 
-  async pending(limit = 50, provider?: "sorare" | "apifootball"): Promise<ArchivedResponse[]> {
+  async pending(limit = 50, provider?: "sorare" | "apifootball" | "highlightly"): Promise<ArchivedResponse[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Invalid archive batch limit");
     const documents = await this.raw.aggregate<RawArchive>([
-      ...(provider === "sorare" ? [{ $match: { "params.provider": "sorare" } }]
+      ...(provider === "sorare" || provider === "highlightly" ? [{ $match: { "params.provider": provider } }]
         : provider === "apifootball" ? [{ $match: { $or: [{ "params.provider": "apifootball" }, { "params.provider": { $exists: false } }] } }] : []),
       { $sort: { retrievedAt: 1, _id: 1 } },
       { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },

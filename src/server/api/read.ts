@@ -14,7 +14,10 @@ export class ReadError extends PublicApiError {
   }
 }
 
-export type SourceFreshness = { cutoffAt: string; sourceOrdinal: string; latestRetrievedAt: string | null };
+export type SourceFreshness = {
+  cutoffAt: string; sourceOrdinal: string; latestRetrievedAt: string | null;
+  supplementLatestRetrievedAt?: string | null;
+};
 export type PlayerFilters = {
   q?: string; leagueId?: string; clubId?: string; position?: Position;
   availability?: "available" | "partial" | "unavailable" | "uncomputed";
@@ -151,7 +154,32 @@ function summary(row: SummaryRow, bestStatistic: BestStatistic, profile: SourceP
 /** Only canonical model provenance is exposed, never archive references/payloads. */
 function publicProvenance(value: Record<string, unknown>): Record<string, unknown> {
   const keys = ["sourceOrdinal", "playerRevisionId", "appearanceRevisionIds", "fixtureRevisionIds", "rosterObservations", "coverage"];
-  return Object.fromEntries(keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, value[key]]));
+  const result = Object.fromEntries(keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, value[key]]));
+  if (Array.isArray(value.appearanceEnrichments)) {
+    result.appearanceEnrichments = value.appearanceEnrichments.flatMap((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+      const entry = item as Record<string, unknown>;
+      if (typeof entry.fixtureId !== "string" || typeof entry.primaryRevisionId !== "string") return [];
+      const fields = publicFieldSources(entry.fields);
+      return Object.keys(fields).length ? [{ fixtureId: entry.fixtureId, primaryRevisionId: entry.primaryRevisionId, fields }] : [];
+    });
+  }
+  return result;
+}
+
+/** The view's lineage is deliberately narrower than private source/mapping evidence. */
+function publicFieldSources(value: unknown) {
+  const result: Record<string, { provider: "highlightly"; revisionId: string; sourceRevisionId: string; observedAt: string }> = {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return result;
+  for (const field of ["rating", "keyPasses", "tackles", "interceptions"]) {
+    const source = (value as Record<string, unknown>)[field];
+    if (typeof source !== "object" || source === null || Array.isArray(source)) continue;
+    const entry = source as Record<string, unknown>;
+    if (entry.provider !== "highlightly" || typeof entry.revisionId !== "string" || typeof entry.sourceRevisionId !== "string"
+      || typeof entry.observedAt !== "string" || !Number.isFinite(Date.parse(entry.observedAt))) continue;
+    result[field] = { provider: "highlightly", revisionId: entry.revisionId, sourceRevisionId: entry.sourceRevisionId, observedAt: iso(entry.observedAt) };
+  }
+  return result;
 }
 
 type LoadScouting = () => Promise<Map<string, BestStatistic>>;
@@ -170,11 +198,17 @@ export class ReadService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const row = (await client.query<{ cutoff_at: Date; source_ordinal: string; latest_retrieved_at: Date | null }>(
+      const supplementaryFreshness = this.profile.provider === "sorare" ? `(SELECT max((field.value->>'observedAt')::timestamptz)
+        FROM sports.effective_appearances a JOIN sports.fixtures f ON f.id=a.fixture_id
+        JOIN sports.competition_seasons cs ON cs.id=f.season_id JOIN sports.competitions c ON c.id=cs.competition_id
+        CROSS JOIN LATERAL jsonb_each(a.enrichment_provenance) field
+        WHERE ${sourceSeasonGuard(this.profile)})` : "NULL::timestamptz";
+      const row = (await client.query<{ cutoff_at: Date; source_ordinal: string; latest_retrieved_at: Date | null; supplement_latest_retrieved_at: Date | null }>(
         `SELECT transaction_timestamp() AS cutoff_at,coalesce(max(n.ordinal),0)::text AS source_ordinal,
-          max(s.retrieved_at) AS latest_retrieved_at FROM sports.normalized_revisions n
+          max(s.retrieved_at) AS latest_retrieved_at,${supplementaryFreshness} AS supplement_latest_retrieved_at FROM sports.normalized_revisions n
           LEFT JOIN sports.source_revisions s ON s.id=n.source_revision_id AND s.provider=${this.provider}`)).rows[0];
-      const source = { cutoffAt: iso(row.cutoff_at), sourceOrdinal: row.source_ordinal, latestRetrievedAt: row.latest_retrieved_at ? iso(row.latest_retrieved_at) : null };
+      const source = { cutoffAt: iso(row.cutoff_at), sourceOrdinal: row.source_ordinal, latestRetrievedAt: row.latest_retrieved_at ? iso(row.latest_retrieved_at) : null,
+        ...(this.profile.provider === "sorare" ? { supplementLatestRetrievedAt: row.supplement_latest_retrieved_at ? iso(row.supplement_latest_retrieved_at) : null } : {}) };
       // Filters and comparison selections never define the statistical cohort.
       let scouting: Promise<Map<string, BestStatistic>> | undefined;
       const loadScouting = () => scouting ??= prepareObservedInputs(client, source.cutoffAt, this.profile).then((prepared) =>
@@ -286,7 +320,7 @@ export class ReadService {
         fixture_id: string; league_id: string; season: string; kickoff_at: Date | null; status: string; statistics_status: string;
         home_id: string; home_name: string; away_id: string; away_name: string; club_id: string | null; club_name: string | null;
         participation: string; minutes: number | null; rating: string | null; goals: number | null; assists: number | null;
-        revision_id: string | null; membership_known: boolean;
+        revision_id: string | null; membership_known: boolean; enrichment_provenance: Record<string, unknown>;
         shots_on_target: number | null; key_passes: number | null; tackles: number | null; interceptions: number | null; saves: number | null; goals_conceded: number | null;
       }>(`WITH ${this.approved} SELECT f.provider_id AS fixture_id,a.league_id,a.label AS season,f.kickoff_at,f.status,f.statistics_status,
           home.provider_id AS home_id,home.name AS home_name,away.provider_id AS away_id,away.name AS away_name,
@@ -295,8 +329,8 @@ export class ReadService {
             AND x.club_id IN (f.home_club_id,f.away_club_id) AND m.player_id=x.player_id
             AND m.club_id=x.club_id AND m.season_id=x.season_id AND isfinite(f.kickoff_at)
             AND f.kickoff_at>=m.valid_from AND (m.valid_until IS NULL OR f.kickoff_at<m.valid_until),false) AS membership_known,
-          x.shots_on_target,x.key_passes,x.tackles,x.interceptions,x.saves,x.goals_conceded
-        FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id JOIN approved a ON a.season_id=f.season_id
+          x.shots_on_target,x.key_passes,x.tackles,x.interceptions,x.saves,x.goals_conceded,x.enrichment_provenance
+        FROM sports.effective_appearances x JOIN sports.fixtures f ON f.id=x.fixture_id JOIN approved a ON a.season_id=f.season_id
         JOIN sports.clubs home ON home.id=f.home_club_id JOIN sports.clubs away ON away.id=f.away_club_id
         LEFT JOIN sports.clubs club ON club.id=x.club_id LEFT JOIN sports.player_memberships m ON m.id=x.membership_id
         WHERE x.player_id=$1 AND f.provider=${this.provider}
@@ -308,6 +342,7 @@ export class ReadService {
         club: row.club_id ? { id: row.club_id, name: row.club_name! } : null,
         participation: row.participation, minutes: row.minutes, rating: row.rating === null ? null : Number(row.rating),
         revisionId: row.revision_id, membershipKnown: row.membership_known,
+        fieldSources: publicFieldSources(row.enrichment_provenance),
         metrics: { goals: row.goals, assists: row.assists, shotsOnTarget: row.shots_on_target, keyPasses: row.key_passes,
           tackles: row.tackles, interceptions: row.interceptions, saves: row.saves, goalsConceded: row.goals_conceded },
       }));
