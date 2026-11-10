@@ -194,7 +194,8 @@ npm run build
 The lockfile pins npm dependency versions. GitHub Actions runs installation, lint,
 type checking, and the production build without database or API credentials. A
 separate job verifies migrations, constraints, ingestion, forecast persistence,
-refresh processing, reporting permissions, sessions/roles, authenticated HTTP APIs,
+refresh processing, frozen evaluation, worker crash recovery, reporting permissions,
+sessions/roles, authenticated HTTP APIs,
 browser journeys, and isolated database demonstrations against disposable
 PostgreSQL 17 and MongoDB 8 services. `npm run test:auth` needs the guarded PostgreSQL test recipe;
 `npm run test:api` also needs the guarded MongoDB server and a preceding
@@ -204,7 +205,9 @@ With the same isolated cluster guards, run `npx playwright install chromium` and
 layouts. Linux hosts may need `npx playwright install --with-deps chromium`.
 An existing compatible browser can be selected with
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Browser tests seed synthetic data, block
-external browser requests and do not call the football provider.
+external browser requests and do not call the football provider. The
+[evaluation guide](docs/evaluation.md#run-and-verify) also covers isolated worker,
+evaluation and expanded accessibility checks.
 
 ## Methodology
 
@@ -218,6 +221,8 @@ Data coverage is restricted to regular-season Championship (153) and Ligue 2
 (164), 2026/27, using APIFootball.com's permanent free plan. Free-plan availability
 can change; missing source data remains explicit. Forecasts are fixed heuristic
 estimates, with no established predictive accuracy or calibrated probability.
+The [evaluation report](docs/evaluation.md) describes the fixed chronological
+protocol, paired baselines, measured coverage and read-only evaluation command.
 
 ## Technology
 

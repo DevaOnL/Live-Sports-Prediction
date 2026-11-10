@@ -14,8 +14,8 @@ metadata. The executable definitions are
 [`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql).
 
 The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
-football reads and administrator operations. Login/account screens are available;
-the root page remains a methodology preview. An explicitly enabled worker imports
+football reads and administrator operations. The interface includes login, a player
+catalogue, five-match evidence, comparison and administrator screens. An explicitly enabled worker imports
 covered provider data, reconstructs standings, and processes ingestion jobs and
 forecast refreshes. Saved forecasts retain inputs and explanations; see
 [forecasting](forecasting.md). The [API guide](api.md) describes session setup and

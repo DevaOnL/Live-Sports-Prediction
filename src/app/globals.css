@@ -6,6 +6,7 @@ a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #5937ba; outline-offset: 4px; }
+.skip-link:focus-visible, .site-masthead a:focus-visible, .site-footer a:focus-visible { outline-color: var(--yellow); box-shadow: 0 0 0 8px var(--ink); }
 button { cursor: pointer; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 ::selection { background: var(--yellow); color: var(--ink); }
@@ -119,6 +120,7 @@ svg { flex-shrink: 0; }
 .source-note > div { display: grid; gap: 8px; margin-top: 12px; }
 summary { cursor: pointer; font-size: 12px; font-weight: 700; min-height: 44px; align-content: center; padding: 10px 0; line-height: 1.5; }
 summary:hover { text-decoration: underline; text-underline-offset: 3px; }
+.data-table summary { min-width: 44px; }
 .provenance-details { font-size: 12px; line-height: 1.7; margin-top: 15px; min-width: 0; }
 .provenance-details > :last-child { margin-bottom: 0; }
 .provenance-details p { font-size: 12px; }
