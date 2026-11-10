@@ -37,7 +37,8 @@ Signed-in viewers and administrators can read stored evidence through
 canonical database snapshot. The application uses the restricted SQL reader for
 these football reads; local forecast CLI commands use the writer. See the
 [API guide](api.md) for login, cookie handling, filters and administrator refresh
-requests. Product forecast/comparison screens remain future work.
+requests. The player profile shows saved form, forecasts and their evidence; the
+comparison screen shows the shared snapshot and matching per-90 statistics.
 
 The enabled worker processes canonical, standings and roster events and checks
 time every minute. It coalesces pending changes into one durable refresh, retaining
@@ -104,8 +105,11 @@ forecastRating = clamp(F / (D_next × C_next), 0, 10)
 displayedForecastRating = 10 × forecastRating
 ```
 
-The adjusted form index and displayed forecast rating both use 0–100, with
-different meanings. Form can remain available when no next fixture is known.
+The website shows `forecastRating` on a 0–10 scale and the separate
+`adjustedFormIndex` on a 0–100 scale. The legacy API field
+`displayedForecastRating` remains `10 × forecastRating` on a 0–100 scale; the
+website does not display that field. Form can remain available when no next
+fixture is known.
 Select the earliest scheduled future fixture for the known current club within
 enabled coverage. Live, final, cancelled, postponed and unknown fixtures are
 excluded. Once kickoff passes, the old fixture is no longer a future target.
@@ -154,7 +158,13 @@ do not cause a refresh feedback loop. See the [database demonstrations](demo.md)
 for reporting functions, refresh requests and their privilege boundaries.
 
 API catalogue availability and overview counts describe the last stored
-evaluation. Catalogue summaries label this `kind: "stored-evaluation"` and include
+model evaluation, including both historical form and future-match outputs.
+`available` requires a known position and every expected output; `partial` means
+at least one output is available but full model requirements are unmet (possibly
+form only). `unavailable` means none are available.
+`uncomputed` means there is no saved evaluation. A partial model result does not
+establish that any future-match forecast is available. Catalogue summaries label
+this `kind: "stored-evaluation"` and include
 `evaluationCutoffAt`, `checkedAt` and the evaluation source ordinal. A forecast
 response additionally includes the current read's `source.cutoffAt` and source
 watermark. Reading a saved forecast does not recalculate it: its target may have

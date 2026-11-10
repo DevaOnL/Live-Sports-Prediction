@@ -12,9 +12,10 @@ export function formatDate(value: string | null | undefined): string {
 const explanations: Record<string, string> = {
   incomplete_history: "Uncertain appearances could change the five-match window.", insufficient_history: "Fewer than five confirmed appearances meet the 60-minute minimum.",
   missing_metric: "A required statistic is missing from the selected appearances.", missing_rating: "A selected appearance has no observed rating.",
-  missing_next_fixture: "No confirmed future fixture is known for this player.", unknown_current_club: "The player's current club is not confirmed.",
-  ambiguous_current_club: "Roster observations disagree about the player's current club.", incomplete_roster_observation: "The latest roster observation is incomplete.",
-  missing_roster_observation: "A covered competition has no roster observation.", unknown_position: "The player's position is not confirmed.",
+  no_future_fixture: "No scheduled future fixture was known in enabled coverage at this cutoff.",
+  missing_next_fixture: "No scheduled future fixture was known in enabled coverage at this cutoff.", unknown_current_club: "The player's club was not confirmed by this cutoff.",
+  ambiguous_current_club: "Roster observations available by this cutoff disagree about the player's club.", incomplete_roster_observation: "The latest roster observation available by this cutoff is incomplete.",
+  missing_roster_observation: "A covered competition has no roster observation available by this cutoff.", unknown_position: "The player's position is not confirmed.",
   unknown_kickoff: "An appearance has an unknown kickoff time.", unresolved_past_fixture: "A past fixture still has an unresolved status.",
   uncertain_tier: "An unresolved league-table tie uses neutral opponent strength.",
 };

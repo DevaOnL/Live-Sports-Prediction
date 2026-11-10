@@ -155,8 +155,9 @@ evaluation, with its cutoff and check time. Imports and target expiry refresh
 asynchronously; an unchanged source ordinal alone does not establish freshness.
 The comparison API evaluates current canonical inputs at a common read snapshot
 without saving revisions. The enabled worker refreshes automatically after canonical
-changes and checks target expiry every minute. Calculations need PostgreSQL writer
-credentials, with no provider key or MongoDB connection. See the
+changes and checks target expiry every minute. CLI refreshes need PostgreSQL writer
+credentials; comparisons use the restricted reader. Neither calculation needs a
+provider key or MongoDB connection. See the
 [forecasting guide](docs/forecasting.md) for formulas and availability rules.
 
 ## Database demonstrations
@@ -221,8 +222,9 @@ Data coverage is restricted to regular-season Championship (153) and Ligue 2
 (164), 2026/27, using APIFootball.com's permanent free plan. Free-plan availability
 can change; missing source data remains explicit. Forecasts are fixed heuristic
 estimates, with no established predictive accuracy or calibrated probability.
-The [evaluation report](docs/evaluation.md) describes the fixed chronological
-protocol, paired baselines, measured coverage and read-only evaluation command.
+The [evaluation report](docs/evaluation.md) separates live output availability
+from historical accuracy, documents the frozen protocol and coverage, and provides
+reader-only historical and forward-measurement commands.
 
 ## Technology
 

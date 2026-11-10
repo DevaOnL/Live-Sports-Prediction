@@ -20,7 +20,7 @@
     "test:db": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/database.test.ts",
     "mongo:provision": "node --env-file-if-exists=.env --import tsx scripts/mongo.ts",
     "ingest": "node --env-file-if-exists=.env --import tsx scripts/ingest.ts",
-    "test:unit": "node --import tsx --test tests/ingestion.unit.test.ts tests/provider.test.ts tests/standings.test.ts tests/jobs.test.ts tests/forecast.test.ts tests/worker.test.ts tests/http.test.ts tests/forecast-presentation.test.ts tests/evaluation.test.ts",
+    "test:unit": "node --import tsx --test tests/ingestion.unit.test.ts tests/provider.test.ts tests/standings.test.ts tests/jobs.test.ts tests/forecast.test.ts tests/worker.test.ts tests/http.test.ts tests/forecast-presentation.test.ts tests/evaluation.test.ts tests/prospective.test.ts",
     "test:ingestion": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/ingestion.database.test.ts",
     "forecast": "node --env-file-if-exists=.env --import tsx scripts/forecast.ts",
     "test:forecast": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/forecast.database.test.ts tests/forecast-jobs.database.test.ts",
@@ -31,9 +31,10 @@
     "test:api": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/api-read.database.test.ts tests/api-admin.database.test.ts tests/api-http.database.test.ts",
     "test:ui": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/interface.browser.test.ts",
     "evaluate": "node --env-file-if-exists=.env --import tsx scripts/evaluate.ts",
-    "test:evaluation": "node --import tsx --test --test-concurrency=1 tests/evaluation.database.test.ts",
+    "test:evaluation": "node --import tsx --test --test-concurrency=1 tests/evaluation.database.test.ts tests/prospective.database.test.ts",
     "test:worker": "node --import tsx --test --test-concurrency=1 tests/worker.integration.test.ts",
-    "test:accessibility": "node --import tsx --test --test-concurrency=1 tests/accessibility.browser.test.ts"
+    "test:accessibility": "node --import tsx --test --test-concurrency=1 tests/accessibility.browser.test.ts",
+    "measure": "node --env-file-if-exists=.env --import tsx scripts/measure.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",

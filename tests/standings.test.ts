@@ -219,6 +219,21 @@ test("known unfinished, postponed and cancelled fixtures add no invented results
   }
 });
 
+for (const status of ["postponed", "cancelled"] as const) test(`${status} fixtures without kickoff do not block results or bypass schedule guards`, () => {
+  const data = setup();
+  Object.assign(data.fixtures[0], { status, kickoffAt: null, homeScore: 9, awayScore: 0 });
+  for (const table of [data.table(), reconstructStandings(data.coverage, data.clubs, data.fixtures, "2026-08-03", { asOf: "2026-08-02T12:00:00Z" })]) {
+    assert.equal(table.complete, true);
+    assert.equal(table.issues.some((issue) => issue.code === "unknown_kickoff"), false);
+    assert.ok(table.rows.every((row) => row.played === 0 && row.points === 0));
+  }
+  const incomplete = reconstructStandings(data.coverage, data.clubs, data.fixtures.slice(1), "2026-08-02");
+  assert.equal(incomplete.complete, false);
+  assert.ok(incomplete.issues.some((issue) => issue.code === "incomplete_schedule"));
+  data.fixtures.push({ ...data.fixtures[0], id: "duplicate-pairing" });
+  assert.ok(data.table().issues.some((issue) => issue.code === "duplicate_pairing"));
+});
+
 test("full roster and every regular-season home/away pairing are required", () => {
   const missingFixture = setup();
   missingFixture.fixtures.pop();

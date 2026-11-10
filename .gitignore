@@ -19,6 +19,7 @@
 !/scripts/demo.ts
 !/scripts/users.ts
 !/scripts/evaluate.ts
+!/scripts/measure.ts
 !/tests/
 /tests/*
 !/tests/database.test.ts
@@ -40,6 +41,8 @@
 !/tests/interface.browser.test.ts
 !/tests/evaluation.test.ts
 !/tests/evaluation.database.test.ts
+!/tests/prospective.test.ts
+!/tests/prospective.database.test.ts
 !/tests/worker.integration.test.ts
 !/tests/accessibility.browser.test.ts
 !/tests/support/

@@ -200,18 +200,26 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
     });
     const rosterReasons: Reason[] = [];
     const candidates: CurrentClub[] = [];
+    let latestClubClaims = 0;
+    const playerSeasons = new Set(stored.map((appearance) => fixtureById.get(appearance.fixture_id)!)
+      .filter((fixture) => !fixture.kickoffAt || Date.parse(fixture.kickoffAt) < cutoff).map((fixture) => fixture.seasonId));
+    for (const roster of rosters) if (roster.entries.get(player.id)?.length) playerSeasons.add(roster.seasonId);
     for (const season of seasons.values()) {
+      // A league with no evidence for this player cannot contradict a confirmed
+      // club elsewhere. Its missing or partial roster is not player evidence.
+      if (!playerSeasons.has(season.id)) continue;
       const latest = latestRosters.get(season.id);
       if (!latest) { rosterReasons.push({ code: "missing_roster_observation" }); continue; }
       const evidence = rosterEvidence(latest, player.id);
+      latestClubClaims += evidence.clubs.length;
       if (evidence.incomplete) rosterReasons.push({ code: "incomplete_roster_observation" });
       if (evidence.ambiguous) rosterReasons.push({ code: "ambiguous_current_club" });
       if (!evidence.incomplete && !evidence.ambiguous) {
         for (const clubId of evidence.clubs) candidates.push({ clubId, leagueId: season.coverage.id, season: season.coverage.season });
       }
     }
-    if (candidates.length > 1) rosterReasons.push({ code: "ambiguous_current_club" });
-    if (candidates.length === 0) rosterReasons.push({ code: "unknown_current_club" });
+    if (latestClubClaims > 1) rosterReasons.push({ code: "ambiguous_current_club" });
+    if (candidates.length === 0 && rosterReasons.length === 0) rosterReasons.push({ code: "unknown_current_club" });
     const currentClub = candidates.length === 1 && rosterReasons.length === 0 ? candidates[0] : null;
     type InstantEvidence = { claims: CurrentClub[]; rosters: Map<string, Roster[]> };
     const evidenceByInstant = new Map<number, InstantEvidence>();
@@ -239,7 +247,9 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
       for (const [seasonId, observations] of evidence.rosters) {
         const season = seasons.get(seasonId)!;
         const resolved = rosterEvidence(observations, player.id);
-        if (resolved.incomplete || resolved.ambiguous) ambiguous = true;
+        const affectsClaim = (active?.leagueId === season.coverage.id && active.season === season.coverage.season)
+          || evidence.claims.some((claim) => claim.leagueId === season.coverage.id && claim.season === season.coverage.season);
+        if (resolved.ambiguous || (resolved.incomplete && (affectsClaim || resolved.clubs.length > 0))) ambiguous = true;
         if (!resolved.incomplete && resolved.clubs.length === 0) absent.push({ leagueId: season.coverage.id, season: season.coverage.season });
         for (const clubId of resolved.clubs) claims.push({ clubId, leagueId: season.coverage.id, season: season.coverage.season });
       }
@@ -273,7 +283,8 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
     }
     const input: ForecastInput = {
       player: { id: player.provider_id, position: player.position }, cutoffAt, appearances: history,
-      gaps, currentClub, rosterReasons: [...new Map(rosterReasons.map((reason) => [reason.code, reason])).values()],
+      gaps, currentClub, rosterReasons: ["missing_roster_observation", "incomplete_roster_observation", "ambiguous_current_club", "unknown_current_club"]
+        .filter((code) => rosterReasons.some((reason) => reason.code === code)).map((code) => ({ code })),
       targets: currentClub ? fixtures.filter((fixture) => fixture.leagueId === currentClub.leagueId && fixture.season === currentClub.season
         && [fixture.home.id, fixture.away.id].includes(currentClub.clubId)).map((fixture) => ({ ...match(fixture), context: contextFor(fixture, currentClub.clubId, true) })) : [],
     };

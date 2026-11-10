@@ -148,7 +148,7 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await page.getByLabel("Competition", { exact: true }).selectOption("153");
   await page.getByLabel("Club", { exact: true }).selectOption("3072");
   await page.getByLabel("Position", { exact: true }).selectOption("GK");
-  await page.getByLabel("Forecast availability", { exact: true }).selectOption("available");
+  await page.getByLabel("Model availability", { exact: true }).selectOption("available");
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await page.getByRole("heading", { name: names[0], exact: true }).waitFor();
   assert.equal(await page.getByRole("heading", { name: /^Synthetic demo / }).count(), 1);

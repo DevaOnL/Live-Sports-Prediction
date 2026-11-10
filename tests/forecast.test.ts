@@ -356,7 +356,7 @@ test("context corrections and clock-driven target changes affect hash; A to B to
 
 test("ambiguous roster blocks target rather than guessing while historical form remains", () => {
   const data = input();
-  data.rosterReasons = [{ code: "ambiguous_current_membership" }];
+  data.rosterReasons = [{ code: "ambiguous_current_club" }];
   const result = evaluateForecast(data);
   assert.equal(result.target, null);
   assert.equal(result.forecastRating.status, "unavailable");
