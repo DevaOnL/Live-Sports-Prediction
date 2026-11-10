@@ -2,8 +2,9 @@
 
 The worker imports observed football data from APIFootball.com's permanent free
 plan at `https://apiv3.apifootball.com/`. Free access is a dated observation, not a
-promise of continued availability. Paid trials and additional competitions are
-outside the configured coverage.
+promise of continued availability. Approved free-plan coverage was checked on
+2026-11-09. Paid trials and additional competitions are outside the configured
+coverage.
 
 | Competition | Provider ID | Season | Clubs | Local standings timezone |
 | --- | --- | --- | --- | --- |
@@ -59,8 +60,11 @@ docker compose up -d --build worker
 
 For a host-side worker, stop the container worker first and run `npm run worker`.
 Leave `INGESTION_ENABLED=false` to keep its process health listener available
-without database connections, imports, or queue processing. Health reports
-liveness; it does not certify complete football history.
+without database connections, imports, or queue processing. When enabled,
+`GET /health` checks authenticated database access and progress in both the source
+and local-forecast loops. A healthy response does not certify source freshness,
+complete football history, or an available projection. The web `/api/health`
+endpoint remains a separate process/configuration check without database access.
 
 ## Commands and polling
 
@@ -73,6 +77,12 @@ The CLI uses the same restricted identities and shared provider budget:
 | `npm run ingest -- reconcile` | Recover SQL/import metadata and hydrate the latest previously committed roster observations offline |
 | `npm run ingest -- status` | Show fixture/archive states, shared budget use, standings reconciliation, queue counts, and failed job identifiers with safe failure codes |
 | `npm run ingest -- retry JOB_UUID` | Requeue a failed ingestion job after correcting its cause; replace `JOB_UUID` with its identifier from status |
+
+`INGESTION_ENABLED` controls the long-running worker only. Explicit `sync` and
+`once` CLI commands require the provider key and can make provider requests even
+when that flag is false. `status`, `reconcile` and `retry` need the restricted SQL
+writer and MongoDB runtime connections but no provider key; `retry` queues work
+without executing it. Avoid running a host worker alongside the Compose worker.
 
 Authenticated administrators can also submit import, fixture-statistics, local
 forecast-refresh and failed-job retry requests through the [API](api.md).
@@ -125,6 +135,15 @@ commit. Observations rejected by relational integrity constraints are quarantine
 Service and connection failures remain retryable.
 Repeated content can produce new observations without unnecessary
 canonical changes; genuine corrections append revisions.
+
+`reconcile` handles up to 1,000 pending/failed or unmarked archives per call,
+oldest first, and then projects the latest committed roster observations. Repeat
+it if an interruption left a larger backlog; the enabled worker repeats recovery
+automatically. Archives already marked `imported` or `invalid` are excluded from
+that recovery scan. This is interruption recovery, not a raw-archive rebuild tool:
+it cannot reconstruct a lost SQL database from MongoDB alone or repair mismatched
+SQL/MongoDB backup times. Preserve both stores together during backup/restore;
+do not clear markers or reset volumes to force a replay.
 
 Manual appearance corrections are SQL records with an explicit manual source,
 new normalized revision, reason, actor and before/after audit. They emit a
@@ -183,6 +202,11 @@ incomplete newest observations remain uncertain. Unknown positions and missing
 match metrics do not by themselves invalidate roster membership coverage.
 After an upgrade, `reconcile` projects the latest already committed `get_teams`
 archives using their original observation times, without spending API requests.
+It retains all observations tied for the latest time, including conflicting
+claims. Only seasons with this player's pre-cutoff appearance or roster-inclusion
+evidence can introduce missing/incomplete roster blockers; unrelated empty league
+rosters cannot invalidate a confirmed club. A complete relevant exclusion ends
+the old club scope without inventing a transfer, appearance or DNP.
 
 ## Missing data and historical standings
 
@@ -191,6 +215,19 @@ and substitutes are retained as unknown participants until detailed evidence is
 available. Coaches are excluded; a lineup's numeric formation slot is not treated
 as a position group. Detailed statistics support keyed fixture responses, flat
 `player_statistics`, and event `player_stats.home`/`away` collections.
+
+The normalizer maps `player_key` to the player identifier and `match_id` to the
+fixture identifier. Its metric mapping is explicit in
+[`normalize.ts`](../src/server/ingestion/normalize.ts):
+
+| Canonical field | Provider field | Stored units |
+| --- | --- | --- |
+| `minutes` | `player_minutes_played` | Reported integer minutes |
+| `rating` | `player_rating` | Decimal, 0–10 |
+| `goals`, `assists` | `player_goals`, `player_assists` | Integer match counts |
+| `shots_on_target`, `key_passes` | `player_shots_on_goal`, `player_key_passes` | Integer match counts |
+| `tackles`, `interceptions` | `player_tackles`, `player_interceptions` | Integer match counts |
+| `saves`, `goals_conceded` | `player_saves`, `player_goals_conceded` | Integer match counts |
 
 Blank/null metrics remain missing; valid numeric zero remains zero. Explicit
 zero-minute evidence can confirm DNP when it does not conflict with positive
@@ -209,6 +246,9 @@ provenance-backed context. Championship and Ligue 2 use separate tie rules;
 Ligue 2 head-to-head comparison waits for both meetings. Unsupported disciplinary
 separation leaves unresolved ties flagged. Future forecasts must treat a tie
 crossing a strength-tier boundary as uncertain with neutral strength.
+Confirmed postponed/cancelled fixtures remain part of schedule structure
+validation but contribute neither results nor unknown-date result gaps. Other
+unknown-date fixtures still block affected standings context.
 
 Real provider-total reconciliation is an operational verification step. Do not
 infer that it passed from a successful HTTP response or a healthy worker. Inspect
@@ -233,7 +273,10 @@ MongoDB additionally requires `MONGO_TEST_PORT`, a `MONGO_TEST_DATABASE` ending
 server's `hostInfo.system.hostname`. These identifiers select the isolated test
 servers; they are not credentials. MongoDB must contain no databases besides its
 system databases and the selected test database. Use the disposable-container recipe below
-after `npm ci`.
+after `npm ci`. For the browser suites, first install Chromium and its host
+dependencies with `npx playwright install --with-deps chromium` as described in
+the [README](../README.md). Run all suites sequentially inside the subshell so
+its identity markers and temporary services remain available until they finish.
 
 ```bash
 (
@@ -292,12 +335,17 @@ after `npm ci`.
     'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT system_identifier::text FROM pg_control_system()"')"
   export MONGO_TEST_HOST_ID="$(docker exec "$ingestion_test_mongo" sh -c \
     'mongosh --quiet --host 127.0.0.1 --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "print(db.adminCommand({ hostInfo: 1 }).system.hostname)"')"
+  npm run test:db
   npm run test:ingestion
   npm run test:forecast
+  npm run test:evaluation
   npm run test:reporting
   npm run test:auth
   npm run build
   npm run test:api
+  npm run test:ui
+  npm run test:worker
+  npm run test:accessibility
 )
 ```
 
@@ -310,6 +358,12 @@ commands, manual-correction replay protection and real HTTP behavior against the
 built app. HTTP tests seed synthetic archives and need both server identity
 markers, even though the web process itself has no MongoDB connection. These
 suites do not make provider requests.
+The evaluation suite covers the frozen historical and separate forward protocols;
+the worker suite exercises real process crashes, leases and recovery with a
+synthetic provider preload. Browser suites use the built app and synthetic data,
+blocking requests outside their isolated web origin. Run `npm run test:unit`
+separately for service-free checks and `npm run demo` for its own independent
+disposable demonstration.
 
 Contradictory same-player lineup clubs preserve unknown participation and clear
 stale membership and metrics. Detailed statistics in that contradictory response

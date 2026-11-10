@@ -202,6 +202,12 @@ not arguments. Password/role changes revoke existing sessions transactionally.
 Public signup and password reset are disabled. Follow [session setup](api.md)
 before using login; applying authentication tables does not seed users.
 
+The reader and writer can execute the invoker functions
+`sports.player_qualifying_history` and `sports.forecast_lineage`; only the writer
+can call `sports.request_forecast_refresh`. These routines do not grant access
+through a privileged function owner. Raw MongoDB archive permissions belong to a
+separate runtime identity, described in [ingestion.md](ingestion.md#storage-and-recovery).
+
 Indexes cover provider-key deduplication, player/fixture history, dated
 memberships, fixture lookup by season and home/away club, revision ancestry/entity
 order, historical standings, effective adjustments, unpublished outbox records,
@@ -277,6 +283,14 @@ can be supplied with `npm run db:migrate -- --dir path`. Existing unmanaged
 `sports`/`auth`/`infra` schemas or an incorrectly owned ledger require administrator
 review rather than automatic adoption or replacement.
 
+If migration stops, keep the database and inspect the pending filename and ledger
+before retrying. A failure in a new file leaves that file unapplied; a checksum or
+history failure requires restoring the published migration bytes, not editing
+the ledger to accept a different history. Do not rerun provisioning as a generic
+migration repair: it changes runtime login passwords. After a service or import
+interruption, use the [cross-store recovery procedure](ingestion.md#storage-and-recovery)
+instead of changing schema history or deleting data.
+
 ## Reporting and notifications
 
 `007_forecast_freshness.sql` backfills mutable evaluation metadata independently
@@ -336,6 +350,7 @@ Run it after `npm ci`:
   export POSTGRES_TEST_CLUSTER_ID="$db_test_cluster_id"
   npm run test:db
   npm run test:forecast
+  npm run test:evaluation
   npm run test:reporting
   npm run test:auth
 )
@@ -351,5 +366,7 @@ rollback, trigger notifications and role boundaries. The auth suite checks real
 sessions, expiry/logout/revocation, trusted roles, CLI administration and shared
 login throttling. `npm run test:api` also needs that isolated MongoDB identity and
 a preceding `npm run build`; use the combined ingestion recipe for those tests.
+Historical and forward evaluation database tests need only this guarded PostgreSQL
+cluster; they verify reader-only scoring against synthetic evidence.
 `npm run demo` manages its own independent containers and requires no environment
 file; it must be run outside any custom shared database workflow.
