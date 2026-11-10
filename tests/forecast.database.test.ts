@@ -12,7 +12,8 @@ import { coverageFor } from "../src/server/ingestion/coverage";
 import { IngestionStore } from "../src/server/ingestion/store";
 import { JobQueue } from "../src/server/ingestion/jobs";
 import type { Appearance, ArchivedResponse, Batch, Fixture, Player } from "../src/server/ingestion/types";
-import { prepareInputs } from "../src/server/forecast/inputs";
+import { inputHash } from "../src/server/forecast/engine";
+import { prepareHistoricalInputs, prepareInputs } from "../src/server/forecast/inputs";
 import { ForecastStore } from "../src/server/forecast/store";
 
 const database = process.env.POSTGRES_DB ?? "";
@@ -372,6 +373,80 @@ test("an unrelated league's complete absence preserves an established club check
   assert.equal(saved.inputHash, first.inputHash);
   assert.equal(saved.result.historyStatus, "ready");
   assert.equal(saved.input.currentClub?.clubId, clubs[0].id);
+});
+
+for (const state of ["missing", "partial"] as const) test(`an unrelated league's ${state} roster preserves a uniquely confirmed club and history scope`, async () => {
+  await forecasts.refresh(players[0].id, cutoff);
+  const first = (await forecasts.show(players[0].id))!;
+  const season = await additionalLeague();
+  await pool.query(`INSERT INTO sports.season_clubs(season_id,club_id)
+    SELECT $1,id FROM sports.clubs WHERE provider_id=ANY($2::text[])`, [season, [clubs[1].id, clubs[2].id]]);
+  if (state === "partial") await roster("2026-08-06T00:00:00.000Z", [], false, { leagueId: "164" });
+  await pool.query(`INSERT INTO sports.fixtures(provider_id,season_id,home_club_id,away_club_id,kickoff_at,status,statistics_status,home_score,away_score)
+    SELECT '1999999',$1,h.id,a.id,'2026-08-08T15:00:00Z','final','complete',1,0
+    FROM sports.clubs h,sports.clubs a WHERE h.provider_id=$2 AND a.provider_id=$3`, [season, clubs[1].id, clubs[2].id]);
+  await forecasts.refresh(players[0].id, cutoff);
+  const saved = (await forecasts.show(players[0].id))!;
+  assert.equal(saved.inputHash, first.inputHash);
+  assert.equal(saved.input.currentClub?.clubId, clubs[0].id);
+  assert.deepEqual(saved.input.rosterReasons, []);
+  assert.equal(saved.result.historyStatus, "ready");
+  assert.equal(saved.result.forecastRating.status, "available");
+  assert.equal(saved.input.gaps.some((gap) => gap.fixtureId === "1999999"), false);
+});
+
+test("an explicit partial cross-league claim blocks the current club and clears historical scope", async () => {
+  const season = await additionalLeague();
+  await pool.query(`INSERT INTO sports.season_clubs(season_id,club_id)
+    SELECT $1,id FROM sports.clubs WHERE provider_id=$2`, [season, clubs[1].id]);
+  await roster("2026-08-06T00:00:00.000Z", [{ player: players[0], club: 1 }], false, { leagueId: "164" });
+  await importFixtures([{ ...fixture(2, 3), kickoffAt: "2026-08-08T15:00:00.000Z", status: "final", homeScore: 1, awayScore: 0,
+    detailed: true, statisticsStatus: "complete", appearances: [] }]);
+  await forecasts.refresh(players[0].id, cutoff);
+  const saved = (await forecasts.show(players[0].id))!;
+  assert.equal(saved.input.currentClub, null);
+  assert.deepEqual(saved.input.rosterReasons, [{ code: "incomplete_roster_observation" }, { code: "ambiguous_current_club" }]);
+  assert.equal(saved.result.forecastRating.status, "unavailable");
+  assert.equal(saved.result.historyStatus, "incomplete_history");
+  assert.ok(saved.input.gaps.some((gap) => gap.fixtureId === fixture(2, 3).id));
+});
+
+test("an incomplete empty roster in the player's established league still blocks club and history scope", async () => {
+  await roster("2026-08-06T00:00:00.000Z", [], false);
+  await importFixtures([{ ...fixture(2, 3), kickoffAt: "2026-08-08T15:00:00.000Z", status: "final", homeScore: 1, awayScore: 0,
+    detailed: true, statisticsStatus: "complete", appearances: [] }]);
+  await forecasts.refresh(players[0].id, cutoff);
+  const saved = (await forecasts.show(players[0].id))!;
+  assert.equal(saved.input.currentClub, null);
+  assert.deepEqual(saved.input.rosterReasons, [{ code: "incomplete_roster_observation" }]);
+  assert.equal(saved.result.historyStatus, "incomplete_history");
+  assert.ok(saved.input.gaps.some((gap) => gap.fixtureId === fixture(2, 3).id));
+});
+
+test("after-cutoff appearances and roster inclusions cannot establish historical player relevance", async () => {
+  const historical = async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      return (await prepareHistoricalInputs(client, "2026-08-09T23:00:00.000Z", "2026-08-10", [players[0].id])).get(players[0].id)!;
+    } finally { await client.query("ROLLBACK"); client.release(); }
+  };
+  const first = await historical();
+  const season = await additionalLeague();
+  await pool.query(`INSERT INTO sports.season_clubs(season_id,club_id)
+    SELECT $1,id FROM sports.clubs WHERE provider_id=ANY($2::text[])`, [season, [clubs[1].id, clubs[2].id]]);
+  const future = (await pool.query(`INSERT INTO sports.fixtures(provider_id,season_id,home_club_id,away_club_id,kickoff_at,status)
+    SELECT '1999999',$1,h.id,a.id,'2026-08-11T15:00:00Z','scheduled'
+    FROM sports.clubs h,sports.clubs a WHERE h.provider_id=$2 AND a.provider_id=$3 RETURNING id`, [season, clubs[1].id, clubs[2].id])).rows[0].id;
+  await pool.query(`INSERT INTO sports.appearances(fixture_id,player_id,season_id,participation)
+    SELECT $1,id,$2,'unknown' FROM sports.players WHERE provider_id=$3`, [future, season, players[0].id]);
+  await roster("2026-08-11T00:00:00.000Z", [{ player: players[0], club: 1 }], false, { leagueId: "164" });
+  const after = await historical();
+  assert.equal(after.input.currentClub?.clubId, clubs[0].id);
+  assert.deepEqual(after.input.rosterReasons, []);
+  assert.equal(after.input.appearances.some((appearance) => appearance.fixtureId === "1999999"), false);
+  assert.equal(inputHash(after.input), inputHash(first.input));
+  assert.equal((await prepared()).input.currentClub?.clubId, clubs[0].id);
 });
 
 test("simultaneous cross-league club claims preserve a historical gap regardless of clone UUIDs", async () => {

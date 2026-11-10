@@ -67,8 +67,8 @@ export function ForecastView({ input, result, clubs, compact = false }: Props) {
       {metrics.map((metric) => <OutputCard key={metric} metric={metric} label={metricLabel[metric]} unit="per 90 minutes" output={result.projected90[metric]!} />)}
     </div>
     <details className="provenance-details"><summary>How to read these values</summary><p>Forecast rating: 0–10 estimate. Adjusted form: a separate 0–100 model index. Per-90 statistics assume 90 minutes of play; they do not predict playing time or guarantee counts. This heuristic has no established predictive accuracy.</p></details>
-    <section className="detail-section" aria-label="Next fixture">
-      <div className="section-heading"><div><p className="eyebrow">Up next</p><h2>Next fixture</h2></div></div>
+    <section className="detail-section" aria-label="Forecast target">
+      <div className="section-heading"><h2>Forecast target</h2></div>
       {result.target ? <div className="panel target-card">
         {target ? <div className="target-scoreboard"><div className="target-team"><ClubCrest name={clubName(target.homeClubId, clubs)} /><h3>{clubName(target.homeClubId, clubs)}</h3><span className="eyebrow">Home</span></div><span className="target-versus" aria-label="versus">VS</span><div className="target-team"><ClubCrest name={clubName(target.awayClubId, clubs)} /><h3>{clubName(target.awayClubId, clubs)}</h3><span className="eyebrow">Away</span></div></div> : <h3>Fixture {result.target.fixtureId}</h3>}
         <p className="compact-note">{formatDate(result.target.kickoffAt)}</p>
@@ -97,7 +97,7 @@ export function ForecastView({ input, result, clubs, compact = false }: Props) {
           </details>
         </li>;
       })}</ol> : <div className="notice">No qualifying appearances selected.</div>}
-      <details className="provenance-details"><summary>Selection rules & input gaps</summary><p>Latest five qualifying finalized appearances in enabled coverage before this input cutoff, with known participation and club membership and at least 60 reported minutes. New qualifying matches replace the oldest regardless of performance. These are the exact saved or comparison inputs, separate from current observations.</p><p className="compact-note">Input cutoff {formatDate(input.cutoffAt)}</p>{input.gaps.length ? <ReasonList reasons={input.gaps} /> : <p className="muted">No input eligibility gaps recorded.</p>}</details>
+      <details className="provenance-details"><summary>Selection rules & recorded gaps</summary><p>Latest five qualifying finalized appearances in enabled coverage before this input cutoff, with known participation and club membership and at least 60 reported minutes. New qualifying matches replace the oldest regardless of performance. These are the exact saved or comparison inputs, separate from current observations. Recorded gaps may predate the selected window; only gaps that could change it block outputs.</p><p className="compact-note">Input cutoff {formatDate(input.cutoffAt)}</p>{input.gaps.length ? <ReasonList reasons={input.gaps} /> : <p className="muted">No input eligibility gaps recorded.</p>}</details>
     </section>
     {(result.reasons.length > 0 || result.warnings.length > 0) && <details className="panel provenance-details" aria-label="Availability explanations"><summary>Availability & context · {result.reasons.length} issues · {result.warnings.length} warnings</summary>
       <ReasonList reasons={result.reasons} />

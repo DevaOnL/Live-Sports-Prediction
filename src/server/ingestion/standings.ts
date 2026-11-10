@@ -205,6 +205,9 @@ export function reconstructStandings(
   const results: Result[] = [];
   for (const [pair, fixture] of schedule) {
     if (duplicatePairs.has(pair)) continue;
+    // These confirmed nonplaying states cannot supply a result, even when the
+    // provider has removed their kickoff. Their pairings still count above.
+    if (fixture.status === "cancelled" || fixture.status === "postponed") continue;
     let matchDate: string;
     try {
       if (!fixture.kickoffAt) throw new RangeError("Unknown kickoff");

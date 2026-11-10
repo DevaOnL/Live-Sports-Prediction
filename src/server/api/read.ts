@@ -43,7 +43,8 @@ const APPROVED = `approved AS (
 
 // Equal-time roster observations are considered together. Incomplete latest
 // evidence, conflicting clubs, and simultaneous inclusion/exclusion cannot be
-// resolved by an arbitrary database UUID or an old appearance.
+// resolved by an arbitrary database UUID or an old appearance. Missing evidence
+// in a league unrelated to the player cannot contradict a confirmed club.
 const CATALOGUE = `${APPROVED}, catalogue AS (
   SELECT p.* FROM sports.players p WHERE p.provider='apifootball' AND (
     EXISTS (SELECT 1 FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id
@@ -57,12 +58,19 @@ const CATALOGUE = `${APPROVED}, catalogue AS (
 ), latest_rosters AS (
   SELECT r.* FROM sports.roster_snapshots r JOIN latest_times t
     ON t.season_id=r.season_id AND t.observed_at=r.observed_at
+), player_seasons AS (
+  SELECT x.player_id,f.season_id FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id
+    JOIN approved a ON a.season_id=f.season_id WHERE f.provider='apifootball'
+      AND (f.kickoff_at IS NULL OR f.kickoff_at<$1::timestamptz)
+  UNION
+  SELECT e.player_id,e.season_id FROM sports.roster_entries e JOIN sports.roster_snapshots r ON r.id=e.snapshot_id
+    JOIN approved a ON a.season_id=e.season_id WHERE r.observed_at<=$1::timestamptz
 ), claims AS (
   SELECT p.id AS player_id,a.season_id,count(r.id) AS observations,
     coalesce(bool_and(r.complete),false) AS complete,
     count(DISTINCT e.club_id) AS clubs,max(e.club_id::text) AS club_id,
     coalesce(bool_and(e.player_id IS NOT NULL),false) AS all_present
-  FROM catalogue p CROSS JOIN approved a
+  FROM catalogue p JOIN player_seasons ps ON ps.player_id=p.id JOIN approved a ON a.season_id=ps.season_id
   LEFT JOIN latest_rosters r ON r.season_id=a.season_id
   LEFT JOIN sports.roster_entries e ON e.snapshot_id=r.id AND e.player_id=p.id
   GROUP BY p.id,a.season_id

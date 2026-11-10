@@ -53,21 +53,28 @@ before(async () => {
 });
 after(async () => { await Promise.allSettled([writer?.end(), reader?.end(), administrator?.end()]); });
 
-async function roster(at: string, entries: { playerId: string; clubId: string }[], complete = true) {
+async function roster(at: string, entries: { playerId: string; clubId: string }[], complete = true, rosterSeasonId = seasonId) {
   const token = randomUUID();
   const sourceId = (await writer.query(`INSERT INTO sports.source_revisions(action,resource_key,archive_ref,content_sha256,retrieved_at)
     VALUES ('get_teams',$1,$2,$3,$4) RETURNING id`, [token, `hidden-archive-${token}`, "a".repeat(64), at])).rows[0].id;
   const revisionId = (await writer.query(`INSERT INTO sports.normalized_revisions(source_revision_id,entity_type,entity_key,content_sha256)
     VALUES ($1,'roster',$2,$3) RETURNING id`, [sourceId, token, "b".repeat(64)])).rows[0].id;
   const snapshotId = (await writer.query(`INSERT INTO sports.roster_snapshots(season_id,source_revision_id,observed_at,complete,normalized_revision_id)
-    VALUES ($1,$2,$3,$4,$5) RETURNING id`, [seasonId, sourceId, at, complete, revisionId])).rows[0].id;
+    VALUES ($1,$2,$3,$4,$5) RETURNING id`, [rosterSeasonId, sourceId, at, complete, revisionId])).rows[0].id;
   for (const entry of entries) await writer.query(`INSERT INTO sports.roster_entries(snapshot_id,season_id,player_id,club_id)
     SELECT $1,$2,p.id,c.id FROM sports.players p,sports.clubs c
     WHERE p.provider='apifootball' AND c.provider='apifootball' AND p.provider_id=$3 AND c.provider_id=$4`,
-  [snapshotId, seasonId, entry.playerId, entry.clubId]);
+  [snapshotId, rosterSeasonId, entry.playerId, entry.clubId]);
   return snapshotId as string;
 }
 const rosterEntries = () => players.map((player) => ({ playerId: player.id, clubId: clubs[0].id }));
+
+async function additionalLeague() {
+  const competition = (await writer.query(`INSERT INTO sports.competitions(provider_id,name,country_name,timezone,coefficient,enabled)
+    VALUES ('164','Ligue 2','France','Europe/Paris',1.5,true) RETURNING id`)).rows[0].id;
+  return (await writer.query(`INSERT INTO sports.competition_seasons(competition_id,label,starts_on,ends_on,expected_clubs,enabled)
+    VALUES ($1,'2026/27','2026-07-01','2027-06-30',18,true) RETURNING id`, [competition])).rows[0].id as string;
+}
 
 beforeEach(async () => {
   const tables = (await administrator.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='sports' ORDER BY tablename")).rows;
@@ -166,6 +173,74 @@ test("latest incomplete, conflicting and excluding rosters cannot reuse a histor
   await roster("2026-09-05T00:00:00Z", rosterEntries());
   await roster("2026-09-05T00:00:00Z", rosterEntries());
   assert.equal((await service.player("8004")).player.currentClub?.id, "3072");
+});
+
+for (const state of ["missing", "partial"] as const) test(`catalogue and comparison ignore an unrelated league's ${state} roster`, async () => {
+  const before = await service.compare(["8004", "8005"]);
+  const unrelatedSeason = await additionalLeague();
+  if (state === "partial") await roster("2026-08-06T00:00:00Z", [], false, unrelatedSeason);
+  const catalogue = await service.players({ leagueId: "153", clubId: "3072" });
+  assert.equal(catalogue.pagination.total, players.length);
+  assert.ok(catalogue.items.every((player) => player.currentClub?.id === "3072" && player.currentClubReasons.length === 0));
+  const comparison = await service.compare(["8004", "8005"]);
+  for (const [index, item] of comparison.players.entries()) {
+    assert.equal(item.player.currentClub?.id, "3072");
+    assert.deepEqual(item.player.currentClubReasons, []);
+    assert.deepEqual(item.input.rosterReasons, []);
+    assert.equal(item.input.currentClub?.clubId, "3072");
+    assert.equal(item.result.historyStatus, "ready");
+    assert.equal(item.result.forecastRating.status, "available");
+    assert.equal(item.canonicalInputHash, before.players[index].canonicalInputHash);
+  }
+});
+
+test("partial explicit cross-league claims block only the affected player with matching reader and forecast reasons", async () => {
+  const unrelatedSeason = await additionalLeague();
+  await writer.query(`INSERT INTO sports.season_clubs(season_id,club_id)
+    SELECT $1,id FROM sports.clubs WHERE provider_id=$2`, [unrelatedSeason, clubs[1].id]);
+  await roster("2026-08-06T00:00:00Z", [{ playerId: "8004", clubId: clubs[1].id }], false, unrelatedSeason);
+  const comparison = await service.compare(["8004", "8005"]);
+  const affected = comparison.players[0];
+  assert.equal(affected.player.currentClub, null);
+  assert.equal(affected.input.currentClub, null);
+  assert.deepEqual(affected.player.currentClubReasons, ["incomplete_roster_observation", "ambiguous_current_club"]);
+  assert.deepEqual(affected.input.rosterReasons.map((reason) => reason.code), affected.player.currentClubReasons);
+  assert.equal(affected.result.forecastRating.status, "unavailable");
+  assert.equal(comparison.players[1].player.currentClub?.id, "3072");
+  assert.equal(comparison.players[1].result.forecastRating.status, "available");
+});
+
+test("an incomplete empty relevant roster remains unavailable with matching reader and forecast reasons", async () => {
+  await roster("2026-08-06T00:00:00Z", [], false);
+  const comparison = await service.compare(["8004", "8005"]);
+  for (const item of comparison.players) {
+    assert.equal(item.player.currentClub, null);
+    assert.equal(item.input.currentClub, null);
+    assert.deepEqual(item.player.currentClubReasons, ["incomplete_roster_observation"]);
+    assert.deepEqual(item.input.rosterReasons.map((reason) => reason.code), item.player.currentClubReasons);
+    assert.equal(item.result.forecastRating.status, "unavailable");
+  }
+});
+
+test("future cross-league appearances and roster inclusions cannot alter current reader relevance", async () => {
+  const before = await service.compare(["8004", "8005"]);
+  const unrelatedSeason = await additionalLeague();
+  await writer.query(`INSERT INTO sports.season_clubs(season_id,club_id)
+    SELECT $1,id FROM sports.clubs WHERE provider_id=ANY($2::text[])`, [unrelatedSeason, [clubs[1].id, clubs[2].id]]);
+  const future = (await writer.query(`INSERT INTO sports.fixtures(provider_id,season_id,home_club_id,away_club_id,kickoff_at,status)
+    SELECT '1999999',$1,h.id,a.id,'2027-05-01T15:00:00Z','scheduled'
+    FROM sports.clubs h,sports.clubs a WHERE h.provider_id=$2 AND a.provider_id=$3 RETURNING id`, [unrelatedSeason, clubs[1].id, clubs[2].id])).rows[0].id;
+  await writer.query(`INSERT INTO sports.appearances(fixture_id,player_id,season_id,participation)
+    SELECT $1,id,$2,'unknown' FROM sports.players WHERE provider_id='8004'`, [future, unrelatedSeason]);
+  await roster("2027-05-01T00:00:00Z", [{ playerId: "8004", clubId: clubs[1].id }], false, unrelatedSeason);
+  const comparison = await service.compare(["8004", "8005"]);
+  for (const [index, item] of comparison.players.entries()) {
+    assert.equal(item.player.currentClub?.id, "3072");
+    assert.equal(item.input.currentClub?.clubId, "3072");
+    assert.deepEqual(item.player.currentClubReasons, []);
+    assert.deepEqual(item.input.rosterReasons, []);
+    assert.equal(item.canonicalInputHash, before.players[index].canonicalInputHash);
+  }
 });
 
 test("observed evidence is bounded and unknown participation/minutes remain null", async () => {

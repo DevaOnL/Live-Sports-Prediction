@@ -59,21 +59,25 @@ statistics are `null`; with no eligible cases, coverage is also `null`.
 
 ## Observed real-data result
 
-Snapshot: **2026-11-10 09:30 UTC**, normalized source ordinal **46708**, latest
-source retrieval **2026-11-09 15:00 UTC**. Across 130 final holdout fixtures,
+Snapshot: **2026-11-10 10:28 UTC**, normalized source ordinal **47603**, latest
+source retrieval **2026-11-10 09:49 UTC**. Across 130 final holdout fixtures,
 5,184 observed appearance rows included 2,596 eligible targets. No holdout final
 was entirely missing appearance rows, and no covered fixture had an unknown
 kickoff. Partial match statistics still represent uncertainty; a match having
 some appearance rows does not establish a complete lineup.
 
-| League | Final fixtures | Complete / partial statistics | First roster observation (UTC) |
+| League | Final fixtures | Complete / partial statistics | First stored roster observation (UTC) |
 | --- | ---: | ---: | --- |
 | Championship | 85 | 12 / 73 | 2026-11-09 10:04:41 |
 | Ligue 2 | 45 | 7 / 38 | 2026-11-09 10:04:46 |
 
-Both first roster observations occur after the final holdout midnight. All 2,596
-eligible rating targets consequently have `missing_roster_observation`; additional
-history and participation exclusions can overlap. There are 2,587 observed rows
+Both first stored roster observations occur after the final holdout midnight.
+The earliest raw roster archives, also checked, were retrieved on November 9 at
+09:56 UTC; none precede a holdout cutoff. Among eligible rating targets, 2,592 have
+`missing_roster_observation` for a relevant league, and four have
+`unknown_current_club` with no earlier player-specific club evidence. No case has
+a confirmed pre-cutoff current club. History and participation exclusions can
+overlap. There are 2,587 observed rows
 below 60 minutes and one with missing minutes; 1,150 also have a non-played status.
 These counts describe observed rows, not the unknowable number of absent players.
 
@@ -136,3 +140,76 @@ README. Those checks exercise keyboard login, visible focus contrast, expanded
 filters/evidence/admin tables, asynchronous feedback and 44px targets at 390, 768
 and 1440 pixels. The browser blocks external requests. These checks supplement
 manual review; they do not establish exhaustive assistive-technology conformance.
+
+## Live availability is separate
+
+Historical accuracy, current projections and historical form have different
+requirements. A completed evaluation command or passing test suite does not
+establish predictive accuracy.
+
+| State | Meaning | What can resolve it |
+| --- | --- | --- |
+| Historical error unavailable | No paired forecast could be reconstructed before the frozen cutoff | Genuine earlier roster evidence; later retrieval cannot create it |
+| Current forecast unavailable | A specific projection lacks a required window, metric, club, fixture or standings input | Import or correct actual evidence; read that output's reasons |
+| Form only | Historical weighted ratings are available, but future projections are blocked | Resolve target-specific evidence; form is not a next-match prediction |
+| Source work pending | Detail jobs may wait for the shared application request budget | The worker retries after the budget window; local forecast processing continues |
+
+Model availability badges include the adjusted form index. “Partly available” can
+therefore mean form only; it does not promise an available future projection.
+Each output has its own status and units. Recorded input gaps may predate the
+selected five; only relevant gaps block that window. Saved forecast targets remain
+saved evidence after kickoff and carry a freshness warning, not an “up next” claim.
+Roster blockers apply to seasons with player-specific evidence before the cutoff;
+an unrelated empty or missing league roster cannot invalidate a confirmed club.
+Relevant incomplete rosters and explicit conflicting claims still block forecasts.
+
+## Forward measurement
+
+A separate **prospective-v1** protocol freezes the unchanged model's predictions
+and paired baselines from one reader-only canonical snapshot. Its fixture
+population is each approved club's earliest scheduled future match at capture;
+the computation and durable file write must finish before that fixture's
+competition-local midnight.
+A missed deadline is recorded separately; the tool never promotes a later match
+to obtain a successful case. Unavailable players are captured too.
+
+```bash
+npm run measure --silent -- capture ./forecast-capture.json
+npm run measure --silent -- score ./forecast-capture.json > forward-results.json
+```
+
+Both generated files are ignored at the repository root. The capture contains
+individual model inputs and must stay private: the CLI creates an owned 0600 file
+exclusively and refuses to overwrite it or follow a symlink. Its checksum detects
+changed contents; it is a local integrity record, not an external signature or
+independent timestamp. After syncing the file and its directory, the CLI checks a
+fresh reader-only database clock against every captured deadline. Late confirmation
+fails and removes only the newly created file; the receipt records
+`durablyConfirmedAt`. A digest-bound confirmation trailer is appended to the
+private file; scoring rejects pending or truncated files without that valid
+confirmation. Keep the original file for later scoring.
+
+The scorer reads actual outcomes later without recalculating captured predictions
+or baselines. It includes every observed eligible target appearance in the frozen
+fixture population, including players not captured and outputs unavailable at
+capture. It reports missing matches, missed cutoffs, changed schedule/club metadata,
+intervening fixtures, short appearances and missing metrics. Statistics and paired
+baselines use the same rating/per-90 units as the historical evaluation. Public
+output contains aggregates only; no database writes or provider calls occur.
+Final-fixture counts distinguish complete, partial, missing and unknown statistics.
+Coverage percentages use observed eligible appearances; partial lineups cannot
+establish the number of players absent from the source.
+
+Before outcomes exist, the report says `pending_outcomes`; errors are unavailable,
+not zero. `no_eligible_future_targets` means there was no fixture whose issue
+cutoff could still be met. `no_scorable_cases` means observed outcomes still lacked
+usable paired predictions. `measured` means at least one output was actually
+scored; per-output coverage and exclusions still apply. Real future outcomes are
+required before any accuracy number can be reported. This protocol supplements
+the original frozen historical report and never replaces its zero-coverage result.
+
+`npm run test:unit` and `npm run test:evaluation` also verify forward capture,
+file integrity/privacy, midnight/DST rules, pending versus observed outcomes,
+uncaptured players and frozen estimates after later canonical corrections. Test
+time substitution is confined to the isolated test adapter; production always
+uses the database clock.
