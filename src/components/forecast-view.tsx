@@ -18,6 +18,18 @@ export function ReasonList({ reasons }: { reasons: Reason[] }) {
   </li>)}</ul>;
 }
 
+export function MatchRatings({ result, playerName }: { result: ForecastResult; playerName: string }) {
+  const rated = result.selected.filter((match) => match.rating !== null).length;
+  return <div className="match-ratings" role="group" aria-label={`Observed match ratings for ${playerName}`}>
+    <span className="compact-note">{rated} of 5 match ratings</span>
+    {result.selected.length > 0 && <ol className="match-rating-list">{result.selected.map((match) => <li key={match.fixtureId}>
+      <span className={`match-rating${match.rating === null ? " match-rating-missing" : ""}`} title={formatDate(match.kickoffAt)}>
+        <time dateTime={match.kickoffAt}>{new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(match.kickoffAt))}</time>{formatNumber(match.rating)}<span className="sr-only">{match.rating === null ? " rating unavailable" : " out of 10"}</span>
+      </span>
+    </li>)}</ol>}
+  </div>;
+}
+
 export function EvidenceProvenance({ provenance }: { provenance: Record<string, unknown> }) {
   const appearances = Array.isArray(provenance.appearanceRevisionIds) ? provenance.appearanceRevisionIds.length : 0;
   const fixtures = Array.isArray(provenance.fixtureRevisionIds) ? provenance.fixtureRevisionIds.length : 0;

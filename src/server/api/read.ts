@@ -133,6 +133,16 @@ function league(value: unknown, profile: SourceProfile) {
   try { if (typeof value !== "string") throw new Error(); sourceCoverage(profile, value); }
   catch { invalid("invalid_league", "Unsupported competition."); }
 }
+
+// Catalogue discovery only: provider identity matching keeps its stricter rules.
+// Fold both names and bound terms in PostgreSQL so Unicode handling stays equal.
+function playerSearchKey(expression: string): string {
+  const letters = `translate(replace(replace(replace(lower(normalize(${expression},NFKD)),
+    'æ','ae'),'œ','oe'),'ß','ss'),'øłđðħı','olddhi')`;
+  return `regexp_replace(regexp_replace(${letters},
+    U&'[\\0300-\\036f\\1ab0-\\1aff\\1dc0-\\1dff\\20d0-\\20ff\\fe20-\\fe2f]','','g'),
+    '[^[:alnum:]%_\\\\]','','g')`;
+}
 function summary(row: SummaryRow, bestStatistic: BestStatistic, profile: SourceProfile): PlayerSummary {
   const reasons = [
     ...(row.missing_roster ? ["missing_roster_observation"] : []),
@@ -293,7 +303,7 @@ export class ReadService {
     const pageSize = filters.pageSize === undefined ? 20 : filters.pageSize;
     if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 50
       || !Number.isSafeInteger((page - 1) * pageSize)) invalid("invalid_pagination", "Invalid catalogue page or page size.");
-    const search = filters.q?.trim().replace(/[\\%_]/g, "\\$&");
+    const search = filters.q?.trim();
     return this.snapshot(async (client, source, loadScouting) => {
       if (filters.clubId) {
         const found = await client.query(`WITH ${this.approved} SELECT 1 FROM sports.clubs c JOIN sports.season_clubs sc ON sc.club_id=c.id
@@ -301,11 +311,19 @@ export class ReadService {
           AND ($2::text IS NULL OR a.league_id=$2) LIMIT 1`, [filters.clubId, filters.leagueId ?? null]);
         if (!found.rowCount) invalid("invalid_club", "Club not found in the selected enabled coverage.");
       }
-      const values = [source.cutoffAt, search ? `%${search}%` : null, filters.leagueId ?? null, filters.clubId ?? null, filters.position ?? null, filters.availability ?? null];
-      const condition = `($2::text IS NULL OR name ILIKE $2 ESCAPE '\\') AND ($3::text IS NULL OR league_id=$3)
+      const values = [source.cutoffAt, search ? search.split(/\s+/u) : null, filters.leagueId ?? null, filters.clubId ?? null, filters.position ?? null, filters.availability ?? null];
+      const searchTerms = `search_terms AS (
+        SELECT token FROM (SELECT ${playerSearchKey("term")} AS token FROM unnest($2::text[]) AS input(term)) folded
+        WHERE token<>''
+      )`;
+      const literalToken = `replace(replace(replace(token,chr(92),chr(92)||chr(92)),
+        '%',chr(92)||'%'),'_',chr(92)||'_')`;
+      const condition = `($2::text[] IS NULL OR (EXISTS (SELECT 1 FROM search_terms) AND NOT EXISTS (
+        SELECT 1 FROM search_terms WHERE ${playerSearchKey("name")} NOT LIKE '%'||${literalToken}||'%' ESCAPE '\\'
+      ))) AND ($3::text IS NULL OR league_id=$3)
         AND ($4::text IS NULL OR club_id=$4) AND ($5::text IS NULL OR position=$5) AND ($6::text IS NULL OR availability=$6)`;
-      const total = (await client.query<{ total: number }>(`WITH ${this.catalogue} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
-      const rows = (await client.query<SummaryRow>(`WITH ${this.catalogue} SELECT * FROM summaries WHERE ${condition}
+      const total = (await client.query<{ total: number }>(`WITH ${this.catalogue}, ${searchTerms} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
+      const rows = (await client.query<SummaryRow>(`WITH ${this.catalogue}, ${searchTerms} SELECT * FROM summaries WHERE ${condition}
         ORDER BY name,provider_id COLLATE "C" LIMIT $7 OFFSET $8`, [...values, pageSize, (page - 1) * pageSize])).rows;
       const statistics = rows.length ? await loadScouting() : new Map<string, BestStatistic>();
       return { items: rows.map((row) => summary(row, statistics.get(row.provider_id)!, this.profile)), pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) }, source };

@@ -10,7 +10,7 @@ import { useApi } from "@/lib/use-api";
 import { useObservationTime } from "@/lib/use-observation-time";
 import type { Output } from "@/server/forecast/types";
 import { MetricIcon, PlayerArtwork } from "./football-art";
-import { EvidenceProvenance, ForecastView, ReasonList } from "./forecast-view";
+import { EvidenceProvenance, ForecastView, MatchRatings, ReasonList } from "./forecast-view";
 import { useSelection } from "./selection";
 import { PageHeading, PanelState, SourceNote, StatusBadge } from "./ui";
 
@@ -76,12 +76,14 @@ export function Comparison({ initialIds = [], initialCrossPosition = false }: { 
         {data.sharedMetrics.length === 0 && <p className="notice">No shared count statistics · rating & form shown separately.</p>}
         {clubs.error !== undefined && <div className="notice" role="status">Club names unavailable · IDs shown. <button className="text-button" onClick={() => setRevision((value) => value + 1)}>Retry club names</button></div>}
         <section aria-label="Aligned comparison results">
-          <div className="table-wrap"><table className="data-table comparison-table"><caption className="sr-only">Aligned player forecasts and adjusted form indexes, with explicit units and availability</caption><thead><tr><th scope="col">Measure</th>{data.players.map(({ player }) => <th scope="col" key={player.id}><PlayerArtwork position={player.position} className="comparison-art" /><Link className="text-link" href={`/players/${encodeURIComponent(player.id)}`}>{player.name}</Link><span>{positionLabel[player.position]}</span></th>)}</tr></thead><tbody>
+          <div className="table-wrap"><table className="data-table comparison-table"><caption className="sr-only">Observed match ratings, aligned player forecasts and adjusted form indexes, with explicit units and availability</caption><thead><tr><th scope="col">Measure</th>{data.players.map(({ player }) => <th scope="col" key={player.id}><PlayerArtwork position={player.position} className="comparison-art" /><Link className="text-link" href={`/players/${encodeURIComponent(player.id)}`}>{player.name}</Link><span>{positionLabel[player.position]}</span></th>)}</tr></thead><tbody>
+            <tr><th scope="row"><MetricIcon metric="rating" />Observed match ratings <span>Selected matches · 0–10</span></th>{data.players.map((item) => <td key={item.player.id}><MatchRatings result={item.result} playerName={item.player.name} /></td>)}</tr>
             <tr><th scope="row"><MetricIcon metric="rating" />Forecast rating <span>0–10</span></th>{data.players.map((item) => <td key={item.player.id}><ComparisonValue output={item.result.forecastRating} unit="/ 10" /></td>)}</tr>
             <tr><th scope="row"><MetricIcon metric="form" />Adjusted form index <span>0–100 model index</span></th>{data.players.map((item) => <td key={item.player.id}><ComparisonValue output={item.result.adjustedFormIndex} unit="/ 100" /></td>)}</tr>
             {data.sharedMetrics.map((metric) => <tr key={metric}><th scope="row"><MetricIcon metric={metric} />{metricLabel[metric]}<span>Projected per 90 minutes</span></th>{data.players.map((item) => <td key={item.player.id}><ComparisonValue output={item.result.projected90[metric]!} unit="per 90 minutes" /></td>)}</tr>)}
           </tbody></table></div>
           <p className="compact-note">Per 90 minutes assumed · — unavailable · 0 is zero</p>
+          {data.players.some((item) => item.result.forecastRating.reasons.some((reason) => reason.field === "rating")) && <p className="notice" role="status">Rating and form need all five match ratings. Count forecasts use their own available statistics.</p>}
           <details className="provenance-details"><summary>Units & model limits</summary><p>Per-90 projections are decimal estimates, not guaranteed counts or predicted playing time. Rating uses 0–10; form is a separate 0–100 model index. This heuristic has no established predictive accuracy.</p></details>
         </section>
         <div className="comparison-grid">{data.players.map((item) => <article className="panel comparison-card" key={item.player.id} aria-label={`Evidence for ${item.player.name}`}>

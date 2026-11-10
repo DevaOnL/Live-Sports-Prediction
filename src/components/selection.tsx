@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 type Selection = { id: string; name: string; position: string };
 type SelectionContext = { selected: Selection[]; toggle: (player: Selection) => void; replace: (players: Selection[]) => void; remove: (id: string) => void; clear: () => void };
@@ -35,7 +36,8 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
 export function useSelection() { const value = useContext(context); if (!value) throw new Error("Comparison selection requires its provider"); return value; }
 export function SelectionTray() {
   const { selected, remove, clear } = useSelection();
-  if (!selected.length) return null;
+  const pathname = usePathname();
+  if (!selected.length || pathname === "/compare") return null;
   const query = new URLSearchParams();for (const p of selected) query.append("playerId", p.id);
   return <aside className="selection-bar" aria-label="Comparison selection"><div><strong>{selected.length} of 4 players selected</strong><div className="selection-list">{selected.map((p) => <button key={p.id} className="selection-chip" onClick={() => remove(p.id)} aria-label={`Remove ${p.name} from comparison`}>{p.name}<span aria-hidden="true">×</span></button>)}</div></div><div className="action-row"><button className="button button-quiet button-small" onClick={clear}>Clear selection</button><Link className="button button-small" href={`/compare?${query}`}>Compare players <span aria-hidden="true">↗</span></Link></div></aside>;
 }

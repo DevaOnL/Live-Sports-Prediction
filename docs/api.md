@@ -113,7 +113,11 @@ slug is separate from the player's identifier. SQL revision/job identifiers and
 command request identifiers are bare UUIDs. Catalogue pages default to page 1
 with 20 items, with a maximum page size of 50; search text is at most 80 characters. Positions are
 `GK`, `DEF`, `MID`, `FWD`, `UNKNOWN`; availability is `available`, `partial`,
-`unavailable` or `uncomputed`. Search is literal parameterized text. Coverage stays
+`unavailable` or `uncomputed`. Search ignores case, accents and punctuation:
+`mbappe` and `mbappe'` both match `Mbappé`. Space-separated partial terms must all
+occur in the name, in any order. `%`, `_` and backslash remain literal characters,
+not search operators; input containing only ignored punctuation returns no
+matches. Search stays parameterized and does not change provider identity matching. Coverage stays
 restricted to enabled regular-season Premier League/La Liga, 2026/27. Former
 APIFootball records remain stored for archival provenance and do not appear in
 current product reads. Current club requires complete, unambiguous latest roster

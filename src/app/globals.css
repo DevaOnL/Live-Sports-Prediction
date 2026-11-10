@@ -256,6 +256,11 @@ summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .comparison-table td { min-width: 175px; }
 .comparison-table th > .metric-icon { display: block; margin-bottom: 12px; }
 .comparison-table .output-reasons { max-width: 220px; }
+.match-ratings { display: grid; gap: 8px; }
+.match-rating-list { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; padding: 0; margin: 0; }
+.match-rating { position: relative; display: grid; gap: 2px; min-width: 37px; padding: 5px; text-align: center; border: 2px solid var(--ink); background: var(--yellow); font-weight: 800; }
+.match-rating time { font-size: 9px; font-weight: 500; }
+.match-rating-missing { background: var(--cream); border-style: dashed; }
 .comparison-card .metric-grid { grid-template-columns: 1fr; }
 .comparison-card .evidence-grid { grid-template-columns: 1fr; }
 .admin-tabs { display: flex; flex-wrap: wrap; gap: 10px; }
