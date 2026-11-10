@@ -12,15 +12,18 @@ metadata. The executable definitions are
 [`007_forecast_freshness.sql`](../db/migrations/007_forecast_freshness.sql),
 [`008_reporting.sql`](../db/migrations/008_reporting.sql),
 [`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql),
-[`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql), and
-[`011_suspended_fixtures.sql`](../db/migrations/011_suspended_fixtures.sql).
+[`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql),
+[`011_suspended_fixtures.sql`](../db/migrations/011_suspended_fixtures.sql), and
+[`012_appearance_enrichment.sql`](../db/migrations/012_appearance_enrichment.sql).
 
 Current product coverage is Sorare Premier League/La Liga, 2026/27. Migration
 010 disables the former APIFootball competitions/seasons while preserving their
 canonical rows and immutable provenance. It adds nullable player/club lookup
 slugs and provider-aware reporting overloads without altering migrations 001–009.
 Migration 011 adds an explicit suspended fixture state; existing observations and
-applied migration files are unchanged.
+applied migration files are unchanged. Migration 012 adds optional Highlightly
+supplement observations, current heads, a shared daily request allowance and an
+effective appearance view. Sorare remains the primary source.
 
 The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
 football reads and administrator operations. The interface includes login, a player
@@ -57,6 +60,14 @@ erDiagram
   PLAYER_MEMBERSHIPS o|--o{ APPEARANCES : confirms_membership
   SOURCE_REVISIONS ||--o{ NORMALIZED_REVISIONS : produces
   NORMALIZED_REVISIONS o|--o{ NORMALIZED_REVISIONS : parent
+  APPEARANCES ||--o{ APPEARANCE_ENRICHMENTS : supplements
+  FIXTURES ||--o{ APPEARANCE_ENRICHMENTS : anchors
+  NORMALIZED_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : primary_revision
+  NORMALIZED_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : fixture_revision
+  SOURCE_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : observes
+  NORMALIZED_REVISIONS ||--o| APPEARANCE_ENRICHMENTS : explains
+  APPEARANCES ||--o| APPEARANCE_ENRICHMENT_HEADS : current_supplement
+  APPEARANCE_ENRICHMENTS ||--o| APPEARANCE_ENRICHMENT_HEADS : points_to
   NORMALIZED_REVISIONS ||--o{ STANDINGS_SNAPSHOTS : explains
   NORMALIZED_REVISIONS o|--o{ AUDIT_LOG : explains
   COMPETITION_SEASONS ||--o{ STANDINGS_SNAPSHOTS : contextualizes
@@ -72,15 +83,18 @@ Each child has exactly one referenced parent unless the diagram marks that paren
 optional (`o|`); a parent can have zero or more children (`o{`). Fixture home and
 away references each identify a club registered in that fixture's season.
 Optional canonical provenance links to `normalized_revisions` are omitted for
-readability. `auth.verification`, `auth."rateLimit"` and the migration ledger are
-independent tables.
+readability. Supplement appearance/fixture revision anchors are shown explicitly.
+`sports.enrichment_request_quota`, `auth.verification`, `auth."rateLimit"` and the
+migration ledger are independent tables. `sports.effective_appearances` is a
+derived view, not another stored appearance table.
 
 ## Tables and keys
 
 Football and processing tables live in `sports`, authentication tables in `auth`,
 and the migration ledger in `infra`. Most `sports` tables have a generated UUID
 primary key named `id`; `season_clubs` and `standings_rows` use composite keys,
-and `ingestion_batches` uses its archive identifier. External identifiers remain
+`ingestion_batches` uses its archive identifier, heads use their player/appearance
+key, and the supplementary quota uses its provider key. External identifiers remain
 text. The original schema's `provider` default is `apifootball`; current ingestion
 explicitly supplies `sorare`. Native `Player:UUID`, `Club:UUID` and `Game:UUID`
 identifiers retain their prefixes. Competition business IDs are
@@ -96,6 +110,9 @@ identifiers retain their prefixes. Competition business IDs are
 | `sports.player_memberships` | Player FK and registered season-club FK; half-open interval `[valid_from, valid_until)`, optionally open-ended; unique `(player_id, club_id, season_id, valid_from)` |
 | `sports.fixtures` | Unique `(provider, provider_id)`; season and two registered season-club FKs; nullable kickoff/scores; separate fixture and statistics statuses |
 | `sports.appearances` | Unique `(fixture_id, player_id)`; player FK; composite fixture-season and membership-player-club-season FKs; optional club/membership; participation, minutes, rating, and eight count metrics |
+| `sports.appearance_enrichments` | Appearance and fixture FKs; required primary appearance/fixture normalized revision FKs; source revision FK and unique supplementary normalized revision FK; external match/player IDs, retrieval time, four nullable metrics and private matching evidence; unique `(source_revision_id, appearance_id)` |
+| `sports.appearance_enrichment_heads` | Appearance PK/FK; composite `(enrichment_id, appearance_id)` FK prevents pointing to another appearance's supplement; current observation pointer, conflict flag and update time |
+| `sports.enrichment_request_quota` | PK `provider`, restricted to `highlightly`; UTC day and remaining allowance between 0 and 100; shared durable request budget |
 | `sports.source_revisions` | Unique source reference (provider archive ID or explicit manual reference); provider, action, resource key, lowercase SHA-256 hash, retrieval time; unique `(provider, action, resource_key, content_sha256, retrieved_at)` retains distinct observations of matching content |
 | `sports.normalized_revisions` | Source revision FK; entity type/key, content hash, optional same-entity parent; unique increasing identity ordinal; unique `(source_revision_id, entity_type, entity_key, content_sha256)` |
 | `sports.standings_snapshots` | Season and required normalized revision FKs; local cutoff date, UTC cutoff instant, completeness flag; unique `(season_id, cutoff_local_date, normalized_revision_id)` |
@@ -105,7 +122,7 @@ identifiers retain their prefixes. Competition business IDs are
 | `sports.jobs` | Outbox FK; unique deduplication key; kind, JSON object payload, status, attempts/limit, schedule, lease, error, completion time |
 | `sports.audit_log` | Optional normalized revision FK; actor type/identifier, action, entity type/key, JSON object detail, occurrence time |
 | `sports.ingestion_batches` | PK `archive_id`; source and optional normalized revision FKs; committed fixture/appearance counts and validation issues; durable SQL import marker |
-| `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-window budget index. Current Sorare reservations enforce 60 attempts per minute and one-second spacing |
+| `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-window budget index. Sorare reservations enforce 60 attempts per minute and one-second spacing; `highlightly:` reservations use a separate daily budget and one-second spacing |
 | `sports.roster_snapshots` | UUID PK; season FK, unique source revision FK, original observation time, completeness and normalized revision; append-only |
 | `sports.roster_entries` | PK `(snapshot_id, player_id, club_id)`; snapshot-season, registered season-club and player FKs; preserves conflicting club observations |
 | `sports.forecast_revisions` | UUID PK and increasing ordinal; player FK; same-player earlier parent FK; model version, semantic hash, canonical source ordinal, cutoff, full input/provenance/result JSON objects; append-only |
@@ -125,6 +142,16 @@ records. Appearance metrics use typed columns: `goals`, `assists`,
 provider response storage reserved for MongoDB.
 Manual appearance corrections append SQL source/revision and actor audit evidence;
 they do not invent provider archives or imported provider batches.
+
+`sports.effective_appearances` preserves primary identity, participation, minutes
+and revision tokens. It fills only null `rating`, `key_passes`, `tackles` and
+`interceptions` from the nonconflicted current supplement; primary values,
+including zero, take precedence. Both anchored primary revision IDs must still
+match, and the fixture must remain final with confirmed positive played minutes.
+Changed primary evidence therefore hides an old supplement without rewriting it.
+Per-field provenance exposes source/revision IDs and actual observation time;
+the view excludes raw matching evidence and supplementary external IDs. Profiles,
+forecast inputs, scouting and Sorare SQL history use these effective values.
 
 ## Integrity and missing data
 
@@ -152,6 +179,11 @@ they do not invent provider archives or imported provider batches.
 - Revision hashes are lowercase 64-character SHA-256 values. A normalized
   revision's parent belongs to the same entity and has a smaller ordinal,
   preventing cycles. Ordinals can contain gaps.
+- Supplement inserts validate the current primary appearance/fixture revisions,
+  approved Sorare season, confirmed participation and matching Highlightly source
+  revision. Heads cannot move to older observations; contradictory observations
+  at the same time remain conflicted. Only a sufficiently newer observation can
+  restore a previously invalidated head.
 - Jobs enforce coherent attempts, leases, and completion state. A ready job has
   attempts remaining; a running job has an attempt and a complete lease; only
   terminal states have a completion time. Publication/completion cannot precede
@@ -182,7 +214,7 @@ table, and function privileges are revoked; runtime roles receive explicit grant
 
 | Login | Granted capability |
 | --- | --- |
-| `lsp_reader` | Read canonical football, source/normalized revisions, standings, points adjustments, rosters and forecasts; no writes or auth/outbox/jobs/audit access |
+| `lsp_reader` | Read canonical football, source/normalized revisions, standings, points adjustments, rosters, forecasts and the effective appearance view; no direct supplement-table, quota, write or auth/outbox/jobs/audit access |
 | `lsp_writer` | Read all `sports` tables; insert/update/delete canonical competitions, seasons, clubs, registration, players, memberships, fixtures, and appearances; append revisions, snapshots/rows, adjustments, audit, outbox, and jobs; update only outbox `published_at` and specified job lifecycle columns |
 | `lsp_auth` | Read users; insert/update permitted profile fields with a default `viewer` role; CRUD sessions/accounts/verifications and shared rate-limit records; no user deletion, role writes, football access, or migration access |
 | `lsp_migrator` | Own schemas, tables, and constraint functions; manage the migration ledger and apply versioned SQL; reserved for controlled administration |
@@ -192,6 +224,15 @@ cannot update or delete them. It may insert a forecast head and update only its
 revision pointer, update time, and latest-evaluation metadata. A revision parent must belong to the same player
 and have a smaller ordinal. The current head comparison permits A to B to A input
 corrections to append a third revision while exact replay remains idempotent.
+
+Migration 012 grants the writer select/insert on immutable supplement observations
+and select/insert/update on supplement heads and the quota row; it grants no
+deletion of these records. Reader and writer can select the effective view.
+The auth role receives no supplementary access. The worker reserves actual
+Highlightly attempts under a shared SQL-clock lock against the smaller of its
+100-request UTC-day budget and the observed provider allowance, keeping five
+requests spare. Failed HTTP attempts consume reservations; observed headers can
+only lower the same day's allowance. This budget is separate from Sorare's.
 
 The writer's job update columns are `status`, `attempts`, `max_attempts`,
 `run_after`, `locked_by`, `locked_until`, `last_error`, and `completed_at`.
@@ -260,11 +301,13 @@ For an existing managed database, preserve its data and apply only new migration
 npm run db:migrate
 ```
 
-Apply all pending files through `011_suspended_fixtures.sql` before starting the
+Apply all pending files through `012_appearance_enrichment.sql` before starting the
 upgraded app/worker. Migration 009 adds the database-backed authentication limiter
 and its auth-role grants; 010 retires prior product coverage and adds
-source-aware reporting overloads and lookup slugs. The same command applies all
-earlier pending files, including ingestion commit markers, forecast freshness
+source-aware reporting overloads and lookup slugs; 012 adds optional supplement
+storage/grants and makes the Sorare history overload read effective appearances.
+The same command applies all earlier pending files, including ingestion commit
+markers, forecast freshness
 and reporting routines. MongoDB
 collection validators, indexes, and restricted runtime privileges are provisioned
 separately with `npm run mongo:provision`; that command requires the local MongoDB

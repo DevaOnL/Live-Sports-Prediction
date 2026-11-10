@@ -11,6 +11,8 @@ Current coverage is Premier League (`premier-league-gb-eng`) and La Liga
 API. Both have 20 clubs and coefficient 2, with London/Madrid local cutoffs.
 Access was verified on 2026-11-10 and can change. The [ingestion guide](ingestion.md)
 defines the source/allowlist; [forecasting](forecasting.md) defines the model.
+Optional Highlightly Football Basic supplementation supplies verified missing
+match-stat fields within the same coverage; Sorare remains the primary source.
 Archived APIFootball evaluation/replay protocols retain their original two-league
 scope and dated results; they do not measure the current source.
 
@@ -24,6 +26,8 @@ flowchart LR
   Web -->|Authorized commands and corrections: lsp_writer| PG
   Worker[TypeScript worker] -->|Budgeted requests| Provider[Sorare GraphQL API]
   Provider -->|Source response| Worker
+  Worker -->|Optional daily-budgeted requests| Supplement[Highlightly Football Basic]
+  Supplement -->|Match-stat responses| Worker
   Worker -->|Archive before normalization| Mongo[(MongoDB 8)]
   Worker -->|Canonical data and refresh: lsp_writer| PG
   PG -->|Durable outbox and leased jobs| Worker
@@ -36,9 +40,9 @@ flowchart LR
 | Next.js App Router and React | Public homepage/login; protected overview, catalogue, player detail, comparison, account and administrator screens | [`src/app`](../src/app/), [`src/components`](../src/components/) |
 | HTTP boundary | Validated parameters/bodies, session lookup, viewer/admin checks, canonical-origin mutation checks, bounded no-store responses | [`handler.ts`](../src/server/web/handler.ts), [`http.ts`](../src/server/web/http.ts), [`access.ts`](../src/server/web/access.ts) |
 | Read and administrator services | Parameterized SQL, coherent read snapshots, idempotent audited commands and optimistic metric corrections | [`read.ts`](../src/server/api/read.ts), [`admin.ts`](../src/server/api/admin.ts) |
-| PostgreSQL | Football entities, constraints, provenance, roster observations, standings, forecasts, auth storage, audit, outbox and jobs | [`db/migrations`](../db/migrations/), [schema and ER diagram](database.md) |
+| PostgreSQL | Football entities, optional supplement observations/effective reads, constraints, provenance, rosters, standings, forecasts, auth storage, audit, outbox and jobs | [`db/migrations`](../db/migrations/), [schema and ER diagram](database.md) |
 | MongoDB | Immutable per-page source captures in versioned bundles and separate validation/import state | [`archive.ts`](../src/server/ingestion/archive.ts), [`mongo.ts`](../scripts/mongo.ts) |
-| Worker | Source polling, archive reconciliation, statistics jobs, standings reconstruction and local forecast refresh | [`src/worker`](../src/worker/), [`runtime.ts`](../src/server/ingestion/runtime.ts) |
+| Worker | Source polling, optional budgeted supplementation, archive reconciliation, statistics jobs, standings reconstruction and local forecast refresh | [`src/worker`](../src/worker/), [`runtime.ts`](../src/server/ingestion/runtime.ts), [`enrichment.ts`](../src/server/ingestion/enrichment.ts) |
 | Forecast engine/store | Exact-five selection, context and missing-data rules, deterministic calculation, immutable revisions and current heads | [`src/server/forecast`](../src/server/forecast/), [model guide](forecasting.md) |
 | Source profiles and scouting | Explicit current/archived provider identities and guards; observed best statistics ranked against full eligible cohorts | [`sources.ts`](../src/server/ingestion/sources.ts), [`highlights.ts`](../src/server/scouting/highlights.ts) |
 | Evaluation tools | Frozen historical scoring and separately versioned forward capture/scoring without sports-data writes or provider requests | [`evaluate.ts`](../scripts/evaluate.ts), [`measure.ts`](../scripts/measure.ts), [evaluation guide](evaluation.md) |
@@ -50,6 +54,13 @@ identities remain separate from stored Sorare lookup slugs. Attribution links us
 those genuine slugs. The current adapter preserves nulls, accepting explicit
 matching detailed-stat zeros; it never substitutes fantasy scores for ratings or
 won tackles for total tackles. Ratings/key passes remain missing where unsupported.
+Optional supplements fill only missing rating, key-pass, tackle and interception
+fields after strict fixture/player matching. Primary values, including zero,
+take precedence; both primary appearance and fixture revisions anchor each
+supplement. The shared effective view supplies source/revision/time evidence
+without exposing private matching details. Primary corrections invalidate older
+supplements, and separate freshness fields prevent recent supplements from
+masking stale Sorare observations.
 Administrator source commands enter SQL work queues; the web process
 does not call the football provider. Local CLI tools are separately controlled
 operational entry points and do not authenticate a web session.
@@ -78,6 +89,14 @@ marker and replayed without duplicating canonical changes. The worker reconciles
 current-source archives before normal polling. Invalid observations remain archived
 with issues; transient persistence failures are retried. Recovery commands and failure cases
 are documented in [ingestion](ingestion.md#storage-and-recovery).
+
+The optional supplement loop independently archives versioned Highlightly
+catalogue/box-score bundles and reconciles its own import markers. It exhausts
+the provider's reported catalogue pages, which can cover fewer fixtures than
+Sorare's schedule. Missing supplementary matches remain unmapped and cannot
+create DNP or change the primary five-match window. Matching supplements commit
+append-only observations, source/normalized revisions and refresh outbox work;
+only their current heads are mutable.
 
 The MongoDB runtime role has `find`/`insert` on `raw_archives` and
 `find`/`insert`/`update` on `import_metadata`. It cannot rewrite or delete source
@@ -108,9 +127,19 @@ forecast processing while an upstream request is stalled or source work is budge
 changes, roster/standings events and time passing can all require refresh. A queue
 submission means accepted, not completed; forecast requests can coalesce.
 
+Highlightly uses a separate shared 100-request UTC-day allowance with one-second
+spacing, provider-header reconciliation and five requests held in reserve. Each
+HTTP attempt consumes a durable reservation, including failures. Bounded
+backfilling, source-scoped cache reuse and budget deferral leave primary polling
+and local forecast processing independent. See
+[supplementation](ingestion.md#optional-match-stat-supplementation) for setup and
+matching rules; no key is required when this optional flow is disabled.
+
 Each saved forecast revision retains model version, semantic input hash, selected
 appearances, target/context, full result and provenance. Runtime roles may append
-revisions but cannot update or delete them. A mutable head points to the current
+revisions but cannot update or delete them. Active supplementary fields retain
+their own source/revision IDs and observation times alongside the original
+Sorare appearance and fixture lineage. A mutable head points to the current
 revision and separately records the latest successful evaluation time/source
 watermark. Identical semantic inputs reuse a revision; A-to-B-to-A corrections
 append a third revision. A head-change trigger records audit and a
@@ -142,6 +171,10 @@ and provider-aware history, lineage and refresh routine overloads; original
 routine signatures remain unchanged. Production runtime selects Sorare. Existing
 synthetic HTTP/worker fixtures can select the archived profile only with the
 explicit `LSP_TEST_SOURCE=legacy` selector inside a valid `_test` database.
+Migration `012_appearance_enrichment.sql` adds optional supplement storage,
+revision anchors, shared daily quota and `effective_appearances`; it also updates
+the Sorare history routine to use the same effective fields as application reads.
+Apply all pending migrations before starting the upgraded app/worker.
 
 ## Authentication and privileges
 
@@ -163,10 +196,10 @@ for account setup, session details and HTTP contracts.
 | Boundary | Credentials/capability |
 | --- | --- |
 | Web process | Independent `lsp_reader`, `lsp_writer` and `lsp_auth` passwords, canonical auth origin and auth secret; no provider, MongoDB, bootstrap or migrator credentials |
-| Reader | Canonical football/provenance/forecast reads; SQL writes and auth/operational-table access denied |
-| Writer | Canonical writes and bounded job/head updates; append-only source revisions, rosters, forecasts and audit; no auth or migration administration |
+| Reader | Canonical football/provenance/forecast and effective appearance reads; no direct supplement-table/quota access, SQL writes or auth/operational-table access |
+| Writer | Canonical writes and bounded job/forecast-head updates; append-only source revisions, supplement observations, rosters, forecasts and audit; supplement-head/quota updates; no auth or migration administration |
 | Auth | Required auth storage, session and limiter operations; cannot assign user roles or access football tables |
-| Worker | PostgreSQL writer, restricted MongoDB archive identity and provider key; no auth, bootstrap or migrator credentials |
+| Worker | PostgreSQL writer, restricted MongoDB archive identity, Sorare key and optional Highlightly key; no auth, bootstrap or migrator credentials |
 | Controlled administration | Bootstrap provisioning and `lsp_migrator` schema/account administration stay outside app/worker containers |
 
 Viewer/admin are application user roles; the SQL reader/writer/auth/migrator
@@ -222,8 +255,9 @@ The archived APIFootball model evaluation scored
 was absent. Error statistics remain unavailable. Its separate versioned prospective protocol
 keeps private pre-matchday captures and awaits real outcomes; pending outcomes
 are not measured accuracy. These protocols do not score current Sorare forecasts.
-Current rating/form/key-pass outputs remain unavailable without matching source
-metrics, while evidenced count projections can be available. Missing history,
+Current rating/form/key-pass outputs require matching primary or verified
+supplementary metrics; missing fields remain unavailable, while evidenced count
+projections can be available. Missing history,
 metrics, club evidence, fixtures and standings continue to block dependent outputs.
 The [sixth-appearance replay](replay.md)
 provides a separate real-data arrival demonstration in an isolated clone; the
