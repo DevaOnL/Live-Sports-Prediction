@@ -174,8 +174,8 @@ A missed deadline is recorded separately; the tool never promotes a later match
 to obtain a successful case. Unavailable players are captured too.
 
 ```bash
-npm run measure -- capture ./forecast-capture.json
-npm run measure -- score ./forecast-capture.json > forward-results.json
+npm run measure --silent -- capture ./forecast-capture.json
+npm run measure --silent -- score ./forecast-capture.json > forward-results.json
 ```
 
 Both generated files are ignored at the repository root. The capture contains
