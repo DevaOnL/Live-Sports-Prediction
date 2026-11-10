@@ -1,9 +1,10 @@
 import type { Pool, PoolClient } from "pg";
 import { PublicApiError } from "./error";
 import { evaluateForecast, inputHash } from "../forecast/engine";
-import { prepareInputs } from "../forecast/inputs";
+import { prepareInputs, prepareObservedInputs } from "../forecast/inputs";
 import type { SavedForecast } from "../forecast/store";
 import { METRICS, type ForecastInput, type ForecastResult, type Metric, type Position } from "../forecast/types";
+import { computeBestStatistics, type BestStatistic } from "../scouting/highlights";
 
 export class ReadError extends PublicApiError {
   constructor(public readonly status: number, public readonly code: string, message: string) {
@@ -22,6 +23,7 @@ export type PlayerSummary = {
   id: string; name: string; position: Position;
   currentClub: { id: string; name: string; leagueId: string; leagueName: string; season: string } | null;
   currentClubReasons: string[];
+  bestStatistic: BestStatistic;
   forecast: {
     kind: "stored-evaluation"; status: "available" | "partial" | "unavailable" | "uncomputed";
     checkedAt: string | null; evaluationCutoffAt: string | null; sourceOrdinal: string | null;
@@ -123,7 +125,7 @@ function fields(value: unknown, allowed: string[]): asserts value is Record<stri
 function league(value: unknown) {
   if (value !== undefined && value !== "153" && value !== "164") invalid("invalid_league", "Unsupported competition.");
 }
-function summary(row: SummaryRow): PlayerSummary {
+function summary(row: SummaryRow, bestStatistic: BestStatistic): PlayerSummary {
   const reasons = [
     ...(row.missing_roster ? ["missing_roster_observation"] : []),
     ...(row.incomplete_roster ? ["incomplete_roster_observation"] : []),
@@ -133,7 +135,7 @@ function summary(row: SummaryRow): PlayerSummary {
   return {
     id: row.provider_id, name: row.name, position: row.position,
     currentClub: row.club_id ? { id: row.club_id, name: row.club_name!, leagueId: row.league_id!, leagueName: row.league_name!, season: row.season! } : null,
-    currentClubReasons: reasons,
+    currentClubReasons: reasons, bestStatistic,
     forecast: { kind: "stored-evaluation", status: row.availability, checkedAt: row.checked_at ? iso(row.checked_at) : null,
       evaluationCutoffAt: row.evaluation_cutoff_at ? iso(row.evaluation_cutoff_at) : null, sourceOrdinal: row.evaluation_source_ordinal },
   };
@@ -145,10 +147,12 @@ function publicProvenance(value: Record<string, unknown>): Record<string, unknow
   return Object.fromEntries(keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, value[key]]));
 }
 
+type LoadScouting = () => Promise<Map<string, BestStatistic>>;
+
 export class ReadService {
   constructor(private readonly pool: Pool) {}
 
-  private async snapshot<T>(operation: (client: PoolClient, source: SourceFreshness) => Promise<T>): Promise<T> {
+  private async snapshot<T>(operation: (client: PoolClient, source: SourceFreshness, loadScouting: LoadScouting) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -157,7 +161,11 @@ export class ReadService {
           max(s.retrieved_at) AS latest_retrieved_at FROM sports.normalized_revisions n
           LEFT JOIN sports.source_revisions s ON s.id=n.source_revision_id AND s.provider='apifootball'`)).rows[0];
       const source = { cutoffAt: iso(row.cutoff_at), sourceOrdinal: row.source_ordinal, latestRetrievedAt: row.latest_retrieved_at ? iso(row.latest_retrieved_at) : null };
-      const result = await operation(client, source);
+      // Filters and comparison selections never define the statistical cohort.
+      let scouting: Promise<Map<string, BestStatistic>> | undefined;
+      const loadScouting = () => scouting ??= prepareObservedInputs(client, source.cutoffAt).then((prepared) =>
+        computeBestStatistics([...prepared.values()].map((evidence) => evidence.input)));
+      const result = await operation(client, source, loadScouting);
       await client.query("COMMIT");
       return result;
     } catch (error) {
@@ -166,10 +174,11 @@ export class ReadService {
     } finally { client.release(); }
   }
 
-  private async identity(client: PoolClient, source: SourceFreshness, playerId: string): Promise<{ row: SummaryRow; player: PlayerSummary }> {
+  private async identity(client: PoolClient, source: SourceFreshness, playerId: string,
+    loadScouting: LoadScouting): Promise<{ row: SummaryRow; player: PlayerSummary }> {
     const row = (await client.query<SummaryRow>(`WITH ${CATALOGUE} SELECT * FROM summaries WHERE provider_id=$2`, [source.cutoffAt, playerId])).rows[0];
     if (!row) throw new ReadError(404, "player_not_found", "Player not found in enabled coverage.");
-    return { row, player: summary(row) };
+    return { row, player: summary(row, (await loadScouting()).get(row.provider_id)!) };
   }
 
   private async stored(client: PoolClient, sqlPlayerId: string): Promise<SavedForecast | null> {
@@ -237,7 +246,7 @@ export class ReadService {
     if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 50
       || !Number.isSafeInteger((page - 1) * pageSize)) invalid("invalid_pagination", "Invalid catalogue page or page size.");
     const search = filters.q?.trim().replace(/[\\%_]/g, "\\$&");
-    return this.snapshot(async (client, source) => {
+    return this.snapshot(async (client, source, loadScouting) => {
       if (filters.clubId) {
         const found = await client.query(`WITH ${APPROVED} SELECT 1 FROM sports.clubs c JOIN sports.season_clubs sc ON sc.club_id=c.id
           JOIN approved a ON a.season_id=sc.season_id WHERE c.provider='apifootball' AND c.provider_id=$1
@@ -250,14 +259,15 @@ export class ReadService {
       const total = (await client.query<{ total: number }>(`WITH ${CATALOGUE} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
       const rows = (await client.query<SummaryRow>(`WITH ${CATALOGUE} SELECT * FROM summaries WHERE ${condition}
         ORDER BY name,provider_id COLLATE "C" LIMIT $7 OFFSET $8`, [...values, pageSize, (page - 1) * pageSize])).rows;
-      return { items: rows.map(summary), pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) }, source };
+      const statistics = rows.length ? await loadScouting() : new Map<string, BestStatistic>();
+      return { items: rows.map((row) => summary(row, statistics.get(row.provider_id)!)), pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) }, source };
     });
   }
 
   async player(playerId: string) {
     identifier(playerId);
-    return this.snapshot(async (client, source) => {
-      const identity = await this.identity(client, source, playerId);
+    return this.snapshot(async (client, source, loadScouting) => {
+      const identity = await this.identity(client, source, playerId, loadScouting);
       const rows = (await client.query<{
         fixture_id: string; league_id: string; season: string; kickoff_at: Date | null; status: string; statistics_status: string;
         home_id: string; home_name: string; away_id: string; away_name: string; club_id: string | null; club_name: string | null;
@@ -294,8 +304,8 @@ export class ReadService {
 
   async forecast(playerId: string) {
     identifier(playerId);
-    return this.snapshot(async (client, source) => {
-      const identity = await this.identity(client, source, playerId);
+    return this.snapshot(async (client, source, loadScouting) => {
+      const identity = await this.identity(client, source, playerId, loadScouting);
       return { player: identity.player, forecast: await this.stored(client, identity.row.sql_id), source };
     });
   }
@@ -304,9 +314,9 @@ export class ReadService {
     if (!Array.isArray(playerIds) || playerIds.length < 2 || playerIds.length > 4 || new Set(playerIds).size !== playerIds.length
       || typeof allowCrossPosition !== "boolean") invalid("invalid_comparison", "Choose two to four distinct players.");
     playerIds.forEach(identifier);
-    return this.snapshot(async (client, source) => {
+    return this.snapshot(async (client, source, loadScouting) => {
       const identities: { row: SummaryRow; player: PlayerSummary }[] = [];
-      for (const playerId of playerIds) identities.push(await this.identity(client, source, playerId));
+      for (const playerId of playerIds) identities.push(await this.identity(client, source, playerId, loadScouting));
       const crossPosition = new Set(identities.map(({ player }) => player.position)).size > 1;
       if (crossPosition && !allowCrossPosition) invalid("position_mismatch", "Cross-position comparison requires explicit opt-in.");
       const sharedMetrics = METRICS.filter((metric) => identities.every(({ player }) => positionMetrics[player.position].includes(metric)));

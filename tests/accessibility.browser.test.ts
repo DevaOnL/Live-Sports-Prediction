@@ -82,6 +82,10 @@ async function disclose(summary: Locator, page: Page) {
 }
 
 async function semantics(page: Page) {
+  const navigation = page.getByRole("navigation", { name: /^(Main|Workspace) navigation$/ });
+  assert.equal(await navigation.count(), 1);
+  assert.equal(await navigation.getByRole("link", { name: "Operations", exact: true }).count(), 0);
+  assert.equal(await navigation.locator('a[href^="/admin"]').count(), 0);
   const result = await page.evaluate(() => {
     const targets = [...document.querySelectorAll<HTMLElement>("a[href],button,input:not([type=hidden]),select,textarea,summary")]
       .filter((element) => element.checkVisibility() && !(element as HTMLButtonElement).disabled && !element.classList.contains("skip-link"));
@@ -152,6 +156,15 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     const navigation = page.getByRole("navigation", { name: "Workspace navigation", exact: true });
     assert.equal(await navigation.getByRole("link", { name: "Operations", exact: true }).count(), 0);
     assert.equal(await navigation.getByRole("link", { name: "Overview", exact: true }).getAttribute("aria-current"), "page");
+    await activate(page.getByRole("link", { name: "Account settings", exact: true }), page);
+    await page.waitForURL(`${web.origin}/account`);
+    await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
+    assert.equal(await page.getByRole("main").getByRole("link", { name: "Operations", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("main").locator('a[href^="/admin"]').count(), 0);
+    await semantics(page);
+    await activate(page.getByRole("link", { name: "Open your workspace", exact: true }), page);
+    await page.waitForURL(`${web.origin}/overview`);
+    await page.getByRole("region", { name: "Coverage summary", exact: true }).waitFor();
     await focusControl(page.getByRole("link", { name: "Live Sports Prediction home", exact: true }));
     await activate(navigation.getByRole("link", { name: "Players", exact: true }), page);
     await page.getByRole("heading", { name: "Find your next player.", exact: true }).waitFor();
@@ -212,7 +225,14 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
 test("keyboard administrators can expand operational tables, source gaps and audit evidence without overflow", { timeout: 120_000 }, async () => {
   for (const width of widths) await journey(width, async (page) => {
     await keyboardLogin(page, "admin");
-    await activate(page.getByRole("navigation", { name: "Workspace navigation", exact: true }).getByRole("link", { name: "Operations", exact: true }), page);
+    await semantics(page);
+    await activate(page.getByRole("link", { name: "Account settings", exact: true }), page);
+    await page.waitForURL(`${web.origin}/account`);
+    const operations = page.getByRole("main").getByRole("link", { name: "Operations", exact: true });
+    await operations.waitFor();
+    assert.equal(await operations.getAttribute("href"), "/admin");
+    await semantics(page);
+    await activate(operations, page);
     await page.getByRole("heading", { name: "Operations", exact: true }).waitFor();
     await disclose(page.locator("summary").filter({ hasText: /^Coverage details$/ }), page);
     await page.getByRole("table", { name: "Approved coverage in canonical storage", exact: true }).waitFor();

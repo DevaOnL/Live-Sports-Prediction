@@ -9,6 +9,7 @@ import { useApi } from "@/lib/use-api";
 import { useObservationTime } from "@/lib/use-observation-time";
 import type { Metric } from "@/server/forecast/types";
 import { PlayerArtwork } from "./football-art";
+import { BestStatisticView } from "./best-statistic";
 import { EvidenceProvenance, ForecastView } from "./forecast-view";
 import { useSelection } from "./selection";
 import { PageHeading, PanelState, SourceNote, StatusBadge } from "./ui";
@@ -31,6 +32,7 @@ export function PlayerDetail({ id }: { id: string }) {
     {data ? <header className="profile-hero">
       <PlayerArtwork position={data.player.position} className="profile-art" />
       <div className="profile-copy"><p className="eyebrow">Player profile · {positionLabel[data.player.position]}</p><h1>{data.player.name}</h1><p>{data.player.currentClub?.name ?? "Current club unavailable"}</p><div className="profile-meta"><StatusBadge status={data.player.forecast.status} /><span className="compact-note">Saved evaluation</span></div>
+        <BestStatisticView statistic={data.player.bestStatistic} leagueName={data.player.currentClub?.leagueName} />
         <div className="action-row profile-actions"><button className="button" onClick={() => toggle(data.player)} disabled={!inComparison && selected.length >= 4} aria-label={`${inComparison ? "Remove" : "Add"} ${data.player.name} ${inComparison ? "from" : "to"} comparison`}>{inComparison ? "Remove from comparison" : "Add to comparison"}</button><button className="button button-secondary" onClick={() => setRevision((value) => value + 1)}>Refresh player data</button><Link className="text-link" href="/compare">Comparison ({selected.length}/4) →</Link></div>
       </div>
     </header> : <PageHeading eyebrow="Player profile" title="Player detail" />}

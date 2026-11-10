@@ -79,6 +79,12 @@ function eligibility(input: ForecastInput) {
   return { selected, gaps: gaps.filter(relevant), relevant, cutoff, boundary };
 }
 
+/** The observed five-match window, independent of forecast context and targets. */
+export function selectObservedWindow(input: ForecastInput): { selected: HistoryAppearance[]; gaps: EligibilityGap[]; ready: boolean } {
+  const { selected, gaps } = eligibility(input);
+  return { selected, gaps, ready: selected.length === 5 && gaps.length === 0 };
+}
+
 function contextValues(context: Context | null, fixtureId: string) {
   const failures: Reason[] = [];
   const warnings: Reason[] = [];

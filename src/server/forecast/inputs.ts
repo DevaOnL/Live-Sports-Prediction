@@ -47,13 +47,18 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
   return prepare(client, cutoffAt, providerPlayerIds);
 }
 
+/** Observed eligibility evidence for scouting, without forecast context or provenance copies. */
+export async function prepareObservedInputs(client: PoolClient, cutoffAt: string): Promise<Map<string, PreparedInput>> {
+  return prepare(client, cutoffAt, undefined, undefined, true);
+}
+
 /** Retrospectively corrected schedule with outcomes after the frozen date hidden. */
 export async function prepareHistoricalInputs(client: PoolClient, cutoffAt: string, date: string, providerPlayerIds: readonly string[]): Promise<Map<string, PreparedInput>> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !COVERAGE.some((league) => cutoffUtc(date, league.timezone) === cutoffAt)) throw new RangeError("Invalid historical cutoff");
   return prepare(client, cutoffAt, providerPlayerIds, date);
 }
 
-async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[], historicalDate?: string): Promise<Map<string, PreparedInput>> {
+async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[], historicalDate?: string, observationOnly = false): Promise<Map<string, PreparedInput>> {
   const cutoff = Date.parse(cutoffAt);
   if (!Number.isFinite(cutoff)) throw new RangeError("Invalid forecast cutoff");
   cutoffAt = new Date(cutoff).toISOString();
@@ -195,7 +200,7 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
         participation: appearance.participation, minutes: appearance.minutes,
         rating: appearance.rating === null ? null : Number(appearance.rating),
         metrics: Object.fromEntries(METRICS.map((metric) => [metric, appearance[fields[metric]]])) as HistoryAppearance["metrics"],
-        context: contextFor(fixture, appearance.club_id, false),
+        context: observationOnly ? null : contextFor(fixture, appearance.club_id, false),
       };
     });
     const rosterReasons: Reason[] = [];
@@ -285,10 +290,10 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
       player: { id: player.provider_id, position: player.position }, cutoffAt, appearances: history,
       gaps, currentClub, rosterReasons: ["missing_roster_observation", "incomplete_roster_observation", "ambiguous_current_club", "unknown_current_club"]
         .filter((code) => rosterReasons.some((reason) => reason.code === code)).map((code) => ({ code })),
-      targets: currentClub ? fixtures.filter((fixture) => fixture.leagueId === currentClub.leagueId && fixture.season === currentClub.season
+      targets: !observationOnly && currentClub ? fixtures.filter((fixture) => fixture.leagueId === currentClub.leagueId && fixture.season === currentClub.season
         && [fixture.home.id, fixture.away.id].includes(currentClub.clubId)).map((fixture) => ({ ...match(fixture), context: contextFor(fixture, currentClub.clubId, true) })) : [],
     };
-    result.set(player.provider_id, { input, sourceOrdinal, provenance: {
+    result.set(player.provider_id, { input, sourceOrdinal, provenance: observationOnly ? {} : {
       sourceOrdinal, playerRevisionId: player.normalized_revision_id,
       appearanceRevisionIds: [...new Set(stored.map((appearance) => appearance.normalized_revision_id).filter(Boolean))].sort(),
       fixtureRevisionIds: [...new Set(fixtures.map((fixture) => fixture.revisionId).filter(Boolean))].sort(),

@@ -28,6 +28,7 @@ export default async function Account() {
         <p className="account-intro">{principal.email}</p>
         <p className="account-role">{principal.role === "admin" ? "Administrator" : "Viewer"}</p>
         <p><Link className="text-link" href="/overview">Open your workspace <span aria-hidden="true">→</span></Link></p>
+        {principal.role === "admin" && <p><Link className="text-link" href="/admin">Operations <span aria-hidden="true">→</span></Link></p>}
         <SignOut />
       </section>
     </div></main></>

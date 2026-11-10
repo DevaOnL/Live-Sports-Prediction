@@ -155,6 +155,20 @@ summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .player-evaluation { margin-top: auto; }
 .player-evaluation .provenance-details { margin-top: 0; }
 .player-evaluation small { font-size: 10px; }
+.best-statistic { min-width: 0; margin: 0 0 14px; padding: 12px; border: 2px solid var(--ink); border-radius: 6px; background: var(--blue); }
+.best-statistic-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.best-statistic-label { margin: 0; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .6px; }
+.best-statistic-badge { background: var(--yellow); color: var(--ink); border-color: var(--ink); font-size: 9px; padding: 3px 5px; }
+.best-statistic-value { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; font-family: "Barlow Condensed", Impact, sans-serif; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.best-statistic-value strong { font-size: 38px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.best-statistic-value > span { min-width: 0; overflow-wrap: anywhere; }
+.best-statistic-window { margin: 5px 0 0; font-size: 10px; }
+.best-statistic .provenance-details { margin-top: 0; }
+.best-statistic .provenance-details p { font-size: 11px; }
+.best-statistic summary { font-size: 10px; }
+.best-statistic-unavailable { background: #eee8dc; }
+.best-statistic-empty { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.profile-copy > .best-statistic { margin-top: 20px; max-width: 560px; }
 .player-card-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; border-top: 1px solid; margin-top: 10px; padding-top: 10px; }
 .player-card .text-link { font-size: 11px; }
 .compare-toggle { min-height: 44px; padding: 9px; border: 2px solid; border-radius: 4px; background: #fff; font-size: 11px; font-weight: 700; }
