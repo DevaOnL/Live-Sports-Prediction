@@ -219,6 +219,12 @@ A changed primary
 appearance or fixture revision immediately invalidates its prior supplements.
 Fetching prioritizes completing player windows; it never changes eligibility.
 
+`npm run enrich -- --cached-only` reprocesses the latest imported box scores
+without provider requests. The versioned name-entity normalization pass can append
+previously unmatched appearances using the original source revision and retrieval
+time. It preserves existing observations, import receipts and newer heads; stale
+primary fingerprints are skipped until fresh source evidence is available.
+
 The Basic allowance is **100 requests/day**, resetting at midnight UTC. A shared
 SQL-clock counter budgets actual attempts, spaces them by one second, honors the
 provider's remaining-count header and keeps five requests spare. Errors consume
@@ -227,6 +233,11 @@ require several daily budgets to backfill; account rotation is not used. If the
 same key was used by local setup tools, record the last observed allowance with
 `EnrichmentStore.observeQuota` before starting concurrent consumers. The provider
 counter can only reduce the current day's remaining allowance.
+For a deliberate one-off import, `npm run enrich -- 5 --use-reserve` can spend the
+five reserved requests. It still enforces the actual remaining allowance, shared
+SQL-clock pacing and 100-request daily cap. The normal worker keeps its five-call
+reserve; neither flag resets counters or changes the provider plan. The two flags
+cannot be combined.
 
 Each box score must match the league, season, home/away clubs, exact kickoff and
 final result. A player must match one unambiguous name or initial abbreviation

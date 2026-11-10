@@ -9,14 +9,15 @@ import type { ArchivedResponse } from "./types";
 
 type StoredArchive = Omit<ArchivedResponse, "id"> & { _id: string };
 export type EnrichmentProgress = { fixtures: number; appearances: number; pending: number; unmapped: number };
+export type EnrichmentReprocessProgress = { captures: number; appearances: number; skipped: number; duplicates: number };
 
 /** Optional worker-only supplementation. The primary source always runs independently. */
 export class EnrichmentPipeline {
   readonly store: EnrichmentStore;
   readonly archives: ArchiveStore;
   readonly provider: HighlightlyClient;
-  constructor(private readonly pool: Pool, private readonly db: Db, key: string) {
-    this.store = new EnrichmentStore(pool);
+  constructor(private readonly pool: Pool, private readonly db: Db, key: string, options: { requestReserve?: number } = {}) {
+    this.store = new EnrichmentStore(pool, options.requestReserve ?? 5);
     this.archives = new ArchiveStore(db);
     this.provider = new HighlightlyClient(this.store, key);
   }
@@ -57,7 +58,7 @@ export class EnrichmentPipeline {
     finally { client.release(); }
   }
 
-  private async latest(action: "get_events" | "get_statistics"): Promise<ArchivedResponse[]> {
+  private async latest(action: "get_events" | "get_statistics", validate = true): Promise<ArchivedResponse[]> {
     const documents = await this.db.collection<StoredArchive>("raw_archives").aggregate<StoredArchive>([
       { $match: { "params.provider": "highlightly", action } },
       { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },
@@ -68,8 +69,10 @@ export class EnrichmentPipeline {
       { $replaceRoot: { newRoot: "$value" } },
     ]).toArray();
     return documents.map(({ _id, ...value }) => {
-      validateArchive(value);
-      if (archiveId(value) !== _id) throw new Error("Supplementary archive identity mismatch");
+      if (validate) {
+        validateArchive(value);
+        if (archiveId(value) !== _id) throw new Error("Supplementary archive identity mismatch");
+      }
       return { ...value, id: _id };
     });
   }
@@ -101,6 +104,46 @@ export class EnrichmentPipeline {
           await this.archives.mark(archive.id, "invalid", [{ code: "supplement_evidence_unresolved", resource: archive.params.match_id ?? archive.params.league_id }]);
         } else throw error;
       }
+    }
+  }
+
+  /** Re-evaluate accepted cached boxes without discovery, HTTP or new observation times. */
+  async reprocessCached(): Promise<EnrichmentReprocessProgress> {
+    const progress: EnrichmentReprocessProgress = { captures: 0, appearances: 0, skipped: 0, duplicates: 0 };
+    const lock = await this.pool.connect();
+    let locked = false;
+    try {
+      locked = (await lock.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtextextended('lsp:highlightly-run',0)) AS locked")).rows[0].locked;
+      if (!locked) return progress;
+      const fixtures = await this.fixtures();
+      for (const archive of await this.latest("get_statistics", false)) {
+        progress.captures++;
+        let batch: ReturnType<typeof normalizeHighlightly>;
+        try {
+          validateArchive(archive);
+          if (archiveId(archive) !== archive.id) throw new Error("Supplementary archive identity mismatch");
+          const bundle: unknown = JSON.parse(archive.text);
+          if (!object(bundle) || !object(bundle.fixture)) throw new Error("Invalid supplementary box");
+          const header = bundle.fixture;
+          const matches = fixtures.filter((fixture) => fixture.leagueId === archive.params.league_id
+            && sameFixture(header, fixture));
+          if (matches.length !== 1 || bundle.primaryFingerprint !== primaryFingerprint(matches[0])) {
+            progress.skipped++;
+            continue;
+          }
+          batch = normalizeHighlightly(archive, matches[0]);
+        } catch {
+          progress.skipped++;
+          continue;
+        }
+        const result = await this.store.reprocess(archive, batch);
+        progress.appearances += result.appearances;
+        if (result.duplicate) progress.duplicates++;
+      }
+      return progress;
+    } finally {
+      if (locked) await lock.query("SELECT pg_advisory_unlock(hashtextextended('lsp:highlightly-run',0))").catch(() => undefined);
+      lock.release();
     }
   }
 

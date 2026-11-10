@@ -59,6 +59,22 @@ test("name normalization permits accent/initial equivalence but rejects differen
   assert.equal(clubName("Atlético de Madrid"), clubName("Atletico Madrid"));
   assert.notEqual(clubName("Manchester United"), clubName("Manchester City"));
 });
+test("HTML apostrophes preserve strict identity and observed-count corroboration", () => {
+  for (const entity of ["&apos;", "&#39;", "&#039;", "&#x27;", "&#X0027;"]) {
+    assert(samePlayerName("Luke O'Nien", `L. O${entity}Nien`));
+    assert(samePlayerName(`Dara O${entity}Shea`, "D. O’Shea"));
+    assert(!samePlayerName("Luke O'Nien", `Louis O${entity}Nien`));
+    assert(!samePlayerName("Luke O'Nien", `A. O${entity}Nien`));
+  }
+  assert(!samePlayerName("Luke O'Nien", "L. O&aposNien"));
+  assert(!samePlayerName("Luke O'Nien", "L. O&APOS;Nien"));
+  assert(!samePlayerName("Luke O'Nien", "L. O&unknown;Nien"));
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Luke O'Nien" }] };
+  const raw = capture({ name: "L. O&apos;Nien" });
+  assert.equal(normalizeHighlightly(raw, primary).observations.length, 1);
+  assert.equal(normalizeHighlightly(capture({ name: "L. O&apos;Nien", minutesPlayed: 89 }), primary).observations.length, 0);
+  assert.equal(normalizeHighlightly(capture({ name: "L. O&apos;Nien" }, { assists: 1 }), primary).observations.length, 0);
+});
 test("verified club aliases retain exact fixture time, score, league and opponent checks", () => {
   const pairs = [["Ipswich Town FC", "Ipswich"], ["Coventry City FC", "Coventry"],
     ["RC Celta", "Celta de Vigo"], ["RCD Espanyol de Barcelona", "Espanyol"],
