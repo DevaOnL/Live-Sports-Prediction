@@ -15,7 +15,10 @@ export type EnrichmentFixture = {
 };
 const count = (value: unknown): number | null => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647 ? value : null;
 const id = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-const name = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+// Some upstream names contain HTML apostrophe entities. Decode only these
+// separators before comparing names; unknown entities remain literal evidence.
+const apostrophes = (value: string) => value.replace(/&(?:apos|#0*39|#[xX]0*27);/g, "'");
+const name = (value: string) => apostrophes(value).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 export function clubName(value: string): string {
   const key = name(value.replace(/\b(?:fc|cf|afc|football|club|de|del|the)\b/gi, ""));
   const aliases: Record<string, string> = {
@@ -38,7 +41,7 @@ export function samePlayerName(primary: string, external: string): boolean {
   const primaryName = name(primary), externalName = name(external);
   if (!primaryName || !externalName) return false;
   if (primaryName === externalName) return true;
-  const tokens = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const tokens = (value: string) => apostrophes(value).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
   const a = tokens(primary), b = tokens(external);
   const firstA = a[0], firstB = b[0];
   if (!firstA || !firstB || a.length < 2 || b.length < 2 || a.at(-1) !== b.at(-1)) return false;

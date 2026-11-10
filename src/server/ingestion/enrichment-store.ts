@@ -17,10 +17,15 @@ export type EnrichmentImportResult = ImportResult & { sourceRevisionId: string; 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const externalId = /^[1-9][0-9]{0,17}$/;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const mappingVersion = "name-entities-v2";
 
 /** Supplement facts are append-only; current primary revisions remain authoritative. */
 export class EnrichmentStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly requestReserve = 5) {
+    if (!Number.isInteger(requestReserve) || requestReserve < 0 || requestReserve > 5) {
+      throw new Error("Invalid supplementary request reserve");
+    }
+  }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
@@ -61,8 +66,8 @@ export class EnrichmentStore {
       const quota = (await client.query<{ remaining: number }>(`SELECT remaining FROM sports.enrichment_request_quota
         WHERE provider='highlightly' AND utc_day=$1::date`, [clock.day])).rows[0];
       const remaining = Math.min(quota?.remaining ?? 100, 100 - Number(usage.count));
-      // Keep five requests spare for investigation and provider counter drift.
-      if (remaining <= 5) throw new RateLimitError(clock.reset);
+      // Routine collection keeps five spare; an explicit bounded run may use them.
+      if (remaining <= this.requestReserve) throw new RateLimitError(clock.reset);
       if (usage.latest && clock.now.getTime() - usage.latest.getTime() < 1000) {
         throw new RateLimitError(new Date(usage.latest.getTime() + 1000));
       }
@@ -150,6 +155,15 @@ export class EnrichmentStore {
   }
 
   async import(archive: ArchivedResponse, batch: EnrichmentBatch): Promise<EnrichmentImportResult> {
+    return this.apply(archive, batch, false);
+  }
+
+  /** Apply newly resolved identities to the original capture without re-observing it. */
+  async reprocess(archive: ArchivedResponse, batch: EnrichmentBatch): Promise<EnrichmentImportResult> {
+    return this.apply(archive, batch, true);
+  }
+
+  private async apply(archive: ArchivedResponse, batch: EnrichmentBatch, reprocessing: boolean): Promise<EnrichmentImportResult> {
     validateArchive(archive);
     if (archiveId(archive) !== archive.id || archive.params.provider !== "highlightly" || archive.action !== "get_statistics"
       || !archive.resourceKey.startsWith("highlightly:") || archive.params.match_id !== batch.externalFixtureId
@@ -184,8 +198,14 @@ export class EnrichmentStore {
       }
       const committed = (await client.query<{ source_revision_id: string; appearance_count: number }>(
         "SELECT source_revision_id,appearance_count FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows[0];
-      if (committed) return { archiveId: archive.id, duplicate: true, fixtures: 1, appearances: committed.appearance_count,
+      if (committed && !reprocessing) return { archiveId: archive.id, duplicate: true, fixtures: 1, appearances: committed.appearance_count,
         issues: 0, sourceRevisionId: committed.source_revision_id, activated: 0 };
+      const original = reprocessing ? (await client.query<{ id: string }>(`SELECT s.id FROM sports.source_revisions s
+        JOIN sports.ingestion_batches b ON b.source_revision_id=s.id
+        WHERE b.archive_id=$1 AND s.archive_ref=$1 AND s.provider='highlightly' AND s.action=$2
+          AND s.resource_key=$3 AND s.content_sha256=$4 AND s.retrieved_at=$5::timestamptz`,
+      [archive.id, archive.action, archive.resourceKey, archive.contentSha256, archive.retrievedAt])).rows[0] : undefined;
+      if (reprocessing && !original) throw new Error("Supplementary cached mapping lacks its original accepted source receipt");
       const fixture = (await client.query<{ id: string; provider_id: string }>(`SELECT f.id,f.provider_id FROM sports.fixtures f
         JOIN sports.competition_seasons cs ON cs.id=f.season_id JOIN sports.competitions c ON c.id=cs.competition_id
         WHERE f.id=$1 AND f.normalized_revision_id=$2 AND f.provider='sorare' AND f.status='final'
@@ -203,13 +223,28 @@ export class EnrichmentStore {
           throw new Error("Supplementary appearance no longer matches current evidence");
         }
       }
-      const source = (await client.query<{ id: string }>(`INSERT INTO sports.source_revisions(provider,action,resource_key,archive_ref,content_sha256,retrieved_at)
+      const receiptKey = `${archive.id}:${mappingVersion}`;
+      if (original && (await client.query(`SELECT id FROM sports.normalized_revisions
+        WHERE source_revision_id=$1 AND entity_type='appearance_enrichment_mapping' AND entity_key=$2`,
+      [original.id, receiptKey])).rowCount) {
+        return { archiveId: archive.id, duplicate: true, fixtures: 1, appearances: 0,
+          issues: 0, sourceRevisionId: original.id, activated: 0 };
+      }
+      const source = original?.id ?? (await client.query<{ id: string }>(`INSERT INTO sports.source_revisions(provider,action,resource_key,archive_ref,content_sha256,retrieved_at)
         VALUES('highlightly',$1,$2,$3,$4,$5) RETURNING id`,
       [archive.action, archive.resourceKey, archive.id, archive.contentSha256, archive.retrievedAt])).rows[0].id;
-      const observations = [...batch.observations];
+      const existing = reprocessing ? (await client.query<{ appearance_id: string; external_player_id: string }>(
+        "SELECT appearance_id,external_player_id FROM sports.appearance_enrichments WHERE source_revision_id=$1", [source])).rows : [];
+      const alreadyObserved = new Set(existing.map((row) => row.appearance_id));
+      const existingExternal = new Map(existing.map((row) => [row.external_player_id, row.appearance_id]));
+      const observations = batch.observations.filter((row) => !alreadyObserved.has(row.appearanceId));
+      if (observations.some((row) => existingExternal.has(row.externalPlayerId)
+        && existingExternal.get(row.externalPlayerId) !== row.appearanceId)) {
+        throw new Error("Supplementary cached mapping contradicts an accepted player identity");
+      }
       // A newer complete capture must reconfirm an old mapping. Absence withdraws
       // a supplement without inventing a primary appearance or a zero statistic.
-      const prior = (await client.query<{ appearance_id: string; external_player_id: string }>(`SELECT e.appearance_id,e.external_player_id
+      const prior = reprocessing ? [] : (await client.query<{ appearance_id: string; external_player_id: string }>(`SELECT e.appearance_id,e.external_player_id
         FROM sports.appearance_enrichment_heads h JOIN sports.appearance_enrichments e ON e.id=h.enrichment_id
         WHERE e.fixture_id=$1`, [batch.fixtureId])).rows;
       for (const row of prior) {
@@ -256,8 +291,18 @@ export class EnrichmentStore {
       }
       if (activated) await client.query(`INSERT INTO sports.outbox(event_type,aggregate_type,aggregate_id,deduplication_key,payload)
         VALUES('canonical.changed','fixture',$1,$2,$3) ON CONFLICT(deduplication_key) DO NOTHING`,
-      [batch.fixtureId, `enrichment:${archive.id}`, JSON.stringify({ provider: "sorare", fixtureId: fixture.provider_id })]);
-      await client.query(`INSERT INTO sports.ingestion_batches(archive_id,source_revision_id,fixture_count,appearance_count,issues_json)
+      [batch.fixtureId, reprocessing ? `enrichment-reprocess:${receiptKey}` : `enrichment:${archive.id}`,
+        JSON.stringify({ provider: "sorare", fixtureId: fixture.provider_id })]);
+      if (reprocessing) {
+        const detail = { version: mappingVersion, archiveId: archive.id, fixtureId: batch.fixtureId,
+          fixtureRevisionId: batch.fixtureRevisionId, observedAt: archive.retrievedAt,
+          appearances: observations.length, activated };
+        const receipt = (await client.query<{ id: string }>(`INSERT INTO sports.normalized_revisions
+          (source_revision_id,entity_type,entity_key,content_sha256)
+          VALUES($1,'appearance_enrichment_mapping',$2,$3) RETURNING id`, [source, receiptKey, digest(detail)])).rows[0];
+        await client.query(`INSERT INTO sports.audit_log(normalized_revision_id,actor_type,action,entity_type,entity_key,detail)
+          VALUES($1,'worker','enrichment.reprocess','fixture',$2,$3)`, [receipt.id, batch.fixtureId, JSON.stringify(detail)]);
+      } else await client.query(`INSERT INTO sports.ingestion_batches(archive_id,source_revision_id,fixture_count,appearance_count,issues_json)
         VALUES($1,$2,1,$3,'[]')`, [archive.id, source, observations.length]);
       return { archiveId: archive.id, duplicate: false, fixtures: 1, appearances: observations.length, issues: 0, sourceRevisionId: source, activated };
     });

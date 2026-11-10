@@ -66,7 +66,8 @@ function fixture(overrides: Partial<Fixture> = {}): Fixture {
 }
 async function primary(override: Partial<Fixture> = {}) {
   const value = fixture(override);
-  const batch: Batch = { coverage, clubs, players: [player], fixtures: [value], standings: [], issues: [] };
+  const batch: Batch = { coverage, clubs, players: [...new Map(value.appearances.map((a) => [a.player.id, a.player])).values()],
+    fixtures: [value], standings: [], issues: [] };
   const text = JSON.stringify(batch);
   const response = { action: "get_statistics" as const, resourceKey: `sorare:test:${observation++}`,
     params: { provider: "sorare", league_id: coverage.id, match_id: value.id }, text,
@@ -249,4 +250,136 @@ test("a fresh remapped fixture identifier withdraws older mappings absent from i
   await enrichment.import(rekeyed, { ...captured, externalFixtureId: "124", observations: [] });
   assert.equal((await effective()).rating, null);
   assert.equal((await effective()).key_passes, null);
+});
+
+test("cached remapping appends newly resolved identities with the original source and observation time exactly once", async () => {
+  const response = archive();
+  const captured = await batch();
+  await assert.rejects(enrichment.reprocess(response, captured), /original accepted source receipt/);
+  const imported = await enrichment.import(response, { ...captured, observations: [] });
+  const originalSources = (await pool.query("SELECT * FROM sports.source_revisions ORDER BY id")).rows;
+  const originalReceipts = (await pool.query("SELECT * FROM sports.ingestion_batches ORDER BY archive_id")).rows;
+  const originalPrimary = (await pool.query("SELECT * FROM sports.appearances ORDER BY id")).rows;
+  const result = await enrichment.reprocess(response, captured);
+  assert.equal(result.duplicate, false); assert.equal(result.appearances, 1); assert.equal(result.activated, 1);
+  assert.equal(result.sourceRevisionId, imported.sourceRevisionId);
+  const stored = (await pool.query("SELECT * FROM sports.appearance_enrichments")).rows[0];
+  assert.equal(stored.source_revision_id, imported.sourceRevisionId);
+  assert.equal(stored.retrieved_at.toISOString(), response.retrievedAt);
+  assert.equal(Date.parse((await effective()).enrichment_provenance.rating.observedAt), Date.parse(response.retrievedAt));
+  const receipt = (await pool.query(`SELECT * FROM sports.normalized_revisions
+    WHERE entity_type='appearance_enrichment_mapping'`)).rows[0];
+  assert.equal(receipt.entity_key, `${response.id}:name-entities-v2`);
+  assert.equal(receipt.source_revision_id, imported.sourceRevisionId);
+  const audit = (await pool.query("SELECT * FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0];
+  assert.equal(audit.normalized_revision_id, receipt.id);
+  assert.equal(audit.detail.observedAt, response.retrievedAt);
+  assert.equal(audit.detail.appearances, 1);
+  const repeated = await Promise.all([enrichment.reprocess(response, captured), enrichment.reprocess(response, captured)]);
+  assert(repeated.every((row) => row.duplicate && row.appearances === 0 && row.activated === 0));
+  assert.deepEqual((await pool.query("SELECT * FROM sports.source_revisions ORDER BY id")).rows, originalSources);
+  assert.deepEqual((await pool.query("SELECT * FROM sports.ingestion_batches ORDER BY archive_id")).rows, originalReceipts);
+  assert.deepEqual((await pool.query("SELECT * FROM sports.appearances ORDER BY id")).rows, originalPrimary);
+  assert.deepEqual((await pool.query("SELECT * FROM sports.appearance_enrichments")).rows, [stored]);
+  assert.deepEqual((await pool.query("SELECT * FROM sports.normalized_revisions WHERE entity_type='appearance_enrichment_mapping'")).rows, [receipt]);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0].count, 1);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.outbox WHERE deduplication_key=$1",
+    [`enrichment-reprocess:${response.id}:name-entities-v2`])).rows[0].count, 1);
+  assert.equal((await enrichment.import(response, captured)).appearances, 0, "ordinary import keeps its original immutable receipt");
+});
+
+test("cached remapping preserves accepted values and never withdraws or reassigns an existing identity", async () => {
+  const value = fixture();
+  value.appearances.push({ ...value.appearances[0], player: { ...player, id: `Player:${uuid(2)}`, slug: "second-player", name: "Second player" } });
+  await primary(value);
+  const captured = await batch();
+  const rows = (await pool.query(`SELECT a.id,a.normalized_revision_id FROM sports.appearances a
+    JOIN sports.players p ON p.id=a.player_id ORDER BY p.provider_id`)).rows;
+  captured.observations = rows.map((row, index) => ({ ...captured.observations[0], appearanceId: row.id,
+    primaryRevisionId: row.normalized_revision_id, externalPlayerId: String(456 + index) }));
+  const response = archive();
+  const initial = await enrichment.import(response, { ...captured, observations: [captured.observations[0]] });
+  const old = (await pool.query("SELECT * FROM sports.appearance_enrichments WHERE source_revision_id=$1", [initial.sourceRevisionId])).rows[0];
+  await assert.rejects(enrichment.reprocess(response, { ...captured, observations: [{
+    ...captured.observations[1], externalPlayerId: captured.observations[0].externalPlayerId,
+  }] }), /contradicts an accepted player identity/);
+  const changed = { ...captured.observations[0], metrics: { ...captured.observations[0].metrics, rating: 1 } };
+  const result = await enrichment.reprocess(response, { ...captured, observations: [changed, captured.observations[1]] });
+  assert.equal(result.appearances, 1); assert.equal(result.activated, 1);
+  assert.deepEqual((await pool.query("SELECT * FROM sports.appearance_enrichments WHERE id=$1", [old.id])).rows, [old]);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments WHERE source_revision_id=$1", [initial.sourceRevisionId])).rows[0].count, 2);
+  assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE id=$1", [old.appearance_id])).rows[0].rating, "7.50");
+  assert.equal((await pool.query("SELECT appearance_count FROM sports.ingestion_batches WHERE archive_id=$1", [response.id])).rows[0].appearance_count, 1);
+});
+
+test("cached remapping rejects stale primary anchors and cannot regress a newer effective observation", async () => {
+  const captured = await batch();
+  const response = archive();
+  await enrichment.import(response, { ...captured, observations: [] });
+  await assert.rejects(enrichment.reprocess(response, { ...captured, fixtureRevisionId: uuid(999) }), /fixture/);
+  await assert.rejects(enrichment.reprocess(response, { ...captured, observations: [{
+    ...captured.observations[0], primaryRevisionId: uuid(999),
+  }] }), /appearance/);
+  const newer = archive("2026-11-10T12:01:00Z", "newer-resolved-name");
+  await enrichment.import(newer, { ...captured, observations: [{ ...captured.observations[0],
+    metrics: { ...captured.observations[0].metrics, rating: 8 },
+  }] });
+  const head = (await pool.query("SELECT * FROM sports.appearance_enrichment_heads")).rows[0];
+  const result = await enrichment.reprocess(response, captured);
+  assert.equal(result.appearances, 1); assert.equal(result.activated, 0);
+  assert.equal((await effective()).rating, "8.00");
+  assert.deepEqual((await pool.query("SELECT * FROM sports.appearance_enrichment_heads")).rows, [head]);
+  await primary({ homeScore: 2 });
+  await assert.rejects(enrichment.reprocess(response, captured), /fixture/);
+});
+
+test("cached remapping cannot clear a later header contradiction", async () => {
+  const captured = await batch();
+  const old = archive();
+  await enrichment.import(old, { ...captured, observations: [] });
+  await enrichment.import(archive("2026-11-10T12:00:30Z", "resolved-earlier-than-header"), captured);
+  const schedule = archive("2026-11-10T12:01:00Z", "header-correction");
+  schedule.action = "get_events"; schedule.resourceKey = "highlightly:schedule:premier-league-gb-eng";
+  schedule.params = { provider: "highlightly", league_id: coverage.id, format: "highlightly-schedule-v1" };
+  schedule.id = archiveId(schedule);
+  await enrichment.recordSchedule(schedule);
+  await enrichment.invalidateFixture(schedule, captured.fixtureId, "123");
+  const result = await enrichment.reprocess(old, captured);
+  assert.equal(result.activated, 0);
+  assert.equal((await effective()).rating, null);
+  assert.equal((await pool.query("SELECT conflicted FROM sports.appearance_enrichment_heads")).rows[0].conflicted, true);
+});
+
+test("newly mapped cached values at an equal observation time preserve genuine conflicts", async () => {
+  const captured = await batch();
+  const response = archive();
+  await enrichment.import(response, { ...captured, observations: [] });
+  await enrichment.import(archive(response.retrievedAt, "resolved-at-same-time"), captured);
+  const conflict = await enrichment.reprocess(response, { ...captured, observations: [{ ...captured.observations[0],
+    metrics: { ...captured.observations[0].metrics, rating: 3 },
+  }] });
+  assert.equal(conflict.appearances, 1);
+  assert.equal((await pool.query("SELECT conflicted FROM sports.appearance_enrichment_heads")).rows[0].conflicted, true);
+  assert.equal((await effective()).rating, null);
+});
+
+test("an explicit zero reserve can use the last five requests without exceeding the shared hard daily allowance", async () => {
+  for (const reserve of [-1, 6, 0.5, Number.NaN]) assert.throws(() => new EnrichmentStore(pool, reserve), /reserve/);
+  const bounded = new EnrichmentStore(pool, 0);
+  await enrichment.observeQuota(5);
+  await assert.rejects(enrichment.reserveRequest("get_statistics", "highlightly:test:default-reserve"), RateLimitError);
+  for (let index = 0; index < 5; index++) {
+    await admin.query("UPDATE sports.provider_requests SET attempted_at=clock_timestamp()-interval '2 seconds'");
+    await bounded.reserveRequest("get_statistics", `highlightly:test:bounded:${index}`);
+    if (index < 4) await assert.rejects(bounded.reserveRequest("get_statistics", `highlightly:test:too-fast:${index}`), RateLimitError);
+  }
+  assert.equal((await pool.query("SELECT remaining FROM sports.enrichment_request_quota")).rows[0].remaining, 0);
+  await admin.query("UPDATE sports.provider_requests SET attempted_at=clock_timestamp()-interval '2 seconds'");
+  await bounded.observeQuota(100);
+  await assert.rejects(bounded.reserveRequest("get_statistics", "highlightly:test:no-remaining"), RateLimitError);
+  await admin.query("UPDATE sports.enrichment_request_quota SET remaining=100");
+  await admin.query(`INSERT INTO sports.provider_requests(action,resource_key,attempted_at)
+    SELECT 'get_statistics','highlightly:test:already-used:'||item,clock_timestamp()-interval '2 seconds' FROM generate_series(1,95) item`);
+  await assert.rejects(bounded.reserveRequest("get_statistics", "highlightly:test:hard-cap"), RateLimitError);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.provider_requests WHERE resource_key LIKE 'highlightly:%'")).rows[0].count, 100);
 });
