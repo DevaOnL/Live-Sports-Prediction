@@ -121,6 +121,8 @@ jobs:
         run: npm run test:ingestion
       - name: Verify forecast revisions and refresh processing
         run: npm run test:forecast
+      - name: Verify isolated historical observation replay
+        run: npm run test:replay
       - name: Verify historical and prospective evaluation
         run: npm run test:evaluation
       - name: Verify reporting routines and trigger permissions

@@ -20,6 +20,7 @@
 !/scripts/users.ts
 !/scripts/evaluate.ts
 !/scripts/measure.ts
+!/scripts/replay.ts
 !/tests/
 /tests/*
 !/tests/database.test.ts
@@ -43,6 +44,8 @@
 !/tests/evaluation.database.test.ts
 !/tests/prospective.test.ts
 !/tests/prospective.database.test.ts
+!/tests/replay.test.ts
+!/tests/replay.database.test.ts
 !/tests/worker.integration.test.ts
 !/tests/accessibility.browser.test.ts
 !/tests/support/
@@ -61,6 +64,7 @@
 !/docs/architecture.md
 !/docs/deployment.md
 !/docs/requirements.md
+!/docs/replay.md
 !/docs/screenshots/
 /docs/screenshots/*
 !/docs/screenshots/overview.png

@@ -97,3 +97,14 @@ checks selection, limits, idempotence, transactional effects and role permission
 against the guarded disposable PostgreSQL cluster described in the
 [database guide](database.md#isolated-integration-tests). CI runs those tests and
 this complete isolated demonstration.
+
+## Real historical appearance replay
+
+The separate [`npm run replay --silent`](replay.md) command uses an existing
+imported source through its restricted reader and creates its own disposable
+PostgreSQL clone. It verifies a real sixth eligible appearance entering the
+selected five, its prior oldest leaving, honest incomplete history while that
+row is withheld, and an immutable queued refresh after the exact row is restored.
+Its present-cutoff data-arrival demonstration preserves genuine observation
+times and does not measure historical forecast accuracy. The synthetic SQL/NoSQL
+examples above remain self-contained and require no imported source.
