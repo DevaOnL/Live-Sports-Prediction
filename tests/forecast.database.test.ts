@@ -12,8 +12,8 @@ import { coverageFor } from "../src/server/ingestion/coverage";
 import { IngestionStore } from "../src/server/ingestion/store";
 import { JobQueue } from "../src/server/ingestion/jobs";
 import type { Appearance, ArchivedResponse, Batch, Fixture, Player } from "../src/server/ingestion/types";
-import { inputHash } from "../src/server/forecast/engine";
-import { prepareHistoricalInputs, prepareInputs } from "../src/server/forecast/inputs";
+import { inputHash, selectObservedWindow } from "../src/server/forecast/engine";
+import { prepareHistoricalInputs, prepareInputs, prepareObservedInputs } from "../src/server/forecast/inputs";
 import { ForecastStore } from "../src/server/forecast/store";
 
 const database = process.env.POSTGRES_DB ?? "";
@@ -149,6 +149,47 @@ test("all four positions persist complete inputs, shared provenance and reproduc
   assert.deepEqual(Object.keys(saved[3]!.result.projected90), ["goals", "assists", "shotsOnTarget"]);
   assert.equal((await admin.query("SELECT count(*) FROM sports.outbox WHERE event_type='canonical.changed' AND aggregate_type='forecast'")).rows[0].count, "0");
   assert.equal((await forecasts.refreshAll("2026-08-10T13:00:00.000Z")).unchanged, 4, "clock passage alone does not append revisions");
+});
+
+test("observation-only preparation preserves canonical windows, uncertainty and roster evidence", async () => {
+  async function equivalent(expectedReady: boolean[]) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const full = await prepareInputs(client, cutoff);
+      const observed = await prepareObservedInputs(client, cutoff);
+      assert.equal(observed.size, full.size);
+      for (const [index, player] of players.entries()) {
+        const canonical = full.get(player.id)!;
+        const scouting = observed.get(player.id)!;
+        assert.deepEqual(scouting.input, { ...canonical.input,
+          appearances: canonical.input.appearances.map((appearance) => ({ ...appearance, context: null })), targets: [] },
+        "only forecast context and targets may be omitted; all statistics, gaps and roster evidence must match");
+        const window = selectObservedWindow(canonical.input);
+        assert.equal(window.ready, expectedReady[index]);
+        assert.deepEqual(selectObservedWindow(scouting.input), { ...window,
+          selected: window.selected.map((appearance) => ({ ...appearance, context: null })) });
+        assert.equal(scouting.sourceOrdinal, canonical.sourceOrdinal);
+        assert.deepEqual(scouting.provenance, {});
+      }
+      return observed;
+    } finally { await client.query("ROLLBACK"); client.release(); }
+  }
+  await equivalent([true, true, true, true]);
+  const sixth = { ...fixture(0, 6), kickoffAt: "2026-08-08T15:00:00.000Z", status: "final" as const,
+    homeScore: 0, awayScore: 0, detailed: true, statisticsStatus: "complete" as const,
+    appearances: players.map((player, index) => appearance(player, index === 0 ? { minutes: 59 }
+      : index === 1 ? { participation: "dnp", minutes: 0, rating: null, goals: 0, assists: 0,
+        shotsOnTarget: 0, keyPasses: 0, tackles: 0, interceptions: 0, saves: 0, goalsConceded: 0 }
+        : index === 2 ? { participation: "unknown", minutes: null } : { rating: 0, goals: 0 })) };
+  await importFixtures([sixth]);
+  const observed = await equivalent([true, true, false, true]);
+  assert.equal(selectObservedWindow(observed.get(players[0].id)!.input).selected.some((appearance) => appearance.fixtureId === sixth.id), false);
+  assert.equal(selectObservedWindow(observed.get(players[3].id)!.input).selected.at(-1)?.fixtureId, sixth.id);
+  await roster("2026-08-09T00:00:00.000Z", undefined, false);
+  const unresolved = await equivalent([true, true, false, true]);
+  assert([...unresolved.values()].every(({ input }) => input.currentClub === null
+    && input.rosterReasons.some((reason) => reason.code === "incomplete_roster_observation")));
 });
 
 test("a comparison refresh aligns latest evaluations when only one player's semantic inputs change", async () => {

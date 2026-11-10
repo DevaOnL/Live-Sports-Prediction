@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
+import type { BestStatistic } from "../src/server/scouting/highlights";
 import { createWebHarness } from "./support/web";
 
 const web = createWebHarness();
@@ -34,6 +35,25 @@ async function login(page: Page, role: "viewer" | "admin" = "viewer") {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.waitForURL(`${web.origin}/overview`);
   await page.getByRole("heading", { name: "The game, in context." }).waitFor();
+  await noOperationsNavigation(page);
+}
+
+async function noOperationsNavigation(page: Page) {
+  const navigation = page.getByRole("navigation", { name: /^(Main|Workspace) navigation$/ });
+  assert.equal(await navigation.count(), 1);
+  assert.equal(await navigation.getByRole("link", { name: "Operations", exact: true }).count(), 0);
+  assert.equal(await navigation.locator('a[href^="/admin"]').count(), 0);
+}
+
+async function openOperations(page: Page) {
+  await page.getByRole("link", { name: "Account settings", exact: true }).click();
+  await page.waitForURL(`${web.origin}/account`);
+  await noOperationsNavigation(page);
+  const operations = page.getByRole("main").getByRole("link", { name: "Operations", exact: true });
+  assert.equal(await operations.getAttribute("href"), "/admin");
+  await operations.click();
+  await page.waitForURL(`${web.origin}/admin`);
+  await page.getByRole("heading", { name: "Operations", exact: true }).waitFor();
 }
 
 async function noOverflow(page: Page) {
@@ -42,6 +62,7 @@ async function noOverflow(page: Page) {
 }
 
 async function mastheadFits(page: Page) {
+  await noOperationsNavigation(page);
   const bounds = await page.locator(".site-masthead").evaluate((masthead) => ({
     viewport: innerWidth,
     targets: [...masthead.querySelectorAll<HTMLAnchorElement>("a")].map((link) => {
@@ -61,6 +82,7 @@ async function mastheadFits(page: Page) {
 test("browser sign-in redirects protected routes and keeps administrator access server-enforced", { timeout: 60_000 }, async () => withPage(async (page) => {
   await page.goto(web.origin);
   assert.equal(await page.locator("h1").count(), 1);
+  await noOperationsNavigation(page);
   assert.equal(await page.locator('a[href^="/design"]').count(), 0);
   await page.locator('.home-hero img').waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".home-hero img")].every((image) => image.complete && image.naturalWidth > 0));
@@ -98,7 +120,12 @@ test("browser sign-in redirects protected routes and keeps administrator access 
     headers: { origin: web.origin, "x-user-role": "admin" }, data: { requestId: randomUUID() },
   });
   assert.equal(denied.status(), 403);
-  await page.goto(`${web.origin}/account`);
+  await page.getByRole("link", { name: "Account settings", exact: true }).click();
+  await page.waitForURL(`${web.origin}/account`);
+  await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
+  await noOperationsNavigation(page);
+  assert.equal(await page.getByRole("main").getByRole("link", { name: "Operations", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("main").locator('a[href^="/admin"]').count(), 0);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page.waitForURL(`${web.origin}/login`);
   assert.equal((await page.request.get(`${web.origin}/api/me`)).status(), 401);
@@ -153,6 +180,76 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await page.getByRole("heading", { name: names[0], exact: true }).waitFor();
   assert.equal(await page.getByRole("heading", { name: /^Synthetic demo / }).count(), 1);
   assert.equal(new URL(page.url()).searchParams.get("position"), "GK");
+  await noOverflow(page);
+}));
+
+test("scouting highlights expose observed strengths on cards and profiles with honest ranks and missing-data states", { timeout: 60_000 }, async () => withPage(async (page) => {
+  await login(page);
+  // Cohort selection is verified by API integration tests; these response variants
+  // exercise display behavior without manufacturing ranked records in the database.
+  const statistic = (id: string, cutoffAt: string): BestStatistic => id === "8001" || id === "8002" ? {
+    status: "available", metric: id === "8001" ? "saves" : "tackles", total: id === "8001" ? 15 : 10,
+    per90: id === "8001" ? 3 : 2, minutes: 450, matches: 5, percentile: id === "8001" ? 85 : 60,
+    cohortSize: 20, standout: id === "8001", leagueId: "153", season: "2026/27", position: id === "8001" ? "GK" : "DEF",
+    fixtureIds: ["900001", "900002", "900003", "900004", "900005"], cutoffAt,
+  } : { status: "unavailable", reason: "missing_statistics" };
+  await page.route((url) => url.origin === web.origin && url.pathname === "/api/players", async (route) => {
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    const body = await response.json();
+    assert.equal(body.data.items.length, 4);
+    for (const player of body.data.items) player.bestStatistic = statistic(player.id, body.data.source.cutoffAt);
+    await route.fulfill({ response, json: body });
+  });
+  await page.route((url) => url.origin === web.origin && ["/api/players/8001", "/api/players/8004"].includes(url.pathname), async (route) => {
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    const body = await response.json();
+    body.data.player.bestStatistic = statistic(body.data.player.id, body.data.source.cutoffAt);
+    await route.fulfill({ response, json: body });
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${web.origin}/players?pageSize=4`);
+  const elite = page.getByRole("article").filter({ has: page.getByRole("heading", { name: names[0], exact: true }) });
+  const ordinary = page.getByRole("article").filter({ has: page.getByRole("heading", { name: names[1], exact: true }) });
+  const missing = page.getByRole("article").filter({ has: page.getByRole("heading", { name: names[3], exact: true }) });
+  const eliteStatistic = elite.getByRole("region", { name: "Best statistic", exact: true });
+  await eliteStatistic.getByText("15", { exact: true }).waitFor();
+  await eliteStatistic.getByText("Saves", { exact: true }).waitFor();
+  await eliteStatistic.getByText("Last 5 · 3 per 90 min", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Top 20%", { exact: true }).count(), 1);
+  assert.equal(await ordinary.getByText("Top 20%", { exact: true }).count(), 0);
+  await ordinary.getByRole("region", { name: "Best statistic", exact: true }).getByText("10", { exact: true }).waitFor();
+  const ordering = await elite.locator(".best-statistic").evaluate((element) =>
+    Boolean(element.compareDocumentPosition(element.closest(".player-evaluation")!.querySelector(":scope > details.provenance-details")!) & Node.DOCUMENT_POSITION_FOLLOWING));
+  assert(ordering, "the scouting highlight precedes evaluation details on each player card");
+  await eliteStatistic.getByText("Statistic details", { exact: true }).click();
+  await eliteStatistic.getByText(/20 eligible players in the same position \(goalkeeper\)/).waitFor();
+  await eliteStatistic.getByText(/above at least 85%/).waitFor();
+  await eliteStatistic.getByText(/As of .*UTC/).waitFor();
+  const unavailable = missing.getByRole("region", { name: "Best statistic", exact: true });
+  await unavailable.getByText("Unavailable", { exact: true }).waitFor();
+  assert.equal(await unavailable.locator(".best-statistic-value").count(), 0, "missing observations cannot render a zero statistic");
+  await unavailable.getByText("Why unavailable?", { exact: true }).click();
+  await unavailable.getByText("The relevant statistics are incomplete across the five appearances.", { exact: true }).waitFor();
+  await noOverflow(page);
+  await elite.getByRole("link", { name: "View player", exact: false }).click();
+  await page.waitForURL(`${web.origin}/players/8001`);
+  await page.getByRole("heading", { name: names[0], exact: true }).waitFor();
+  const profileStatistic = page.locator(".profile-hero").getByRole("region", { name: "Best statistic", exact: true });
+  await profileStatistic.getByText("15", { exact: true }).waitFor();
+  await profileStatistic.getByText("Top 20%", { exact: true }).waitFor();
+  await profileStatistic.getByText("Statistic details", { exact: true }).click();
+  await profileStatistic.getByText(/450 minutes played/).waitFor();
+  await noOverflow(page);
+  await page.goto(`${web.origin}/players/8004`);
+  await page.getByRole("heading", { name: names[3], exact: true }).waitFor();
+  const missingProfileStatistic = page.locator(".profile-hero").getByRole("region", { name: "Best statistic", exact: true });
+  await missingProfileStatistic.getByText("Unavailable", { exact: true }).waitFor();
+  assert.equal(await missingProfileStatistic.locator(".best-statistic-value").count(), 0);
+  assert.equal(await missingProfileStatistic.getByText("Top 20%", { exact: true }).count(), 0);
+  await missingProfileStatistic.getByText("Why unavailable?", { exact: true }).click();
+  await missingProfileStatistic.getByText("The relevant statistics are incomplete across the five appearances.", { exact: true }).waitFor();
   await noOverflow(page);
 }));
 
@@ -257,8 +354,9 @@ test("loading, recoverable service errors, missing records and expired sessions 
 
 test("administrator queue retries preserve request identity, correction conflicts reload, and audit records are visible", { timeout: 90_000 }, async () => withPage(async (page) => {
   await login(page, "admin");
-  await page.goto(`${web.origin}/admin?playerId=8001&fixtureId=900005`);
-  await page.getByRole("heading", { name: "Operations", exact: true }).waitFor();
+  await openOperations(page);
+  await page.getByLabel("Player ID", { exact: true }).fill("8001");
+  await page.getByLabel("Fixture ID", { exact: true }).fill("900005");
   let requestId = "";
   let eventId = "";
   const loseResponse = async (route: import("playwright").Route) => {
@@ -324,7 +422,8 @@ test("main viewer and administrator journeys fit 390, 768 and 1440 pixel viewpor
   for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const [route, heading] of [["/overview", "The game, in context."], ["/players?pageSize=2", "Find your next player."], ["/players/8001", names[0]], ["/compare?playerId=8001&playerId=8002&allowCrossPosition=true", "Compare the evidence."], ["/admin", "Operations"]]) {
-      await page.goto(web.origin + route);
+      if (route === "/admin") await openOperations(page);
+      else await page.goto(web.origin + route);
       await page.getByRole("heading", { name: heading, exact: true }).waitFor();
       await page.getByRole("status").filter({ hasText: "Loading…" }).first().waitFor({ state: "hidden" });
       if (width === 390) await page.getByRole("link", { name: "Account settings", exact: true }).waitFor();
@@ -339,8 +438,7 @@ test("main viewer and administrator journeys fit 390, 768 and 1440 pixel viewpor
   }
   for (const width of [320, 375, 601]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`${web.origin}/admin`);
-    await page.getByRole("heading", { name: "Operations", exact: true }).waitFor();
+    await openOperations(page);
     await mastheadFits(page);
   }
 }));

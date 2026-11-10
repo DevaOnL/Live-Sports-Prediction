@@ -105,6 +105,57 @@ appearances, metrics or earlier roster observations. Historical evaluation and
 the separate forward-measurement protocol are documented in
 [evaluation.md](evaluation.md).
 
+## Observed scouting statistics
+
+Catalogue cards show **Best statistic** above Evaluation details; player profiles
+show the same highlight near the heading. It summarizes observed performance
+using the current read snapshot. It does not require a saved forecast, ratings,
+standings weighting or a future fixture.
+
+A player needs a known position, unambiguous current club and an exact, complete
+window of the latest five finalized appearances of at least 60 minutes. This
+uses the forecast's eligibility and missing-history rules. All five must belong
+to the current league and season; a transfer does not permit skipping newer
+appearances to construct a different window. A shorter appearance triggers
+refresh but does not enter the five.
+
+Candidate metrics, in tie-breaking preference order:
+
+| Position | Observed candidate metrics |
+| --- | --- |
+| Forward | Goals, assists, shots on target |
+| Midfielder | Goals, assists, key passes, tackles, interceptions |
+| Defender | Tackles, interceptions, goals, assists |
+| Goalkeeper | Saves, goals conceded |
+
+Each metric requires a valid nonnegative integer in every selected appearance.
+Missing data excludes that metric; it never becomes zero. Report the five-match
+total and `per90 = 90 × total / sum(reported minutes)`. Minutes above 90 remain
+in the denominator. Compare this rate with all eligible players of the same
+position, league and season who have that metric, including valid zero-valued
+peers. Each metric needs at least **10 players including the subject**. Catalogue
+filters, page size and comparison selections do not change the group.
+
+```text
+percentile = floor(100 × strictly_worse_count / cohortSize)
+standout = percentile >= 80
+```
+
+Higher rates are better except for goals conceded, where lower is better.
+Ordering uses exact count/minute ratios before display rounding. Tied rates
+share the strictly-worse count and cannot inflate each other's rank. Select the
+highest percentile; the position's metric preference resolves equal percentiles.
+Only `standout:true` earns a **Top 20%** badge. A lower-ranked positive metric
+can still be shown with its observed values. An all-zero attacking/defensive
+count is not selected as a strength; zero goals conceded remains eligible.
+
+Unavailable reasons distinguish unknown position/current club, unresolved roster,
+incomplete or insufficient history, mixed league/season windows, missing metrics,
+insufficient comparison groups and no positive candidate (`no_standout_statistic`).
+Invalid cutoffs or duplicate player records also block a highlight. Disclosures
+retain the comparison group, rank, minutes, fixtures and cutoff. The response's
+source retrieval time separately describes source freshness.
+
 ## Context and formulas
 
 Historical context reconstructs corrected canonical results at 00:00 on each

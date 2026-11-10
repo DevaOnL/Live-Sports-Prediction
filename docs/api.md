@@ -96,8 +96,8 @@ failures return 503. Administrator routes with unsupported methods return 404.
 | `GET /api/overview` | Covered competition/club/player and stored forecast counts, source watermark |
 | `GET /api/competitions` | Enabled approved competitions/seasons |
 | `GET /api/clubs?leagueId=153` | Covered registered clubs; optional league filter |
-| `GET /api/players` | `q`, `leagueId`, `clubId`, `position`, `availability`, `page`, `pageSize` |
-| `GET /api/players/PLAYER_ID` | Identity, up to 50 recent observed appearances, saved forecast and provenance |
+| `GET /api/players` | Player summaries with `bestStatistic`; `q`, `leagueId`, `clubId`, `position`, `availability`, `page`, `pageSize` |
+| `GET /api/players/PLAYER_ID` | Identity and `bestStatistic`, up to 50 recent observed appearances, saved forecast and provenance |
 | `GET /api/players/PLAYER_ID/forecast` | Saved immutable revision and latest evaluation envelope |
 | `GET /api/compare?playerId=ID&playerId=ID` | Current canonical comparison at one cutoff/source snapshot |
 
@@ -113,6 +113,27 @@ establish current membership.
 Missing/incomplete roster blockers apply only to seasons with this player's
 pre-cutoff appearance or roster-inclusion evidence. An unrelated league's missing
 roster does not invalidate a confirmed club; explicit conflicting claims still do.
+
+Every player summary includes `bestStatistic`, including `player` in detail,
+saved-forecast and comparison responses. Its available shape contains:
+
+| Field | Meaning |
+| --- | --- |
+| `status`, `metric`, `total` | `"available"`, the selected metric, and its observed integer total |
+| `per90`, `minutes`, `matches` | Observed rate per 90 minutes, total reported minutes, and exactly `5` appearances |
+| `percentile`, `cohortSize`, `standout` | Conservative integer rank, eligible group size including the player, and whether the rank is at least 80 |
+| `leagueId`, `season`, `position` | The confirmed comparison group |
+| `fixtureIds`, `cutoffAt` | The five selected fixtures and the current read cutoff |
+
+An unavailable statistic is `{status:"unavailable",reason:CODE}` and has no
+numeric value. The [scouting rules](forecasting.md#observed-scouting-statistics)
+define eligibility, metric selection, missing-data reasons and ranking. Cohorts
+use all eligible players in the same position, league and season, with at least
+10 players including the subject; search, filters, pagination and comparison
+selections do not narrow them. Computation uses the request's read-only snapshot
+and makes no provider requests or saved forecast revisions. These are observed
+strengths, calculated independently of ratings, standings context and forecast
+availability. A nonelite best statistic can be available with `standout:false`.
 
 Catalogue availability filters and overview counts describe the **last stored
 evaluation**, not an instant recalculation. Summaries label it `stored-evaluation`
@@ -158,6 +179,10 @@ availability status. `storedRevision` separately identifies any prior saved resu
 The canonical input/provenance remains available to explain the five-match window.
 
 ## Administrator operations
+
+Administrators open **Account settings → Operations** to reach `/admin`.
+Operations is absent from the top navigation for every role; the account link is
+administrator-only, and server authorization also protects every operation.
 
 | Method and path | Body / behavior |
 | --- | --- |

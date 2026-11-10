@@ -69,6 +69,26 @@ async function roster(at: string, entries: { playerId: string; clubId: string }[
 }
 const rosterEntries = () => players.map((player) => ({ playerId: player.id, clubId: clubs[0].id }));
 
+async function scoutingPeers() {
+  const peers: Player[] = Array.from({ length: 10 }, (_, index) => ({
+    id: String(8100 + index), name: `Scouting peer ${String(index + 1).padStart(2, "0")}`, position: "FWD",
+  }));
+  const fixtures = schedule.filter((fixture) => fixture.status === "final").map((fixture) => ({
+    ...fixture, appearances: [...fixture.appearances, ...peers.map((player, index) => ({
+      player, clubId: clubs[0].id, participation: "played" as const, minutes: 90, rating: null,
+      goals: index, assists: 0, shotsOnTarget: 0, keyPasses: null, tackles: null,
+      interceptions: null, saves: null, goalsConceded: null,
+    }))],
+  }));
+  const batch: Batch = { coverage, clubs, players: [...players, ...peers], fixtures, standings: [], issues: [] };
+  const text = JSON.stringify(batch);
+  const observation = { action: "get_events" as const, resourceKey: randomUUID(),
+    params: { league_id: "153", timezone: "UTC" }, text, contentSha256: createHash("sha256").update(text).digest("hex"), retrievedAt: "2026-08-11T11:00:00Z" };
+  await new IngestionStore(writer).import({ ...observation, id: archiveId(observation) }, batch);
+  await roster("2026-07-02T00:00:00Z", [...rosterEntries(), ...peers.map((player) => ({ playerId: player.id, clubId: clubs[0].id }))]);
+  return peers;
+}
+
 async function additionalLeague() {
   const competition = (await writer.query(`INSERT INTO sports.competitions(provider_id,name,country_name,timezone,coefficient,enabled)
     VALUES ('164','Ligue 2','France','Europe/Paris',1.5,true) RETURNING id`)).rows[0].id;
@@ -127,6 +147,7 @@ test("reader catalogue joins enabled coverage, paginates and retains genuine ava
   assert(page.items[1].forecast.evaluationCutoffAt);
   assert(Date.parse(page.items[1].forecast.evaluationCutoffAt) <= Date.parse(page.source.cutoffAt));
   assert.equal((await service.players({ availability: "uncomputed" })).items[0].forecast.evaluationCutoffAt, null);
+  assert(page.items.every((player) => player.bestStatistic.status === "unavailable" && player.bestStatistic.reason === "insufficient_cohort"));
 });
 
 test("detail separates bounded observed values, immutable forecast and latest evaluation without raw archives", async () => {
@@ -150,6 +171,84 @@ test("detail separates bounded observed values, immutable forecast and latest ev
   assert(!JSON.stringify(detail).includes("archive_ref"));
   assert.equal((await service.forecast("8003")).forecast, null);
   assert.equal((await service.forecast("8004")).forecast?.id, detail.forecast?.id);
+  assert.deepEqual(detail.player.bestStatistic, { status: "unavailable", reason: "insufficient_cohort" });
+});
+
+test("scouting uses the full metric-eligible cohort across search, pages, profiles and comparison", async () => {
+  await scoutingPeers();
+  const filtered = await service.players({ q: "Scouting peer 10", pageSize: 1 });
+  assert.equal(filtered.pagination.total, 1);
+  const statistic = filtered.items[0].bestStatistic;
+  assert.equal(statistic.status, "available");
+  if (statistic.status !== "available") return;
+  assert.equal(statistic.metric, "goals");
+  assert.equal(statistic.total, 45);
+  assert.equal(statistic.per90, 9);
+  assert.equal(statistic.cohortSize, 11, "ten new peers and the original complete zero-goal forward form the goals cohort");
+  assert.equal(statistic.percentile, 90);
+  assert.equal(statistic.standout, true);
+  assert.equal(statistic.cutoffAt, filtered.source.cutoffAt);
+  assert.deepEqual(statistic.fixtureIds, ["900001", "900002", "900003", "900004", "900005"]);
+  const paged = await service.players({ position: "FWD", page: 12, pageSize: 1 });
+  assert.equal(paged.items[0].id, "8109");
+  assert.equal(paged.items[0].bestStatistic.status, "available");
+  if (paged.items[0].bestStatistic.status !== "available") return;
+  assert.equal(paged.items[0].bestStatistic.cohortSize, statistic.cohortSize);
+  assert.equal(paged.items[0].bestStatistic.percentile, statistic.percentile);
+  const profile = await service.player("8109");
+  assert.equal(profile.forecast, null, "observed strengths do not require an issued forecast or provider ratings");
+  assert.deepEqual(profile.player.bestStatistic, { ...statistic, cutoffAt: profile.source.cutoffAt });
+  const appearanceBatchSizes: number[] = [];
+  const observing = { connect: async () => {
+    const client = await reader.connect();
+    return new Proxy(client, { get(target, key) {
+      if (key === "query") return async (...args: unknown[]) => {
+        if (typeof args[0] === "string" && args[0].includes("FROM sports.appearances a") && args[0].includes("a.player_id=ANY")) {
+          appearanceBatchSizes.push(((args[1] as unknown[])[1] as unknown[]).length);
+        }
+        return Reflect.apply(target.query, target, args);
+      };
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+  } } as pg.Pool;
+  const comparison = await new ReadService(observing).compare(["8106", "8107", "8108", "8109"]);
+  assert.deepEqual(appearanceBatchSizes, [15, 4], "comparison shares one full-cohort observation batch and one selected-player forecast batch");
+  assert.deepEqual(comparison.players[3].player.bestStatistic, { ...statistic, cutoffAt: comparison.cutoffAt });
+  assert.equal((await administrator.query("SELECT count(*)::integer AS count FROM sports.provider_requests")).rows[0].count, 0);
+});
+
+test("scouting metrics and catalogue identities share the repeatable-read cutoff during concurrent updates", async () => {
+  const peers = await scoutingPeers();
+  let corrected = false;
+  const observing = { connect: async () => {
+    const client = await reader.connect();
+    return new Proxy(client, { get(target, key) {
+      if (key === "query") return async (...args: unknown[]) => {
+        const result = await Reflect.apply(target.query, target, args);
+        if (!corrected && typeof args[0] === "string" && args[0].includes("count(*)::integer AS total FROM summaries")) {
+          corrected = true;
+          await writer.query(`UPDATE sports.appearances a SET goals=100 FROM sports.players p
+            WHERE p.id=a.player_id AND p.provider_id=ANY($1::text[])`, [peers.filter((player) => player.id !== "8108").map((player) => player.id)]);
+        }
+        return result;
+      };
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+  } } as pg.Pool;
+  const response = await new ReadService(observing).players({ q: "Scouting peer 09", pageSize: 1 });
+  assert.equal(corrected, true);
+  const statistic = response.items[0].bestStatistic;
+  assert.equal(statistic.status, "available");
+  if (statistic.status !== "available") return;
+  assert.equal(statistic.percentile, 81, "peer changes committed after the snapshot cannot affect this response");
+  assert.equal(statistic.cutoffAt, response.source.cutoffAt);
+  const current = (await service.player("8108")).player.bestStatistic;
+  assert.equal(current.status, "available");
+  if (current.status !== "available") return;
+  assert.equal(current.percentile, 9, "a later request sees the newly observed peer rates");
+  assert.equal(current.standout, false);
 });
 
 test("latest incomplete, conflicting and excluding rosters cannot reuse a historical current club", async () => {
@@ -158,6 +257,7 @@ test("latest incomplete, conflicting and excluding rosters cannot reuse a histor
   let player = (await service.player("8004")).player;
   assert.equal(player.currentClub, null);
   assert(player.currentClubReasons.includes("incomplete_roster_observation"));
+  assert.deepEqual(player.bestStatistic, { status: "unavailable", reason: "unresolved_roster" });
   assert.equal((await service.players({ clubId: "3072" })).pagination.total, 0);
   await roster("2026-09-02T00:00:00Z", rosterEntries());
   await roster("2026-09-02T00:00:00Z", rosterEntries().map((entry) => entry.playerId === "8004" ? { ...entry, clubId: clubs[1].id } : entry));
