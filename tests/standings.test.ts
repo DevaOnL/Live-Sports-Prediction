@@ -269,3 +269,114 @@ test("duplicate fixture IDs are counted once and conflicting schedules remain in
   assert.equal(duplicatePair.table().complete, false);
   assert.ok(duplicatePair.table().issues.some((issue) => issue.code === "duplicate_pairing"));
 });
+
+for (const [leagueId, previousDay, sameDay] of [
+  ["premier-league-gb-eng", "2026-08-19T22:59:00.000Z", "2026-08-19T23:01:00.000Z"],
+  ["laliga-es", "2026-08-19T21:59:00.000Z", "2026-08-19T22:01:00.000Z"],
+]) {
+  test(`${leagueId}: current-league context uses its own local matchday`, () => {
+    const data = setup(["A", "B"], leagueId);
+    if (leagueId === "laliga-es") data.coverage.timezone = "Europe/Madrid";
+    data.final("A", "B", 2, 0, previousDay);
+    data.final("B", "A", 5, 0, sameDay);
+    const result = data.table("2026-08-20");
+    assert.equal(result.complete, true);
+    assert.equal(result.rows.find((row) => row.clubId === "A")!.points, 3);
+    assert.equal(result.rows.find((row) => row.clubId === "B")!.points, 0);
+    assert.equal(result.issues.some((issue) => issue.code === "unsupported_standings_rules"), false);
+  });
+}
+
+test("Premier League uses overall goal difference and goals before preserving unresolved equal positions", () => {
+  const data = setup(["A", "B", "C", "D"], "premier-league-gb-eng");
+  data.final("A", "B", 2, 0);
+  data.final("C", "A", 2, 0);
+  data.final("B", "D", 3, 1);
+  assert.deepEqual(data.table().rows.map((row) => row.clubId), ["C", "B", "A", "D"]);
+
+  const tied = setup(["A", "B", "C", "D"], "premier-league-gb-eng");
+  tied.final("A", "B", 1, 0);
+  tied.final("A", "C", 1, 0);
+  tied.final("B", "C", 1, 0);
+  tied.final("A", "D", 0, 1);
+  tied.final("D", "A", 1, 0);
+  tied.final("B", "D", 1, 0);
+  tied.final("D", "B", 1, 0);
+  tied.final("C", "D", 1, 0);
+  tied.final("D", "C", 0, 1);
+  const result = tied.table();
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.rows.filter((row) => row.clubId !== "D").map((row) => [row.position, row.rankUncertain]),
+    [[2, true], [2, true], [2, true]], "an interim table cannot apply Championship wins/away-goals or infer final sporting stakes");
+});
+
+function laLigaTwoClubTie(returnMeeting: boolean) {
+  const data = setup(["A", "B", "C", "D"], "laliga-es");
+  data.coverage.timezone = "Europe/Madrid";
+  data.final("A", "B", 1, 0);
+  if (returnMeeting) data.final("B", "A", 0, 0);
+  data.final("B", "C", 3, 0);
+  data.final("D", "A", 3, 0);
+  data.final("D", "C", 1, 0);
+  return data;
+}
+
+test("La Liga two-club ties prioritize completed head-to-head goals over overall goal difference", () => {
+  const result = laLigaTwoClubTie(true).table();
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.rows.map((row) => row.clubId), ["D", "A", "B", "C"]);
+  const a = result.rows.find((row) => row.clubId === "A")!;
+  const b = result.rows.find((row) => row.clubId === "B")!;
+  assert(a.goalsFor - a.goalsAgainst < b.goalsFor - b.goalsAgainst);
+  assert.equal(a.rankUncertain, false);
+  assert.equal(b.rankUncertain, false);
+});
+
+test("La Liga incomplete head-to-head evidence retains an uncertain interval instead of an invented tiebreak", () => {
+  const result = laLigaTwoClubTie(false).table();
+  assert.equal(result.complete, true, "result coverage can be complete while tied positions remain uncertain");
+  assert.deepEqual(result.rows.filter((row) => ["A", "B"].includes(row.clubId)).map((row) => [row.position, row.rankUncertain]), [[2, true], [2, true]]);
+  assert(result.issues.some((issue) => issue.code === "incomplete_head_to_head"));
+});
+
+test("La Liga recomputes the remaining two-club tie after a multiway mini-table separates one club", () => {
+  const data = setup(["A", "B", "C", "D", "E"], "laliga-es");
+  data.coverage.timezone = "Europe/Madrid";
+  data.final("A", "B", 2, 0);
+  data.final("B", "A", 0, 0);
+  data.final("A", "C", 4, 0);
+  data.final("C", "A", 0, 0);
+  data.final("B", "C", 1, 0);
+  data.final("C", "B", 2, 0);
+  data.final("A", "D", 0, 1);
+  data.final("D", "A", 1, 0);
+  data.final("B", "D", 10, 0);
+  data.final("D", "B", 0, 0);
+  data.final("C", "D", 1, 0);
+  data.final("D", "C", 0, 0);
+  data.final("D", "E", 1, 0);
+  const result = data.table();
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.rows.map((row) => row.clubId), ["D", "A", "C", "B", "E"]);
+  assert(result.rows.filter((row) => ["A", "B", "C"].includes(row.clubId)).every((row) => row.points === 8));
+});
+
+test("La Liga unavailable final fair-play or deciding-match criteria preserve tied ranks", () => {
+  const data = setup(["A", "B"], "laliga-es");
+  data.final("A", "B", 0, 0);
+  data.final("B", "A", 0, 0);
+  assert.deepEqual(data.table().rows.map((row) => [row.position, row.rankUncertain]), [[1, true], [1, true]]);
+});
+
+test("new leagues never receive a former competition deduction or unsupported fallback tie rules", () => {
+  for (const id of ["premier-league-gb-eng", "laliga-es"]) {
+    const data = setup(["3072", "A"], id);
+    assert.equal(data.table().rows.find((row) => row.clubId === "3072")!.points, 0);
+  }
+  const unsupported = setup(["A", "B"], "unsupported");
+  unsupported.final("A", "B", 3, 0);
+  const result = unsupported.table();
+  assert.equal(result.complete, false);
+  assert(result.issues.some((issue) => issue.code === "unsupported_standings_rules"));
+  assert(result.rows.every((row) => row.position === 1 && row.rankUncertain));
+});

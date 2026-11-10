@@ -80,8 +80,9 @@ upgrades explicitly with `npm run db:migrate` while preserving existing volumes;
 never edit an already-applied migration. Rerun provisioning only for deliberate
 role setup or password rotation.
 
-Existing installations must apply `009_auth_rate_limit.sql` before using web
-sessions. Preserve their volumes and applied migration files.
+Existing installations must apply all migrations through `010_current_coverage.sql`
+before starting the current app and worker. This retains historical records while
+retiring the former active leagues. Preserve volumes and applied migration files.
 
 The [database guide](docs/database.md) documents the ER diagram, relational
 constraints, role grants, migration behavior, and an isolated PostgreSQL test
@@ -109,7 +110,8 @@ viewers cannot perform administrator operations. Sign-in opens `/overview`.
 Use `/players` to filter covered players and select two to four for `/compare`.
 Player pages separate the saved five-match window from current observations and
 show missing evidence, output units, target context and freshness warnings.
-Administrators can use `/admin` to inspect imports, jobs and audit records, queue
+Administrators can open Operations from Account settings (`/account`) to inspect
+imports, jobs and audit records, queue
 work, retry failures, and apply revisions with conflict checks. Queue acceptance
 does not mean processing has completed. The underlying APIs are documented in
 the session/API guide.
@@ -121,9 +123,12 @@ listener is internal on port 4001.
 
 ## Import covered football data
 
-Use APIFootball.com's permanent free plan and put its API key in the local `.env`
-as `APIFOOTBALL_API_KEY`. Provision the restricted MongoDB identity after both
-database services are healthy:
+Register a free [Sorare account](https://sorare.com/), then create a developer API
+key in [Developer settings](https://sorare.com/settings/developer). Put it in the
+ignored local `.env` as `SORARE_API_KEY`. No purchase or deposit is required for
+the verified developer API route. Review the provider
+[API documentation](https://github.com/sorare/api) and account terms before signup.
+Provision the restricted MongoDB identity after both database services are healthy:
 
 ```bash
 npm run mongo:provision
@@ -141,16 +146,18 @@ npm run ingest -- status
 
 Recreate the worker after changing its environment with
 `docker compose up -d --build worker`. The enabled worker polls every 15 minutes,
-shares a 120-request rolling-hour budget with the CLI, and processes durable jobs.
-The initial backlog may take several request windows. Read the
+shares a 60-request rolling-minute application budget and one-second request
+pacing with the CLI, and processes durable jobs. The initial import includes
+full paginated rosters, both 380-fixture schedules, and queued match statistics;
+it can take several minutes. Read the
 [ingestion guide](docs/ingestion.md) for coverage, missing-data behavior, recovery,
 and isolated PostgreSQL/MongoDB verification.
 
 ## Calculate forecasts
 
 Apply pending migrations before starting an upgraded worker. Existing imports
-can recover their latest roster observations from archived data without provider
-requests:
+can recover their latest Sorare roster observations from archived data without
+provider requests:
 
 ```bash
 npm run db:migrate
@@ -159,7 +166,7 @@ npm run forecast -- refresh all
 npm run forecast -- status
 ```
 
-Use `npm run forecast -- show PLAYER_ID` with a provider player identifier to
+Use `npm run forecast -- show Player:UUID` with the native provider identifier to
 inspect the current result, fixed five-match window, target, missing-data reasons,
 and saved provenance. Saved API and CLI results describe the last completed
 evaluation, with its cutoff and check time. Imports and target expiry refresh
@@ -179,9 +186,11 @@ credentials, and no football API calls. Existing project databases and volumes
 are untouched. The [demonstration guide](docs/demo.md) maps each example to its
 source, expected result, and safety checks.
 
-Run `npm run replay --silent` to demonstrate a real historical sixth appearance
-using an already imported source. It reads through `lsp_reader` and writes only
-to its own temporary PostgreSQL clone. The intentionally withheld appearance
+The archived `v1.0.0` release supports `npm run replay --silent` to demonstrate a
+real historical sixth appearance using a matched archived-source snapshot in an
+isolated installation. It reads through `lsp_reader` and writes only to its own
+temporary PostgreSQL clone. The protocol is source-specific and does not select
+current Sorare records; do not re-enable former leagues in the current app. The intentionally withheld appearance
 first produces incomplete history; restoring it advances the selected five and
 creates a refreshed revision. The [replay guide](docs/replay.md) explains
 prerequisites, isolation and the distinction from historical accuracy.
@@ -236,13 +245,28 @@ Opponent and own-team strength provide context for an overall rating and selecte
 position-specific statistics. Counts represent decimal estimates under a
 90-minute playing-time assumption. Missing data must remain distinct from zero.
 
-Data coverage is restricted to regular-season Championship (153) and Ligue 2
-(164), 2026/27, using APIFootball.com's permanent free plan. Free-plan availability
-can change; missing source data remains explicit. Forecasts are fixed heuristic
+Active coverage is restricted to Premier League (`premier-league-gb-eng`) and
+La Liga (`laliga-es`), 2026/27, through the free registered Sorare developer API.
+Both use the top-five-league coefficient of 2. A conventional 0–10 player rating
+and key passes are not supplied by this source; those outputs remain unavailable.
+Other count forecasts depend on finalized, complete evidence for the selected five.
+Sorare fantasy scores are never relabeled as conventional ratings. Free API
+availability can change; missing and provisional data remain explicit.
+
+Catalogue cards and profiles show an observed Best statistic when a player has
+a complete eligible five-match window and at least ten comparable players in the
+same position, league and season. Ranking uses per-90 rates; Top 20% requires a
+conservative percentile of at least 80. Open the evidence for the observed total,
+minutes and cohort. This is a scouting summary, separate from a forecast.
+
+Former-league records remain stored for audit and frozen historical evaluation;
+they are excluded from current product reads, imports and jobs. Forecasts are fixed heuristic
 estimates, with no established predictive accuracy or calibrated probability.
 The [evaluation report](docs/evaluation.md) separates live output availability
 from historical accuracy, documents the frozen protocol and coverage, and provides
-reader-only historical and forward-measurement commands.
+reader-only historical and forward-measurement commands for reproducing the
+archived source protocol in a separate installation. Current Sorare accuracy has
+not been measured.
 
 ## Technology
 

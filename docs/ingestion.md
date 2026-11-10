@@ -1,32 +1,37 @@
 # Football data ingestion
 
-The worker imports observed football data from APIFootball.com's permanent free
-plan at `https://apiv3.apifootball.com/`. Free access is a dated observation, not a
-promise of continued availability. Approved free-plan coverage was checked on
-2026-11-09. Paid trials and additional competitions are outside the configured
-coverage.
+The current worker uses Sorare's registered developer API at
+`https://api.sorare.com/graphql`. Free access to both configured leagues and
+player statistics was verified on **2026-11-10**. Access and provider limits can
+change; this is a dated observation. Registration and the provider's API terms
+apply; see the [official API documentation](https://github.com/sorare/api).
+This project uses no paid
+trial, purchasing flow or account rotation to evade quotas.
 
-| Competition | Provider ID | Season | Clubs | Local standings timezone |
+| Competition | API competition slug | Season | Clubs | Local standings timezone |
 | --- | --- | --- | --- | --- |
-| Championship | 153 | 2026/27 | 24 | Europe/London |
-| Ligue 2 | 164 | 2026/27 | 18 | Europe/Paris |
+| Premier League | `premier-league-gb-eng` | 2026/27 | 20 | Europe/London |
+| La Liga | `laliga-es` | 2026/27 | 20 | Europe/Madrid |
 
-Only the regular season is accepted, with season bounds 2026-07-01 through
-2027-06-30. Both competition coefficients are 1.5. Fixture requests specify UTC;
-provider `match_date` and `match_time` are combined as UTC without applying the
-competition's local offset again. Playoffs, other seasons, and unapproved leagues
-are rejected. Missing kickoff times and unfamiliar statuses remain uncertain.
+Only regular-season fixtures within 2026-07-01 through 2027-06-30 are accepted.
+Both model coefficients are 2. Sorare returns UTC kickoff instants; local
+standings cutoffs use the timezone above. Other leagues and seasons are rejected.
+[`sources.ts`](../src/server/ingestion/sources.ts) defines the current allowlist.
+
+Migration `010_current_coverage.sql` disables former Championship/Ligue 2 product
+coverage without deleting its canonical rows, archives or revisions. The old
+APIFootball adapter remains for reproducible archived demonstrations and frozen
+[evaluation](evaluation.md)/[replay](replay.md) protocols. It does not extend the
+current product's league coverage.
 
 ## Configure and start
 
-Install using `npm ci` and copy `.env.example` to the ignored local `.env`.
-Replace every password placeholder with an independent random value of at least
-16 characters. Keep the provider-issued key in `APIFOOTBALL_API_KEY`; never put it
-in a browser bundle, command argument, committed file, or provider response dump.
-Login, stored-data reads and the idle worker need no provider API key. Web
-sessions separately require the authentication settings in [api.md](api.md).
-
-Start the databases, provision their roles, and explicitly apply migrations:
+Install with `npm ci` and copy `.env.example` to the ignored `.env`. Use independent
+random database passwords of at least 16 characters. Create a registered Sorare
+API key through its developer settings and store it as `SORARE_API_KEY` locally.
+The client sends it only in the `APIKEY` HTTP header. Never put the key in a
+browser bundle, command argument, committed file or response dump. Login and
+stored-data reads need no provider key; an enabled source worker does.
 
 ```bash
 docker compose up -d --wait postgres mongo
@@ -35,235 +40,197 @@ npm run db:migrate
 npm run mongo:provision
 ```
 
-`db:migrate` applies all pending SQL files, including ingestion, forecast/reporting
-storage and `009_auth_rate_limit.sql` for web sessions. It checks previously
-applied checksums before applying new files. Preserve existing volumes during upgrades.
-MongoDB provisioning creates or updates collection validators/indexes and the
-restricted `MONGO_WORKER_USER`, whose default is `lsp_ingestion`, in `MONGO_DB`.
-The administrative commands use local bootstrap/migration credentials.
+`db:migrate` checks applied checksums and applies pending files, including
+`010_current_coverage.sql`. Preserve existing volumes. MongoDB provisioning
+configures validators, indexes and the restricted archive identity. These
+administrative commands use local bootstrap/migrator credentials.
 
-Set `INGESTION_ENABLED=true` in `.env`. The worker connects as PostgreSQL
-`lsp_writer` with `POSTGRES_WRITER_PASSWORD` and as the restricted MongoDB user
-with `MONGO_WORKER_PASSWORD`. The Compose worker receives these runtime
-credentials and the provider key, with no bootstrap or migrator credentials.
-The Compose app receives restricted reader/writer/auth SQL credentials and its
-authentication secret; it receives no provider, MongoDB or administrative secrets.
-
-For host-side commands, use the loopback database hosts/ports in `.env`. Compose
-uses internal database service hostnames. Local development and CLI processes
-load the ignored `.env`; the Compose environment explicitly limits container
-credentials. To start the enabled worker:
+Set `INGESTION_ENABLED=true`, then run:
 
 ```bash
 docker compose up -d --build worker
 ```
 
-For a host-side worker, stop the container worker first and run `npm run worker`.
-Leave `INGESTION_ENABLED=false` to keep its process health listener available
-without database connections, imports, or queue processing. When enabled,
-`GET /health` checks authenticated database access and progress in both the source
-and local-forecast loops. A healthy response does not certify source freshness,
-complete football history, or an available projection. The web `/api/health`
-endpoint remains a separate process/configuration check without database access.
+The worker receives its PostgreSQL writer, restricted MongoDB identity and Sorare
+key. It has no auth, bootstrap or migrator credentials. The web app receives only
+its reader/writer/auth SQL credentials and authentication secret; it has no
+provider key or MongoDB access. Host CLI commands load ignored local dotenv
+settings and use loopback database hosts/ports. Compose uses internal hostnames.
+Stop the Compose worker before running a host worker with `npm run worker`.
+
+`INGESTION_ENABLED=false` leaves process health available without database or
+queue activity. Enabled `/health` checks authenticated database access and the
+source/local-forecast loops. Health does not certify complete or fresh football
+data. The web `/api/health` separately reports process/configuration liveness.
 
 ## Commands and polling
 
-The CLI uses the same restricted identities and shared provider budget:
-
 | Command | Operation |
 | --- | --- |
-| `npm run ingest -- sync` | Import teams, the full covered-season event schedule in UTC, and provider standings for both competitions; enqueue required detailed statistics and standings work |
-| `npm run ingest -- once` | Process at most ten queued source, standings or forecast jobs |
-| `npm run ingest -- reconcile` | Recover SQL/import metadata and hydrate the latest previously committed roster observations offline |
-| `npm run ingest -- status` | Show fixture/archive states, shared budget use, standings reconciliation, queue counts, and failed job identifiers with safe failure codes |
-| `npm run ingest -- retry JOB_UUID` | Requeue a failed ingestion job after correcting its cause; replace `JOB_UUID` with its identifier from status |
+| `npm run ingest -- sync` | Capture current teams/rosters, season fixtures and standings for both configured leagues; enqueue required detail/standings work |
+| `npm run ingest -- once` | Reconcile archives and process at most ten queued jobs |
+| `npm run ingest -- reconcile` | Recover current-source archives and project already committed roster evidence offline |
+| `npm run ingest -- status` | Inspect current-source fixtures, archives, request budget, jobs and standings reconciliation |
+| `npm run ingest -- retry JOB_UUID` | Requeue an eligible failed current-source job after resolving its cause |
 
-`INGESTION_ENABLED` controls the long-running worker only. Explicit `sync` and
-`once` CLI commands require the provider key and can make provider requests even
-when that flag is false. `status`, `reconcile` and `retry` need the restricted SQL
-writer and MongoDB runtime connections but no provider key; `retry` queues work
-without executing it. Avoid running a host worker alongside the Compose worker.
+Explicit `sync`/`once` commands can call the provider even when the long-running
+worker flag is false. `status`, `reconcile` and `retry` require the restricted
+SQL/MongoDB runtime connections but no provider key. A retry queues work; it does
+not execute it. Administrator [API commands](api.md#administrator-operations)
+also queue work with an idempotent request UUID and atomic actor audit. A 202
+response confirms acceptance; inspect jobs for completion.
 
-Authenticated administrators can also submit import, fixture-statistics, local
-forecast-refresh and failed-job retry requests through the [API](api.md).
-Commands use an idempotent request UUID and commit their actor audit with the
-queue change. A 202 response means accepted; inspect job state for completion.
-`source.sync` jobs run the same allowlisted import and statistics scheduling as
-the CLI. The web server queues work; the enabled worker uses its own provider
-credentials and the existing shared request budget.
+The worker polls every 15 minutes. Teams/rosters, events and standings are six
+logical imports across two leagues, with a variable number of HTTP requests:
+each cursor page and each fixture-statistics request spends a separate attempt.
+A complete roster needs every page for all 20 clubs. Fixture pagination spans
+both past and future games and stops only after the configured season boundary
+or exhausted connection, with validated cursor/date ordering. A season schedule
+must contain every **380 ordered home/away pairings** before it replaces the
+canonical schedule. A shortened response cannot establish complete history.
 
-The enabled worker synchronizes every 15 minutes and processes durable jobs
-between polls. Each scheduled sync uses six provider calls: teams, events, and
-standings for each of two competitions. Four syncs per hour use 24 requests,
-leaving up to 96 detailed-statistics requests within the shared cap of 120.
-Manual commands and failed HTTP attempts consume the same budget. The provider
-client makes one network attempt per reservation; job retries reserve again.
+The observed Sorare key allowance was 200 requests per minute. The application
+uses a stricter shared **60 attempts per rolling minute**, with at least **one
+second between actual requests**. Worker, CLI and administrator-triggered work
+share SQL reservations; failed attempts count too. Provider 429/retry dates can
+still defer work. No extra accounts or keys bypass that budget. Source backfill
+and corrections can therefore remain pending while local forecast work proceeds.
 
-The initial full-season backfill is queued once. Live fixture detail can refresh
-every 15 minutes. Missing/partial detail and recently completed fixtures refresh
-at most daily; complete final detail is refreshed daily only while its fixture is
-within the recent seven-day correction window. Repeated scheduled polls do not
-refetch every old completed fixture. Initial detail backfill can span several
-request windows; an early import can have complete results and incomplete player
-statistics.
+Initial fixture details are queued once; live details may refresh every 15
+minutes. Missing/partial or recent final details are retried under the job
+scheduler's daily/correction-window rules. A newly imported fixture schedule does
+not imply that player history is already complete. Use `status` to inspect the
+actual backlog and validation issues.
 
-The endpoint is fixed, redirects are rejected, requests time out after 30 seconds,
-and streamed response bodies are limited to 8 MiB. HTTP/provider errors are
-classified with safe codes. The key is excluded from archived request parameters
-and resource keys; a response echoing the actual key is rejected before archival.
-Malformed successful football responses are retained for validation/quarantine.
+The endpoint is fixed, redirects are rejected, and each HTTP request times out
+after 30 seconds with an 8 MiB streamed-body limit. Capture bundles are also
+bounded. Safe error codes omit provider messages and credentials. A response
+containing the API key is rejected before archival.
 
 ## Storage and recovery
 
-Each successfully received observation follows this sequence:
+Sorare imports use versioned `sorare-capture-v1` bundles. Each page retains its
+exact GraphQL query, credential-free variables, exact HTTP response text and
+actual retrieval timestamp. The bundle records whether the full logical capture
+completed. Partial captures remain archived as invalid evidence; they cannot be
+normalized as a complete roster or schedule. Retrieval times are never backdated.
 
-1. Insert the exact response text and SHA-256 into MongoDB `raw_archives`, with
-   source action, credential-free canonical parameters/resource key, and retrieval
-   time. Archive identity includes action, resource key, content hash, and retrieval
-   time, so a later observation of identical bytes retains its own provenance.
-2. Normalize approved football records and record fixed validation issue codes.
-3. Commit PostgreSQL canonical changes, source/normalized revisions, audit/outbox
-   work, and the `sports.ingestion_batches` marker in one transaction.
-4. Update MongoDB `import_metadata` with the committed result.
+1. Archive the bundle and SHA-256 in MongoDB `raw_archives`, with action,
+   credential-free resource/parameters and observation time.
+2. Validate its scope, cursor chain and football evidence; retain fixed issue codes.
+3. Commit canonical changes, source/normalized revisions, audit/outbox work and
+   the `sports.ingestion_batches` marker together in PostgreSQL.
+4. Mark separate MongoDB `import_metadata` after SQL commit.
 
-There is no distributed transaction. A crash after raw insertion is recovered by
-scanning raw archives, including records with no initial metadata. A crash after
-SQL commit is recovered from the SQL marker; replay does not duplicate canonical
-rows or effective jobs. The MongoDB import marker is never written before SQL
-commit. Observations rejected by relational integrity constraints are quarantined as
-`invalid`, preserving their raw bytes while allowing newer corrections to proceed.
-Service and connection failures remain retryable.
-Repeated content can produce new observations without unnecessary
-canonical changes; genuine corrections append revisions.
+There is no cross-store transaction. Recovery finds archives with missing,
+pending or failed metadata; the SQL import marker prevents duplicate effective
+imports after a crash between SQL commit and MongoDB marking. Invalid captures
+stay immutable and quarantined. Transient persistence failures remain retryable.
+`reconcile` handles up to 1,000 current-source pending/unmarked archives per call
+and reprojects latest committed roster bundles at their original times. It does
+not import unrelated archived APIFootball payloads into the current source.
 
-`reconcile` handles up to 1,000 pending/failed or unmarked archives per call,
-oldest first, and then projects the latest committed roster observations. Repeat
-it if an interruption left a larger backlog; the enabled worker repeats recovery
-automatically. Archives already marked `imported` or `invalid` are excluded from
-that recovery scan. This is interruption recovery, not a raw-archive rebuild tool:
-it cannot reconstruct a lost SQL database from MongoDB alone or repair mismatched
-SQL/MongoDB backup times. Preserve both stores together during backup/restore;
-do not clear markers or reset volumes to force a replay.
+This is interruption recovery, not a SQL rebuild from raw archives. Back up both
+stores together; do not delete markers or reset volumes to force replay. The
+MongoDB runtime can read/insert authoritative archives but cannot update/delete
+them. Import metadata is separately mutable. Provider-qualified keys distinguish
+source observations and native-ID entity tuples without relabeling their origin.
 
-Manual appearance corrections are SQL records with an explicit manual source,
-new normalized revision, reason, actor and before/after audit. They emit a
-canonical refresh event without changing provider archive bytes or inventing a
-provider import marker. Only metrics on known-played finalized appearances with
-valid covered membership can be corrected; optimistic revision checks reject
-stale edits. The API does not repair unknown participation, membership or finality.
+Player and club `provider_id` values retain returned `Player:UUID` and `Club:UUID`
+node IDs; fixtures retain `Game:UUID`. Competition business IDs are the two
+configured slugs. Club/player `provider_slug` is separate lookup/link metadata,
+used for genuine Sorare attribution links. A game query uses its bare UUID
+selector while stored identity retains the full native ID.
 
-Before applying provider fixture updates, ingestion checks retained manual
-correction history. A provider observation retrieved at or before a correction
-skips that entire fixture's header and appearance changes, including absent
-player rows, and records `superseded_by_manual_correction` in its import issues.
-Its immutable archive/source and SQL import evidence remain available; other
-fixtures in the observation can import normally. The earlier whole-observation
-supersession check can instead report `superseded_archive` when newer data for
-the same action/resource is already imported. This protection also applies
-to older cross-endpoint replays after newer provider values become current.
-Strictly newer provider observations may supersede manual values while retaining
-the correction revision and audit history.
+Roster snapshots establish current-club claims at observation time. Appearance
+memberships cover the fixture instant and do not imply continuous transfer
+history. Complete newer exclusions can retire an earlier current-club claim;
+incomplete or conflicting newest relevant rosters remain uncertain. Missing
+rosters in unrelated leagues cannot invalidate a confirmed club. Absence from a
+formation or statistics list never creates a DNP appearance.
 
-The MongoDB runtime role can read/insert raw archives but cannot update/delete
-them. Validation/import state is separately mutable in `import_metadata`, with
-`pending`, `imported`, `invalid`, and `failed` states and associated issues. Strict
-collection validators and indexes are provisioned administratively. Do not repair
-an import by editing authoritative raw bytes or resetting database volumes.
+Manual metric corrections retain an explicit manual source, new normalized
+revision and reason/before/after/actor audit. They cannot invent participation,
+membership or finality. Provider observations retrieved at or before a retained
+manual correction skip that entire fixture and record
+`superseded_by_manual_correction`; newer provider evidence can supersede the
+manual values while preserving their history. Older same-resource observations
+may instead be rejected as `superseded_archive`. Raw archives remain unchanged.
 
-Outbox dispatch creates supported `source.sync`, `fixture.statistics` and
-`standings.rebuild` jobs idempotently. Claims use database locking and a 120-second
-lease renewed every 30 seconds. Expired leases return to the queue while attempts remain.
-Transient failures use exponential backoff; permanent provider errors and invalid
-job payloads stop immediately. The default maximum is five attempts. Shared-budget exhaustion
-defers a job without spending its processing attempt. Provider retry dates are
-bounded to one second through one hour. Persisted errors contain safe codes.
-Canonical, standings and roster changes are coalesced into local `forecast.refresh`
-jobs. Changes arriving during a running refresh remain pending for a follow-up.
-An automatic minute check handles target expiry even without new provider data.
-Forecast work takes priority over source-detail jobs and uses no provider budget.
-An independent local queue loop runs every five seconds while reconciliation or
-source requests are in flight. Saved forecast reads and catalogue availability
-still describe the last completed evaluation; a healthy worker or equal source
-ordinal does not prove that an individual result is current at the response time.
-Unrelated outbox event types remain available to their consumers. See
-[forecasting](forecasting.md) for model behavior and persistence.
-
-Use `status` to identify the affected job and code, fix configuration or service
-availability, then use `reconcile` for cross-store recovery or `retry JOB_UUID` for
-a failed job. A denied provider request does not create a source archive or erase
-previous observations. A successful but broken statistics response records a gap
-and replaces stale metrics with unknown values for known participants.
-
-Roster observations preserve validated player/club pairs separately from
-fixture-instant memberships. Memberships established by appearances cover only
-that fixture instant; they do not imply continuous transfer tenure. A complete
-newer roster can remove an old current-club association, and conflicting or
-incomplete newest observations remain uncertain. Unknown positions and missing
-match metrics do not by themselves invalidate roster membership coverage.
-After an upgrade, `reconcile` projects the latest already committed `get_teams`
-archives using their original observation times, without spending API requests.
-It retains all observations tied for the latest time, including conflicting
-claims. Only seasons with this player's pre-cutoff appearance or roster-inclusion
-evidence can introduce missing/incomplete roster blockers; unrelated empty league
-rosters cannot invalidate a confirmed club. A complete relevant exclusion ends
-the old club scope without inventing a transfer, appearance or DNP.
+Outbox jobs are provider-scoped: current payloads carry `provider:"sorare"`.
+Supported kinds are `source.sync`, `fixture.statistics`, `standings.rebuild` and
+local `forecast.refresh`. Claims use a 120-second lease renewed every 30 seconds;
+expired leases and transient failures follow bounded retry/backoff rules. Budget
+deferrals do not spend a processing attempt. Canonical, roster and standings
+events coalesce forecast refreshes, including changes arriving during active
+work. A minute check handles target expiry, and a separate five-second local loop
+continues while provider requests are in flight. A saved evaluation can still be
+stale; inspect its own cutoff/target/source warnings.
 
 ## Missing data and historical standings
 
-Event listings commonly include lineups without player statistics. Known starters
-and substitutes are retained as unknown participants until detailed evidence is
-available. Coaches are excluded; a lineup's numeric formation slot is not treated
-as a position group. Detailed statistics support keyed fixture responses, flat
-`player_statistics`, and event `player_stats.home`/`away` collections.
+[`sorare-normalize.ts`](../src/server/ingestion/sorare-normalize.ts) maps direct
+nullable counts and exact matching `detailedScore[].statValue` evidence:
 
-The normalizer maps `player_key` to the player identifier and `match_id` to the
-fixture identifier. Its metric mapping is explicit in
-[`normalize.ts`](../src/server/ingestion/normalize.ts):
-
-| Canonical field | Provider field | Stored units |
+| Canonical field | Direct field | Matching detailed stat |
 | --- | --- | --- |
-| `minutes` | `player_minutes_played` | Reported integer minutes |
-| `rating` | `player_rating` | Decimal, 0–10 |
-| `goals`, `assists` | `player_goals`, `player_assists` | Integer match counts |
-| `shots_on_target`, `key_passes` | `player_shots_on_goal`, `player_key_passes` | Integer match counts |
-| `tackles`, `interceptions` | `player_tackles`, `player_interceptions` | Integer match counts |
-| `saves`, `goals_conceded` | `player_saves`, `player_goals_conceded` | Integer match counts |
+| `minutes` | `minsPlayed` | `mins_played` |
+| `goals` | `goals` | `goals` |
+| `assists` | `goalAssist` | `goal_assist` |
+| `shots_on_target` | `ontargetScoringAtt` | `ontarget_scoring_att` |
+| `tackles` | `totalTackle` | `total_tackle` |
+| `interceptions` | `interceptionWon` | `interception_won` |
+| `saves` | `saves` | `saves` |
+| `goals_conceded` | `goalsConceded` | `goals_conceded` |
 
-Blank/null metrics remain missing; valid numeric zero remains zero. Explicit
-zero-minute evidence can confirm DNP when it does not conflict with positive
-statistics. Absence from a detailed response cannot confirm DNP: prior known
-participants are retained with unknown participation and null metrics. Minutes
-above 90 are preserved. Malformed identifiers, dates, ratings outside 0–10, and
-negative/noninteger count metrics are rejected or flagged. Missing whole-match or
-player detail remains visible through fixture statistics status and validation
-issues; it must not be skipped to obtain a convenient five-match window.
+A validated explicit zero in a matching detailed stat is observed zero. A null
+with no such evidence stays missing; conflicting values also remain unknown and
+raise an issue. `wonTackle`/`won_tackle` is a different statistic from total
+tackles. Sorare's fantasy score does not supply a conventional 0–10 rating, and
+key passes are unsupported. Those canonical fields remain null. Counts and
+minutes must be nonnegative integers; reported minutes above 90 are preserved.
 
-Historical standings use corrected results from strictly earlier competition-local
-dates, with a cutoff at local midnight. This is retrospective reconstruction, not
-a replay of tables as originally published. Missing schedule/result context marks
-a snapshot incomplete. Southampton's 2026/27 four-point deduction is explicit
-provenance-backed context. Championship and Ligue 2 use separate tie rules;
-Ligue 2 head-to-head comparison waits for both meetings. Unsupported disciplinary
-separation leaves unresolved ties flagged. Future forecasts must treat a tie
-crossing a strength-tier boundary as uncertain with neutral strength.
-Confirmed postponed/cancelled fixtures remain part of schedule structure
-validation but contribute neither results nor unknown-date result gaps. Other
-unknown-date fixtures still block affected standings context.
+Finality comes from `game.statusTyped=played`. Actual participation uses player
+statistics (`playedInGame`, `fieldStatus`, minutes) and formation/team evidence.
+`playedInLineup` is fantasy-manager alignment and is not real match participation.
+An unresolved or absent row remains a gap. Final-game statistics still under
+`REVIEWING`, unreviewed or live review retain their valid observed counts with an
+explicit review issue and partial statistics status; they do not silently vanish
+from the latest-five window. Missing ratings/key passes can block their dependent
+outputs while other evidenced count projections and scouting strengths remain
+possible. None of this establishes predictive accuracy.
 
-Real provider-total reconciliation is an operational verification step. Do not
-infer that it passed from a successful HTTP response or a healthy worker. Inspect
-`status` reconciliation entries: `complete` must be true and `mismatches` empty
-for the imported reference totals to agree. The comparison covers played, wins,
-draws, losses, goals for/against, and points. Inspect player-statistics gaps
-separately; continued free access and complete player detail remain source limitations.
+Standings reconstruct corrected results from strictly earlier competition-local
+dates, at local midnight; future context can use observed same-day finals before
+its cutoff. This is retrospective reconstruction. Missing pairings/results block
+complete context. Premier League ranks use points, overall goal difference and
+goals scored; remaining ties stay uncertain because final-season sporting stakes
+and playoffs are not inferred. La Liga uses completed head-to-head evidence,
+including a fresh mini-table for a remaining tied subset, then overall goal
+difference/goals. Incomplete head-to-head or unavailable final fair-play/deciding
+criteria preserve uncertain rank intervals. Ties crossing a strength-tier boundary
+use neutral strength. Former-league deductions are not applied to these leagues.
+
+Provider-total reconciliation is a separate operational check. In `status`,
+`complete:true` and an empty `mismatches` list establish agreement of imported
+played/wins/draws/losses/goals/points totals at that observation. Check player
+metric, roster and review gaps separately; HTTP success or worker health does not
+establish complete football coverage.
 
 ## Isolated integration tests
 
-`npm run test:unit` requires no services or provider key. The PostgreSQL/MongoDB
-suite uses synthetic provider responses and `npm run test:ingestion`; it must run
+`npm run test:unit` requires no services or provider key. `npm run test:source`
+checks current-source capture/normalization, read contracts and reporting upgrades;
+`npm run test:ingestion` retains archived-adapter recovery checks. Both use synthetic
+provider responses and must run
 against disposable PostgreSQL 17 and MongoDB 8 instances, never the demo database
 or a shared cluster. It provisions roles and clears the guarded test tables and
 archive collections between cases.
+
+Existing browser/worker fixtures explicitly select `LSP_TEST_SOURCE=legacy` only
+inside the guarded `_test` database. Current-source tests construct their Sorare
+profile explicitly. The selector cannot enable legacy coverage in a production
+database and must not be used as a product source switch.
 
 The suite checks `NODE_ENV=test`, a PostgreSQL database ending `_test`, and
 `POSTGRES_TEST_CLUSTER_ID` matching `pg_control_system()`. PostgreSQL must contain
@@ -286,7 +253,8 @@ its identity markers and temporary services remain available until they finish.
   export MONGO_HOST=127.0.0.1 MONGO_DB=sports_ingestion_test
   export MONGO_TEST_DATABASE="$MONGO_DB"
   export MONGO_BOOTSTRAP_USER=ingestion_test_bootstrap MONGO_WORKER_USER=lsp_ingestion
-  export APIFOOTBALL_API_KEY= INGESTION_ENABLED=false
+  export APIFOOTBALL_API_KEY= SORARE_API_KEY= INGESTION_ENABLED=false
+  export LSP_TEST_SOURCE=legacy
   for ingestion_test_credential in BOOTSTRAP READER WRITER AUTH MIGRATOR; do
     export "POSTGRES_${ingestion_test_credential}_PASSWORD=$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
   done
@@ -337,6 +305,7 @@ its identity markers and temporary services remain available until they finish.
     'mongosh --quiet --host 127.0.0.1 --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "print(db.adminCommand({ hostInfo: 1 }).system.hostname)"')"
   npm run test:db
   npm run test:ingestion
+  npm run test:source
   npm run test:forecast
   npm run test:replay
   npm run test:evaluation

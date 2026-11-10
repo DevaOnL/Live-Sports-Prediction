@@ -112,6 +112,37 @@ const goalDifference: Metric = (row) => row.goalsFor - row.goalsAgainst;
 const goalsFor: Metric = (row) => row.goalsFor;
 const wins: Metric = (row) => row.wins;
 
+function headToHead(group: Totals[], results: Result[]) {
+  const table = new Map(group.map((row) => [row.clubId, emptyTotals(row.clubId)]));
+  const meetings = results.filter((result) => table.has(result.homeId) && table.has(result.awayId));
+  const pairs = new Set(meetings.map((result) => JSON.stringify([result.homeId, result.awayId])));
+  const complete = group.every((home) => group.every((away) =>
+    home === away || pairs.has(JSON.stringify([home.clubId, away.clubId]))));
+  for (const meeting of meetings) addResult(table, meeting);
+  return { table, complete };
+}
+
+function resolveLaLigaTie(group: Totals[], results: Result[]): Totals[][] {
+  if (group.length === 1) return [group];
+  const mini = headToHead(group, results);
+  // An unfinished mini-league cannot establish a head-to-head tie breaker.
+  if (!mini.complete) return [group];
+  const relative = (metric: Metric): Metric => (row) => metric(mini.table.get(row.clubId)!);
+  const metrics = group.length === 2
+    ? [relative(goalDifference), goalDifference, goalsFor]
+    : [relative(points), relative(goalDifference), goalDifference, goalsFor];
+  for (const metric of metrics) {
+    const separated = split(group, [metric]);
+    if (separated.length > 1) {
+      // Once clubs separate, the remaining tied subset uses its own rules and
+      // mini-table; in particular a two-club subset uses head-to-head goals.
+      return separated.flatMap((remaining) => resolveLaLigaTie(remaining, results));
+    }
+  }
+  // Fair-play classifications and deciding matches are not inferred from scores.
+  return [group];
+}
+
 function resolveTies(group: Totals[], results: Result[], leagueId: string): Totals[][] {
   if (group.length === 1) return [group];
   const miniTable = new Map(group.map((row) => [row.clubId, emptyTotals(row.clubId)]));
@@ -164,7 +195,7 @@ export function reconstructStandings(
   }
   if (!Number.isSafeInteger(coverage.expectedClubs) || coverage.expectedClubs < 2 ||
       totals.size !== coverage.expectedClubs) gap("invalid_club_count", coverage.id, "clubs");
-  if (coverage.id !== "153" && coverage.id !== "164") gap("unsupported_standings_rules", coverage.id);
+  if (!["153", "164", "premier-league-gb-eng", "laliga-es"].includes(coverage.id)) gap("unsupported_standings_rules", coverage.id);
 
   const uniqueFixtures = new Map<string, Fixture>();
   const conflictingIds = new Set<string>();
@@ -246,8 +277,25 @@ export function reconstructStandings(
     }
   }
 
-  const primaryMetrics = coverage.id === "164" ? [points, goalDifference] : [points, goalDifference, goalsFor];
-  const ranked = split([...totals.values()], primaryMetrics).flatMap((group) => resolveTies(group, results, coverage.id));
+  let ranked: Totals[][];
+  if (coverage.id === "premier-league-gb-eng") {
+    // League positions use points, overall goal difference and goals scored.
+    // Head-to-head is a final-season sporting-stakes rule; a retrospective
+    // matchday table cannot infer those stakes or a deciding playoff.
+    ranked = split([...totals.values()], [points, goalDifference, goalsFor]);
+  } else if (coverage.id === "laliga-es") {
+    ranked = split([...totals.values()], [points]).flatMap((group) => {
+      if (group.length > 1 && !headToHead(group, results).complete) {
+        issues.push({ code: "incomplete_head_to_head", resource: coverage.id, field: "position" });
+      }
+      return resolveLaLigaTie(group, results);
+    });
+  } else if (coverage.id === "153" || coverage.id === "164") {
+    const primaryMetrics = coverage.id === "164" ? [points, goalDifference] : [points, goalDifference, goalsFor];
+    ranked = split([...totals.values()], primaryMetrics).flatMap((group) => resolveTies(group, results, coverage.id));
+  } else {
+    ranked = [[...totals.values()]];
+  }
   const rows: StandingRow[] = [];
   let position = 1;
   for (const group of ranked) {

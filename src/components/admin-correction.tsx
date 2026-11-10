@@ -15,7 +15,8 @@ const metricFields = [
 type Observed = PlayerData["observedAppearances"][number];
 type LoadedAppearance = { playerId: string; playerName: string; loadedAt: number; row: Observed };
 const metricsOf = (row: Observed): AppearanceMetrics => ({ minutes: row.minutes, rating: row.rating, ...row.metrics });
-const validId = (value: string) => /^[1-9]\d{0,17}$/.test(value) && Number.isSafeInteger(Number(value));
+const validId = (value: string, kind: "Player" | "Game") => (/^[1-9]\d{0,17}$/.test(value) && Number.isSafeInteger(Number(value)))
+  || new RegExp(`^${kind}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`).test(value);
 
 export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: initialFixtureId = "", onSaved }: {
   playerId?: string; fixtureId?: string; onSaved: () => void;
@@ -60,13 +61,13 @@ export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: ini
     setLoaded(null);
     setLoadError(undefined);
     setEdited({});
-    if (!validId(playerId) || !validId(fixtureId)) {
-      setLoadError(new Error("Provide positive player and fixture identifiers."));
+    if (!validId(playerId, "Player") || !validId(fixtureId, "Game")) {
+      setLoadError(new Error("Provide valid player and fixture identifiers."));
       return;
     }
     setLoading(true);
     try {
-      const detail = await api<PlayerData>(`players/${playerId}`, { signal: next.signal });
+      const detail = await api<PlayerData>(`players/${encodeURIComponent(playerId)}`, { signal: next.signal });
       if (next.signal.aborted) return;
       const row = detail.observedAppearances.find((appearance) => appearance.fixtureId === fixtureId);
       if (!row) throw new Error("This fixture is not among the player's 50 most recent observed appearances.");
@@ -92,8 +93,8 @@ export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: ini
       <details className="provenance-details"><summary>Correction help</summary><p>Source archives stay intact. Later provider observations may supersede a correction; forecast refresh is asynchronous.</p></details>
       <form onSubmit={correct} className="page-stack">
         <div className="field-grid">
-          <label className="field" htmlFor="correction-player"><span className="field-label">Player ID</span><input id="correction-player" className="field-input" inputMode="numeric" value={playerId} disabled={command.locked} onChange={(event) => { invalidate(); setPlayerId(event.target.value); }} /></label>
-          <label className="field" htmlFor="correction-fixture"><span className="field-label">Fixture ID</span><input id="correction-fixture" className="field-input" inputMode="numeric" value={fixtureId} disabled={command.locked} onChange={(event) => { invalidate(); setFixtureId(event.target.value); }} /></label>
+          <label className="field" htmlFor="correction-player"><span className="field-label">Player ID</span><input id="correction-player" className="field-input" value={playerId} disabled={command.locked} onChange={(event) => { invalidate(); setPlayerId(event.target.value); }} /></label>
+          <label className="field" htmlFor="correction-fixture"><span className="field-label">Fixture ID</span><input id="correction-fixture" className="field-input" value={fixtureId} disabled={command.locked} onChange={(event) => { invalidate(); setFixtureId(event.target.value); }} /></label>
         </div>
         <div className="action-row"><button className="button button-secondary" type="button" onClick={load} disabled={loading || command.locked}>{loading ? "Loading appearance…" : loaded || conflict ? "Reload appearance" : "Load appearance"}</button></div>
         {loadError !== undefined && <p className="error-message" role="alert">{loadError instanceof Error ? loadError.message : "The appearance could not be loaded."}</p>}

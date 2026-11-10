@@ -83,6 +83,14 @@ test("browser sign-in redirects protected routes and keeps administrator access 
   await page.goto(web.origin);
   assert.equal(await page.locator("h1").count(), 1);
   await noOperationsNavigation(page);
+  assert.deepEqual(await page.locator(".league-summary h3").allTextContents(), ["Premier League", "La Liga"]);
+  assert.match(await page.locator(".match-ticker").innerText(), /PREMIER LEAGUE.*LA LIGA/s);
+  assert.doesNotMatch(await page.locator(".match-ticker").innerText(), /CHAMPIONSHIP|LIGUE 2/);
+  await page.evaluate(() => sessionStorage.setItem("football-comparison", JSON.stringify([
+    { id: "8001", name: "Retired comparison selection", position: "GK" },
+  ])));
+  await page.reload();
+  assert.equal(await page.getByRole("complementary", { name: "Comparison selection" }).count(), 0);
   assert.equal(await page.locator('a[href^="/design"]').count(), 0);
   await page.locator('.home-hero img').waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".home-hero img")].every((image) => image.complete && image.naturalWidth > 0));
@@ -251,6 +259,121 @@ test("scouting highlights expose observed strengths on cards and profiles with h
   await missingProfileStatistic.getByText("Why unavailable?", { exact: true }).click();
   await missingProfileStatistic.getByText("The relevant statistics are incomplete across the five appearances.", { exact: true }).waitFor();
   await noOverflow(page);
+}));
+
+test("native source identifiers survive login, comparison reloads and correction forms with profile attribution", { timeout: 90_000 }, async () => withPage(async (page) => {
+  const playerId = `Player:${randomUUID()}`, fixtureId = `Game:${randomUUID()}`;
+  const name = "Synthetic current source player";
+  const sourceUrl = "https://sorare.com/football/players/synthetic-current-source-player";
+  const playerApiPath = `/api/players/${encodeURIComponent(playerId)}`;
+  const profileRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith("/api/players/")) profileRequests.push(pathname);
+  });
+  let profileReads = 0;
+  let correctionMetrics: Record<string, number | null> = {};
+  // Source-aware reads and writes have database integration coverage. These
+  // variants exercise native-ID rendering against the isolated legacy demo.
+  await page.route((url) => url.origin === web.origin && decodeURIComponent(url.pathname) === `/api/players/${playerId}`, async (route) => {
+    const response = await route.fetch({ url: `${web.origin}/api/players/8001` });
+    assert.equal(response.status(), 200);
+    profileReads++;
+    const body = await response.json();
+    const observed = body.data.observedAppearances.find((appearance: { fixtureId: string }) => appearance.fixtureId === "900005");
+    assert(observed);
+    correctionMetrics = { minutes: observed.minutes, rating: observed.rating, ...observed.metrics };
+    body.data.player.id = playerId;
+    body.data.player.name = name;
+    body.data.player.sourceUrl = sourceUrl;
+    body.data.player.forecast.status = "uncomputed";
+    body.data.forecast = null;
+    body.data.observedAppearances = [{ ...observed, fixtureId }];
+    await route.fulfill({ response, json: body });
+  });
+  const playerPath = `/players/${encodeURIComponent(playerId)}`;
+  await page.goto(`${web.origin}/login?next=${encodeURIComponent(playerPath)}`);
+  await page.getByLabel("Email address").fill("admin@example.test");
+  await page.getByLabel("Password", { exact: true }).fill(web.password);
+  const profileRequest = page.waitForRequest((request) => new URL(request.url()).pathname.startsWith("/api/players/"));
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL(web.origin + playerPath);
+  assert.equal(new URL((await profileRequest).url()).pathname, playerApiPath,
+    "native profile requests encode the source identifier exactly once after sign-in");
+  await page.getByRole("heading", { name, exact: true }).waitFor();
+  const source = page.getByRole("link", { name: "Player source · Sorare", exact: false });
+  assert.equal(await source.getAttribute("href"), sourceUrl);
+  assert.equal(await source.getAttribute("rel"), "noopener noreferrer");
+  await page.locator(".profile-hero").getByRole("button", { name: `Add ${name} to comparison`, exact: true }).click();
+  await page.reload();
+  await page.locator(".profile-hero").getByRole("button", { name: `Remove ${name} from comparison`, exact: true }).waitFor();
+  assert(profileRequests.every((path) => path === playerApiPath), "native profile reloads retain the exact source identifier");
+  await page.evaluate(({ playerId, fixtureId, name }) => sessionStorage.setItem("football-comparison-current", JSON.stringify([
+    { id: playerId, name, position: "GK" }, { id: playerId, name, position: "GK" },
+    { id: fixtureId, name: "Wrong identifier kind", position: "GK" },
+    { id: `${playerId}/extra`, name: "Malformed identifier", position: "GK" },
+    { id: "9007199254740993", name: "Unsafe numeric identifier", position: "GK" },
+    { id: "8002", name: "Retained legacy selection", position: "DEF" },
+  ])), { playerId, fixtureId, name });
+  await page.reload();
+  const selection = page.getByRole("complementary", { name: "Comparison selection", exact: true });
+  await selection.getByText("2 of 4 players selected", { exact: true }).waitFor();
+  const comparisonHref = await selection.getByRole("link", { name: "Compare players", exact: false }).getAttribute("href");
+  assert.deepEqual(new URL(comparisonHref!, web.origin).searchParams.getAll("playerId"), [playerId, "8002"]);
+  assert.equal(await selection.locator(".selection-chip").count(), 2);
+  await page.route((url) => url.origin === web.origin && url.pathname === "/api/players", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.items = [{ ...body.data.items[0], id: playerId, name, sourceUrl }];
+    body.data.pagination = { ...body.data.pagination, total: 1, page: 1, pages: 1 };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`${web.origin}/players`);
+  const card = page.getByRole("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  const view = card.getByRole("link", { name: "View player", exact: false });
+  await view.waitFor();
+  assert.equal(await view.getAttribute("href"), playerPath);
+  assert.equal(await card.getByRole("button", { name: `Remove ${name} from comparison`, exact: true }).getAttribute("aria-pressed"), "true");
+  await page.setViewportSize({ width: 390, height: 900 });
+  await view.click();
+  await page.getByRole("heading", { name, exact: true }).waitFor();
+  await noOverflow(page);
+  await page.goto(`${web.origin}/players/8001`);
+  await page.getByRole("heading", { name: names[0], exact: true }).waitFor();
+  assert.equal(await page.getByRole("link", { name: "Player source · Sorare", exact: false }).count(), 0);
+  await openOperations(page);
+  assert.notEqual(await page.getByLabel("Player ID", { exact: true }).getAttribute("inputmode"), "numeric");
+  assert.notEqual(await page.getByLabel("Fixture ID", { exact: true }).getAttribute("inputmode"), "numeric");
+  await page.getByLabel("Player ID", { exact: true }).fill(fixtureId);
+  await page.getByLabel("Fixture ID", { exact: true }).fill(fixtureId);
+  const readsBeforeInvalid = profileReads;
+  await page.getByRole("button", { name: "Load appearance", exact: true }).click();
+  await page.getByText("Provide valid player and fixture identifiers.", { exact: true }).waitFor();
+  assert.equal(profileReads, readsBeforeInvalid);
+  await page.getByLabel("Player ID", { exact: true }).fill(playerId);
+  await page.getByLabel("Fixture ID", { exact: true }).fill(playerId);
+  await page.getByRole("button", { name: "Load appearance", exact: true }).click();
+  await page.getByText("Provide valid player and fixture identifiers.", { exact: true }).waitFor();
+  assert.equal(profileReads, readsBeforeInvalid);
+  await page.getByLabel("Fixture ID", { exact: true }).fill(fixtureId);
+  await page.getByRole("button", { name: "Load appearance", exact: true }).click();
+  await page.getByLabel("Expected revision", { exact: true }).waitFor();
+  await page.route("**/api/admin/appearances", async (route) => {
+    assert.equal(route.request().method(), "PATCH");
+    const command = route.request().postDataJSON();
+    assert.equal(command.playerId, playerId);
+    assert.equal(command.fixtureId, fixtureId);
+    assert.deepEqual(command.changes, { goals: 3 });
+    await route.fulfill({ status: 200, json: { data: { requestId: command.requestId, playerId, fixtureId, revisionId: randomUUID(),
+      previousRevisionId: command.expectedRevisionId, sourceRevisionId: randomUUID(), provider: "manual", providerMaySupersede: true,
+      metrics: { ...correctionMetrics, goals: 3 } } } });
+  });
+  await page.getByLabel("Edit goals", { exact: true }).check();
+  await page.getByLabel("Goals", { exact: true }).fill("3");
+  await page.getByLabel("Reason", { exact: true }).fill("Synthetic native identifier render regression");
+  await page.getByRole("button", { name: "Apply correction", exact: true }).click();
+  await page.getByText("Correction saved as a manual revision. The audit trail retains the reason and before/after values.", { exact: true }).waitFor();
+  assert.equal((await web.administrator.query("SELECT count(*)::integer AS count FROM sports.provider_requests")).rows[0].count, 0);
 }));
 
 test("player detail separates five selected matches, reported observations, units and stale saved targets", { timeout: 60_000 }, async () => withPage(async (page) => {

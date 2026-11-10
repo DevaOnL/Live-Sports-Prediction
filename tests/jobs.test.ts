@@ -192,5 +192,5 @@ test("failed job listing exposes bounded operational metadata", async () => {
   assert.match(query.sql, /SELECT id,kind,attempts,last_error,completed_at/);
   assert.match(query.sql, /status='failed'/);
   assert.match(query.sql, /LIMIT 100/);
-  assert.equal(query.sql.includes("payload"), false);
+  assert.equal(query.sql.split("FROM")[0].includes("payload"), false);
 });

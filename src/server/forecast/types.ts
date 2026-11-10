@@ -18,6 +18,7 @@ export type Match = {
   homeClubId: string; awayClubId: string;
 };
 export type HistoryAppearance = Match & {
+  sourceProvider?: "sorare";
   covered: boolean; clubId: string | null; membershipKnown: boolean;
   participation: "unknown" | "played" | "dnp"; minutes: number | null;
   rating: number | null; metrics: Record<Metric, number | null>; context: Context | null;

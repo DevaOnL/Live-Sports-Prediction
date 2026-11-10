@@ -1,10 +1,12 @@
 import { mongoConnection, mongoDatabase, writerPool, required } from "./connections";
 import { JobQueue, type IngestionJob } from "./jobs";
-import { coverageFor } from "./coverage";
+import { runtimeSource, sourceCoverage } from "./sources";
 import { IngestionPipeline } from "./pipeline";
+import { SorarePipeline } from "./sorare";
 import { ForecastStore } from "../forecast/store";
 
 export async function createRuntime(needsProvider = true) {
+  const profile = runtimeSource();
   const pool = writerPool();
   const mongo = mongoConnection();
   try {
@@ -13,19 +15,21 @@ export async function createRuntime(needsProvider = true) {
     await pool.query("SELECT 1 FROM sports.roster_snapshots,sports.roster_entries,sports.forecast_revisions,sports.forecast_heads LIMIT 0");
     const db = mongo.db(mongoDatabase());
     await db.collection("raw_archives").findOne({}, { projection: { _id: 1 } });
-    const pipeline = new IngestionPipeline(pool, db, needsProvider ? required("APIFOOTBALL_API_KEY") : "offline-reconciliation");
-    const queue = new JobQueue(pool, undefined, true);
-    const forecasts = new ForecastStore(pool);
+    const pipeline = profile.provider === "sorare"
+      ? new SorarePipeline(pool, db, needsProvider ? required("SORARE_API_KEY") : "offline-reconciliation")
+      : new IngestionPipeline(pool, db, needsProvider ? required("APIFOOTBALL_API_KEY") : "offline-reconciliation");
+    const queue = new JobQueue(pool, undefined, true, profile);
+    const forecasts = new ForecastStore(pool, profile);
     const handle = async (job: IngestionJob) => {
       if (job.kind === "fixture.statistics") await pipeline.statistics(job.payload.leagueId, job.payload.fixtureId);
-      else if (job.kind === "standings.rebuild") await pipeline.store.rebuild(coverageFor(job.payload.leagueId));
+      else if (job.kind === "standings.rebuild") await pipeline.store.rebuild(sourceCoverage(profile, job.payload.leagueId));
       else if (job.kind === "source.sync") {
         await pipeline.sync();
         await queue.scheduleStatistics();
       } else await forecasts.refreshAll();
     };
     return {
-      pool, mongo, db, pipeline, queue, forecasts, handle,
+      pool, mongo, db, pipeline, queue, forecasts, handle, profile,
       async ping() {
         await pool.query("SELECT 1");
         await db.collection("import_metadata").findOne({}, { projection: { _id: 1 } });

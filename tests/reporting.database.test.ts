@@ -124,7 +124,7 @@ async function setHead(revisionId: string, targetPlayer = player) {
 async function cli(args: string[]) {
   return execute(process.execPath, ["--import", "tsx", join(root, "scripts/forecast.ts"), ...args], {
     cwd: root, timeout: 60_000, maxBuffer: 512_000,
-    env: { ...process.env, APIFOOTBALL_API_KEY: "", MONGO_WORKER_PASSWORD: "", MONGO_BOOTSTRAP_PASSWORD: "" },
+    env: { ...process.env, LSP_TEST_SOURCE: "legacy", APIFOOTBALL_API_KEY: "", MONGO_WORKER_PASSWORD: "", MONGO_BOOTSTRAP_PASSWORD: "" },
   });
 }
 
@@ -279,14 +279,24 @@ test("the real forecast consumer emits one audit per revision and never consumes
 });
 
 test("reporting routines use invoker privileges and fixed paths with explicit role boundaries", async () => {
-  const definitions = (await admin.query(`SELECT p.proname,p.prosecdef,p.proconfig,
+  const definitions = (await admin.query(`SELECT p.proname,oidvectortypes(p.proargtypes) AS arguments,p.prokind,p.prosecdef,p.proconfig,
     NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
       WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='sports' AND p.proname IN ('player_qualifying_history','forecast_lineage','request_forecast_refresh','record_forecast_update')`)).rows;
-  assert.equal(definitions.length, 4);
+    WHERE n.nspname='sports' AND p.proname IN ('player_qualifying_history','forecast_lineage','request_forecast_refresh','record_forecast_update')
+    ORDER BY p.proname,p.pronargs`)).rows;
+  assert.deepEqual(definitions.map((row) => [row.proname, row.arguments, row.prokind]), [
+    ["forecast_lineage", "text, integer", "f"],
+    ["forecast_lineage", "text, text, integer", "f"],
+    ["player_qualifying_history", "text, timestamp with time zone", "f"],
+    ["player_qualifying_history", "text, text, timestamp with time zone", "f"],
+    ["record_forecast_update", "", "f"],
+    ["request_forecast_refresh", "uuid", "p"],
+    ["request_forecast_refresh", "text, uuid", "p"],
+  ]);
   assert(definitions.every((row) => !row.prosecdef && row.no_public_execute && row.proconfig.includes("search_path=pg_catalog, sports")));
   await assert.rejects(reader.query("CALL sports.request_forecast_refresh()"), { code: "42501" });
+  await assert.rejects(reader.query("CALL sports.request_forecast_refresh('sorare',$1::uuid)", [randomUUID()]), { code: "42501" });
   await assert.rejects(reader.query("INSERT INTO sports.outbox(event_type) VALUES ('forecast.requested')"), { code: "42501" });
   const grants = (await admin.query(`SELECT
     has_function_privilege('lsp_reader','sports.player_qualifying_history(text,timestamptz)','EXECUTE') AS reader_history,
@@ -294,4 +304,14 @@ test("reporting routines use invoker privileges and fixed paths with explicit ro
     has_function_privilege('lsp_auth','sports.forecast_lineage(text,integer)','EXECUTE') AS auth_lineage,
     has_function_privilege('lsp_writer','sports.record_forecast_update()','EXECUTE') AS writer_helper`)).rows[0];
   assert.deepEqual(grants, { reader_history: true, writer_lineage: true, auth_lineage: false, writer_helper: false });
+  for (const signature of ["sports.player_qualifying_history(text,text,timestamptz)", "sports.forecast_lineage(text,text,integer)"]) {
+    const sourceGrants = (await admin.query(`SELECT has_function_privilege('lsp_reader',$1,'EXECUTE') AS reader,
+      has_function_privilege('lsp_writer',$1,'EXECUTE') AS writer,has_function_privilege('lsp_auth',$1,'EXECUTE') AS auth`, [signature])).rows[0];
+    assert.deepEqual(sourceGrants, { reader: true, writer: true, auth: false }, signature);
+  }
+  const requestGrants = (await admin.query(`SELECT
+    has_function_privilege('lsp_reader','sports.request_forecast_refresh(text,uuid)','EXECUTE') AS reader,
+    has_function_privilege('lsp_writer','sports.request_forecast_refresh(text,uuid)','EXECUTE') AS writer,
+    has_function_privilege('lsp_auth','sports.request_forecast_refresh(text,uuid)','EXECUTE') AS auth`)).rows[0];
+  assert.deepEqual(requestGrants, { reader: false, writer: true, auth: false });
 });

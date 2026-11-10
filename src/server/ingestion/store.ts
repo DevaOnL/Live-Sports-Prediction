@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { archiveId, validateArchive } from "./archive";
-import { coverageFor } from "./coverage";
+import { LEGACY_SOURCE, sourceCoverage, sourceEntityKey, type SourceProfile } from "./sources";
 import { cutoffUtc, localDate, POINTS_ADJUSTMENTS, reconstructStandings } from "./standings";
 import type { Appearance, ArchivedResponse, Batch, Club, Coverage, Fixture, ImportResult, Issue, Player, ProviderAction } from "./types";
 
@@ -25,8 +25,8 @@ function header(fixture: Fixture): Data {
   };
 }
 
-function assertCoverage(coverage: Coverage): void {
-  const approved = coverageFor(coverage.id);
+function assertCoverage(coverage: Coverage, profile: SourceProfile): void {
+  const approved = sourceCoverage(profile, coverage.id);
   if (Object.entries(approved).some(([key, value]) => coverage[key as keyof Coverage] !== value)) {
     throw new Error("Import coverage differs from the approved allowlist");
   }
@@ -41,7 +41,16 @@ export class RateLimitError extends Error {
 
 /** SQL owns the commit marker; MongoDB import state is updated only after this returns. */
 export class IngestionStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, readonly profile: SourceProfile = LEGACY_SOURCE) {
+    if (!["apifootball", "sorare"].includes(profile.provider)) throw new Error("Unsupported source");
+  }
+
+  private key(type: string, ...parts: string[]): string { return sourceEntityKey(this.profile, type, ...parts); }
+
+  /** Source names are fixed internal constants, never provider/request input. */
+  private providerSql(alias = ""): string {
+    return `${alias ? `${alias}.` : ""}provider=${this.profile.provider === "sorare" ? "'sorare'" : "'apifootball'"}`;
+  }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
@@ -65,6 +74,21 @@ export class IngestionStore {
     if (!Number.isFinite(now.getTime())) throw new Error("Invalid request time");
     await this.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended('lsp:provider-budget', 0))");
+      if (this.profile.provider === "sorare") {
+        if (!resourceKey.startsWith("sorare:")) throw new Error("Missing source request namespace");
+        const budget = await client.query<{ count: string; oldest: Date | null; latest: Date | null }>(
+          `SELECT count(*)::text AS count,min(attempted_at) AS oldest,max(attempted_at) AS latest
+           FROM sports.provider_requests WHERE resource_key LIKE 'sorare:%'
+             AND attempted_at > $1::timestamptz - interval '1 minute'`, [now],
+        );
+        const row = budget.rows[0];
+        if (Number(row.count) >= 60) throw new RateLimitError(new Date(row.oldest!.getTime() + 60_000));
+        if (row.latest && now.getTime() - row.latest.getTime() < 1000) {
+          throw new RateLimitError(new Date(row.latest.getTime() + 1000));
+        }
+        await client.query("INSERT INTO sports.provider_requests(action,resource_key,attempted_at) VALUES ($1,$2,$3)", [action, resourceKey, now]);
+        return;
+      }
       const budget = await client.query<{ count: string; oldest: Date | null }>(
         `SELECT count(*)::text AS count, min(attempted_at) AS oldest FROM sports.provider_requests
          WHERE attempted_at > $1::timestamptz - interval '1 hour'`, [now],
@@ -125,9 +149,9 @@ export class IngestionStore {
   }
 
   private async player(client: PoolClient, source: string, player: Player): Promise<string> {
-    const existing = await client.query<{ position: Player["position"] }>("SELECT position FROM sports.players WHERE provider='apifootball' AND provider_id=$1", [player.id]);
+    const existing = await client.query<{ position: Player["position"] }>(`SELECT position FROM sports.players WHERE ${this.providerSql()} AND provider_id=$1`, [player.id]);
     const position = player.position === "UNKNOWN" ? existing.rows[0]?.position ?? "UNKNOWN" : player.position;
-    const canonical = await this.upsert(client, source, "players", { provider: "apifootball", provider_id: player.id }, { name: player.name, position }, "player", player.id);
+    const canonical = await this.upsert(client, source, "players", { provider: this.profile.provider, provider_id: player.id }, { name: player.name, position, ...(this.profile.provider === "sorare" ? { provider_slug: player.slug ?? null } : {}) }, "player", this.key("player", player.id));
     if (canonical.revision.changed) {
       await this.outbox(client, "canonical.changed", "player", canonical.id, `player:${canonical.revision.id}`, {
         playerId: player.id, revisionId: canonical.revision.id,
@@ -158,7 +182,7 @@ export class IngestionStore {
   private async outbox(client: PoolClient, event: string, aggregateType: string, aggregateId: string, dedupe: string, payload: Data): Promise<void> {
     await client.query(
       `INSERT INTO sports.outbox(event_type,aggregate_type,aggregate_id,deduplication_key,payload)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (deduplication_key) DO NOTHING`, [event, aggregateType, aggregateId, dedupe, JSON.stringify(payload)],
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (deduplication_key) DO NOTHING`, [event, aggregateType, aggregateId, dedupe, JSON.stringify(this.profile.provider === "sorare" ? { ...payload, provider: "sorare" } : payload)],
     );
   }
 
@@ -171,7 +195,7 @@ export class IngestionStore {
     );
     // An older replay may add historical evidence, but cannot revise the latest
     // effective roster or enqueue a regression to that older observation.
-    const revision = newer.rows.length ? null : await this.revision(client, source, "roster", `${batch.coverage.id}:${batch.coverage.season}`, {
+    const revision = newer.rows.length ? null : await this.revision(client, source, "roster", this.key("roster", batch.coverage.id, batch.coverage.season), {
       complete: batch.roster.complete, entries,
     });
     const snapshot = await client.query<{ id: string }>(
@@ -193,16 +217,17 @@ export class IngestionStore {
 
   /** Backfill a roster projection only from an already committed real archive. */
   async replayRoster(archive: ArchivedResponse, batch: Batch): Promise<void> {
-    assertCoverage(batch.coverage);
+    assertCoverage(batch.coverage, this.profile);
     validateArchive(archive);
     if (archive.id !== archiveId(archive)) throw new Error("Archive identity mismatch");
+    if ((archive.params.provider ?? "apifootball") !== this.profile.provider) throw new Error("Archive source mismatch");
     if (archive.action !== "get_teams" || archive.params.league_id !== batch.coverage.id || !batch.roster || !batch.clubs.length) return;
     await this.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [IMPORT_LOCK]);
       const committed = await client.query<{ id: string }>(
         `SELECT s.id FROM sports.source_revisions s JOIN sports.ingestion_batches b ON b.source_revision_id=s.id
          WHERE b.archive_id=$1 AND s.archive_ref=$1 AND s.action='get_teams' AND s.resource_key=$2
-           AND s.content_sha256=$3 AND s.retrieved_at=$4::timestamptz`,
+           AND s.content_sha256=$3 AND s.retrieved_at=$4::timestamptz AND ${this.providerSql("s")}`,
         [archive.id, archive.resourceKey, archive.contentSha256, archive.retrievedAt],
       );
       if (!committed.rows[0]) return;
@@ -210,16 +235,16 @@ export class IngestionStore {
       if ((await client.query("SELECT id FROM sports.roster_snapshots WHERE source_revision_id=$1", [source])).rows.length) return;
       const season = await client.query<{ id: string }>(
         `SELECT s.id FROM sports.competition_seasons s JOIN sports.competitions c ON c.id=s.competition_id
-         WHERE c.provider='apifootball' AND c.provider_id=$1 AND s.label=$2`, [batch.coverage.id, batch.coverage.season],
+         WHERE ${this.providerSql("c")} AND c.provider_id=$1 AND s.label=$2`, [batch.coverage.id, batch.coverage.season],
       );
       if (!season.rows[0]) return;
       const clubRows = await client.query<{ id: string; provider_id: string }>(
         `SELECT c.id,c.provider_id FROM sports.season_clubs sc JOIN sports.clubs c ON c.id=sc.club_id
-         WHERE sc.season_id=$1 AND c.provider='apifootball'`, [season.rows[0].id],
+         WHERE sc.season_id=$1 AND ${this.providerSql("c")}`, [season.rows[0].id],
       );
       const clubs = new Map(clubRows.rows.map((club) => [club.provider_id, club.id]));
       const playerRows = await client.query<{ id: string; provider_id: string }>(
-        "SELECT id,provider_id FROM sports.players WHERE provider='apifootball' AND provider_id=ANY($1::text[])", [batch.players.map((player) => player.id)],
+        `SELECT id,provider_id FROM sports.players WHERE ${this.providerSql()} AND provider_id=ANY($1::text[])`, [batch.players.map((player) => player.id)],
       );
       const players = new Map(playerRows.rows.map((player) => [player.provider_id, player.id]));
       // Preserve current names/positions. Only players previously omitted by an
@@ -232,9 +257,10 @@ export class IngestionStore {
   }
 
   async import(archive: ArchivedResponse, batch: Batch): Promise<ImportResult> {
-    assertCoverage(batch.coverage);
+    assertCoverage(batch.coverage, this.profile);
     validateArchive(archive);
     if (archive.id !== archiveId(archive)) throw new Error("Archive identity mismatch");
+    if ((archive.params.provider ?? "apifootball") !== this.profile.provider) throw new Error("Archive source mismatch");
     return this.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [IMPORT_LOCK]);
       const committed = await client.query<{ fixture_count: number; appearance_count: number; issues_json: Issue[] }>(
@@ -245,15 +271,15 @@ export class IngestionStore {
         appearances: committed.rows[0].appearance_count, issues: committed.rows[0].issues_json.length,
       };
       const sourceResult = await client.query<{ id: string }>(
-        `INSERT INTO sports.source_revisions(action,resource_key,archive_ref,content_sha256,retrieved_at)
-         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (archive_ref) DO NOTHING RETURNING id`,
-        [archive.action, archive.resourceKey, archive.id, archive.contentSha256, archive.retrievedAt],
+        `INSERT INTO sports.source_revisions(provider,action,resource_key,archive_ref,content_sha256,retrieved_at)
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (archive_ref) DO NOTHING RETURNING id`,
+        [this.profile.provider, archive.action, archive.resourceKey, archive.id, archive.contentSha256, archive.retrievedAt],
       );
       const source = sourceResult.rows[0]?.id ?? (await client.query<{ id: string }>("SELECT id FROM sports.source_revisions WHERE archive_ref=$1", [archive.id])).rows[0].id;
       const newer = await client.query<{ exists: boolean }>(
         `SELECT EXISTS(SELECT 1 FROM sports.source_revisions s
          JOIN sports.ingestion_batches b ON b.source_revision_id=s.id
-         WHERE s.provider='apifootball' AND s.action=$1 AND s.resource_key=$2 AND s.retrieved_at > $3::timestamptz) AS exists`,
+         WHERE ${this.providerSql("s")} AND s.action=$1 AND s.resource_key=$2 AND s.retrieved_at > $3::timestamptz) AS exists`,
         [archive.action, archive.resourceKey, archive.retrievedAt],
       );
       if (newer.rows[0].exists) {
@@ -266,22 +292,36 @@ export class IngestionStore {
       }
       // Historical corrections protect the whole fixture from older observations,
       // including cross-endpoint replays after a newer provider revision is current.
-      const corrected = await client.query<{ fixture_id: string }>(
+      const corrected = this.profile.provider === "apifootball" ? await client.query<{ fixture_id: string }>(
         `SELECT DISTINCT split_part(n.entity_key,':',1) AS fixture_id
          FROM sports.normalized_revisions n JOIN sports.source_revisions s ON s.id=n.source_revision_id
          WHERE n.entity_type='appearance' AND s.provider='manual' AND s.retrieved_at >= $1::timestamptz
            AND n.entity_key ~ '^[1-9][0-9]{0,17}:[1-9][0-9]{0,17}$'
            AND split_part(n.entity_key,':',1)=ANY($2::text[])`,
         [archive.retrievedAt, batch.fixtures.map((fixture) => fixture.id)],
-      );
-      const protectedFixtures = new Set(corrected.rows.map((row) => row.fixture_id));
+      ) : null;
+      const protectedFixtures = new Set(corrected?.rows.map((row) => row.fixture_id) ?? []);
+      if (this.profile.provider === "sorare" && batch.fixtures.length) {
+        const existing = await client.query<{ fixture_id: string; player_id: string }>(
+          `SELECT f.provider_id AS fixture_id,p.provider_id AS player_id FROM sports.appearances a
+           JOIN sports.fixtures f ON f.id=a.fixture_id JOIN sports.players p ON p.id=a.player_id
+           WHERE ${this.providerSql("f")} AND f.provider_id=ANY($1::text[])`, [batch.fixtures.map((fixture) => fixture.id)],
+        );
+        const identities = new Map(existing.rows.map((row) => [this.key("appearance", row.fixture_id, row.player_id), row.fixture_id]));
+        const corrections = await client.query<{ entity_key: string }>(
+          `SELECT n.entity_key FROM sports.normalized_revisions n JOIN sports.source_revisions s ON s.id=n.source_revision_id
+           WHERE n.entity_type='appearance' AND s.provider='manual' AND s.retrieved_at >= $1::timestamptz
+             AND n.entity_key=ANY($2::text[])`, [archive.retrievedAt, [...identities.keys()]],
+        );
+        for (const row of corrections.rows) protectedFixtures.add(identities.get(row.entity_key)!);
+      }
       const coverage = batch.coverage;
-      const competition = await this.upsert(client, source, "competitions", { provider: "apifootball", provider_id: coverage.id }, {
-        name: coverage.name, country_name: coverage.country, timezone: coverage.timezone, coefficient: 1.5, enabled: true,
-      }, "competition", coverage.id);
+      const competition = await this.upsert(client, source, "competitions", { provider: this.profile.provider, provider_id: coverage.id }, {
+        name: coverage.name, country_name: coverage.country, timezone: coverage.timezone, coefficient: this.profile.coefficient, enabled: true,
+      }, "competition", this.key("competition", coverage.id));
       const season = await this.upsert(client, source, "competition_seasons", { competition_id: competition.id, label: coverage.season }, {
         starts_on: coverage.startsOn, ends_on: coverage.endsOn, expected_clubs: coverage.expectedClubs, enabled: true,
-      }, "season", `${coverage.id}:${coverage.season}`);
+      }, "season", this.key("season", coverage.id, coverage.season));
       const clubs = new Map<string, string>();
       let standingsChanged = false;
       const allClubs = new Map(batch.clubs.map((club) => [club.id, club]));
@@ -290,9 +330,9 @@ export class IngestionStore {
         allClubs.set(fixture.away.id, fixture.away);
       }
       for (const club of [...allClubs.values()].sort((a, b) => a.id.localeCompare(b.id))) {
-        const canonical = await this.upsert(client, source, "clubs", { provider: "apifootball", provider_id: club.id }, { name: club.name }, "club", club.id);
+        const canonical = await this.upsert(client, source, "clubs", { provider: this.profile.provider, provider_id: club.id }, { name: club.name, ...(this.profile.provider === "sorare" ? { provider_slug: club.slug ?? null } : {}) }, "club", this.key("club", club.id));
         clubs.set(club.id, canonical.id);
-        standingsChanged = (await this.seasonClub(client, source, season.id, canonical.id, `${coverage.id}:${coverage.season}:${club.id}`)) || standingsChanged;
+        standingsChanged = (await this.seasonClub(client, source, season.id, canonical.id, this.key("season_club", coverage.id, coverage.season, club.id))) || standingsChanged;
       }
       const allPlayers = new Map(batch.players.map((player) => [player.id, player]));
       for (const fixture of batch.fixtures) {
@@ -325,7 +365,7 @@ export class IngestionStore {
           `SELECT a.id,p.provider_id,a.player_id,c.provider_id AS club_provider_id FROM sports.appearances a
            JOIN sports.players p ON p.id=a.player_id JOIN sports.fixtures f ON f.id=a.fixture_id
            LEFT JOIN sports.clubs c ON c.id=a.club_id
-           WHERE f.provider='apifootball' AND f.provider_id=$1`, [fixture.id],
+           WHERE ${this.providerSql("f")} AND f.provider_id=$1`, [fixture.id],
         );
         const existingPlayers = new Set(old.rows.map((appearance) => appearance.provider_id));
         const existingClubs = new Map(old.rows.map((appearance) => [appearance.provider_id, appearance.club_provider_id]));
@@ -339,11 +379,11 @@ export class IngestionStore {
         if (!fixture.detailed && previous?.statisticsStatus === "complete"
           && fixture.appearances.some((appearance) => !existingPlayers.has(appearance.player.id))) statisticsStatus = "partial";
         if (fixture.appearances.some(changedSummaryMembership)) statisticsStatus = "partial";
-        const canonical = await this.upsert(client, source, "fixtures", { provider: "apifootball", provider_id: fixture.id }, {
+        const canonical = await this.upsert(client, source, "fixtures", { provider: this.profile.provider, provider_id: fixture.id }, {
           season_id: season.id, home_club_id: clubs.get(fixture.home.id)!, away_club_id: clubs.get(fixture.away.id)!,
           kickoff_at: fixture.kickoffAt, status: fixture.status, statistics_status: statisticsStatus,
           home_score: fixture.homeScore, away_score: fixture.awayScore,
-        }, "fixture", fixture.id);
+        }, "fixture", this.key("fixture", fixture.id));
         if (canonical.revision.changed) {
           fixtures++;
           lastRevision = canonical.revision.id;
@@ -369,7 +409,7 @@ export class IngestionStore {
         if (fixture.detailed || changedHeader) {
           for (const removed of old.rows) {
             if (activePlayers.has(removed.provider_id)) continue;
-            const revision = await this.revision(client, source, "appearance", `${fixture.id}:${removed.provider_id}`, {
+            const revision = await this.revision(client, source, "appearance", this.key("appearance", fixture.id, removed.provider_id), {
               fixture_id: canonical.id, player_id: removed.player_id, season_id: season.id,
               ...this.appearanceFields(null, null, null, "unknown"),
             });
@@ -386,9 +426,12 @@ export class IngestionStore {
             appearances++;
           }
         }
+        const currentIncomplete = this.profile.provider === "sorare" && statisticsStatus !== "complete";
         if (archive.action === "get_events" && fixture.status === "final"
-          && ((canonical.revision.changed && (statisticsStatus !== "complete" || changedHeader)) || summaryMembershipRevisions.length > 0)) {
-          const enrichmentRevision = summaryMembershipRevisions.at(-1) ?? canonical.revision.id;
+          && (currentIncomplete || (canonical.revision.changed && (statisticsStatus !== "complete" || changedHeader)) || summaryMembershipRevisions.length > 0)) {
+          // A fresh current-source observation can carry review corrections even
+          // when its schedule header is unchanged. Archived legacy keys stay exact.
+          const enrichmentRevision = currentIncomplete ? archive.id : summaryMembershipRevisions.at(-1) ?? canonical.revision.id;
           await this.outbox(client, "fixture.statistics", "fixture", canonical.id,
             `fixture.statistics:${fixture.id}:${enrichmentRevision}`, { fixtureId: fixture.id, leagueId: coverage.id });
         }
@@ -444,12 +487,12 @@ export class IngestionStore {
       reference: [...batch.standings].sort((a, b) => a.clubId.localeCompare(b.clubId)),
       computed: reconstructed.rows, complete: reconstructed.complete, mismatches,
     };
-    const revision = await this.revision(client, source, "standings_reference", `${batch.coverage.id}:${batch.coverage.season}`, content);
+    const revision = await this.revision(client, source, "standings_reference", this.key("standings_reference", batch.coverage.id, batch.coverage.season), content);
     if (revision.changed) {
       await client.query(
         `INSERT INTO sports.audit_log(normalized_revision_id,actor_type,action,entity_type,entity_key,detail)
          VALUES ($1,'worker','reconcile','standings_reference',$2,$3)`,
-        [revision.id, `${batch.coverage.id}:${batch.coverage.season}`, JSON.stringify({ ...content, reconstructionIssues: reconstructed.issues })],
+        [revision.id, this.key("standings_reference", batch.coverage.id, batch.coverage.season), JSON.stringify({ ...content, reconstructionIssues: reconstructed.issues })],
       );
     }
     return revision.id;
@@ -474,14 +517,14 @@ export class IngestionStore {
     let participation = appearance.participation;
     if (clubId && fixture.kickoffAt) {
       membershipId = await this.membership(client, source, playerId, clubId, seasonId, fixture.kickoffAt,
-        `${appearance.player.id}:${appearance.clubId}:${fixture.leagueId}:${fixture.season}:${fixture.kickoffAt}`);
+        this.key("membership", appearance.player.id, appearance.clubId, fixture.leagueId, fixture.season, fixture.kickoffAt));
     } else {
       participation = "unknown";
       issues.push({ code: "appearance_context_unknown", resource: `${fixture.id}:${appearance.player.id}` });
     }
     const canonical = await this.upsert(client, source, "appearances", { fixture_id: fixtureId, player_id: playerId }, {
       season_id: seasonId, ...this.appearanceFields(appearance, clubId, membershipId, participation),
-    }, "appearance", `${fixture.id}:${appearance.player.id}`);
+    }, "appearance", this.key("appearance", fixture.id, appearance.player.id));
     if (canonical.revision.changed) {
       await this.outbox(client, "canonical.changed", "appearance", canonical.id, `appearance:${canonical.revision.id}`, { fixtureId: fixture.id, playerId: appearance.player.id, revisionId: canonical.revision.id });
     }
@@ -495,13 +538,14 @@ export class IngestionStore {
       if (!fixture) return null;
       const result = await client.query(
         `SELECT a.*,p.provider_id AS player_provider_id,p.name AS player_name,p.position,
+         ${this.profile.provider === "sorare" ? "p.provider_slug AS player_slug," : ""}
          c.provider_id AS club_provider_id FROM sports.appearances a
          JOIN sports.fixtures f ON f.id=a.fixture_id JOIN sports.players p ON p.id=a.player_id
-         LEFT JOIN sports.clubs c ON c.id=a.club_id WHERE f.provider='apifootball' AND f.provider_id=$1
+         LEFT JOIN sports.clubs c ON c.id=a.club_id WHERE ${this.providerSql("f")} AND f.provider_id=$1
          ORDER BY p.provider_id`, [providerId],
       );
       fixture.appearances = result.rows.map((row) => ({
-        player: { id: row.player_provider_id, name: row.player_name, position: row.position },
+        player: { id: row.player_provider_id, name: row.player_name, position: row.position, ...(typeof row.player_slug === "string" ? { slug: row.player_slug } : {}) },
         clubId: row.club_provider_id ?? "", participation: row.participation,
         minutes: row.minutes, rating: row.rating === null ? null : Number(row.rating),
         goals: row.goals, assists: row.assists, shotsOnTarget: row.shots_on_target,
@@ -515,7 +559,8 @@ export class IngestionStore {
   private fixtureRow(row: QueryResultRow): Fixture {
     return {
       id: row.provider_id, leagueId: row.league_id, season: row.season,
-      home: { id: row.home_provider_id, name: row.home_name }, away: { id: row.away_provider_id, name: row.away_name },
+      home: { id: row.home_provider_id, name: row.home_name, ...(typeof row.home_slug === "string" ? { slug: row.home_slug } : {}) },
+      away: { id: row.away_provider_id, name: row.away_name, ...(typeof row.away_slug === "string" ? { slug: row.away_slug } : {}) },
       kickoffAt: iso(row.kickoff_at), status: row.status, statisticsStatus: row.statistics_status,
       homeScore: row.home_score, awayScore: row.away_score,
       detailed: row.statistics_status === "partial" || row.statistics_status === "complete", appearances: [],
@@ -525,23 +570,24 @@ export class IngestionStore {
   private fixtureSelect(): string {
     return `SELECT f.*,c.provider_id AS league_id,cs.label AS season,
       h.provider_id AS home_provider_id,h.name AS home_name,a.provider_id AS away_provider_id,a.name AS away_name
+      ${this.profile.provider === "sorare" ? ",h.provider_slug AS home_slug,a.provider_slug AS away_slug" : ""}
       FROM sports.fixtures f JOIN sports.competition_seasons cs ON cs.id=f.season_id
       JOIN sports.competitions c ON c.id=cs.competition_id
       JOIN sports.clubs h ON h.id=f.home_club_id JOIN sports.clubs a ON a.id=f.away_club_id`;
   }
 
   private async readFixture(client: PoolClient, providerId: string): Promise<Fixture | null> {
-    const result = await client.query(`${this.fixtureSelect()} WHERE f.provider='apifootball' AND f.provider_id=$1`, [providerId]);
+    const result = await client.query(`${this.fixtureSelect()} WHERE ${this.providerSql("f")} AND f.provider_id=$1`, [providerId]);
     return result.rows[0] ? this.fixtureRow(result.rows[0]) : null;
   }
 
   async rebuild(coverage: Coverage, cutoffDate?: string): Promise<{ snapshots: number; complete: boolean; issues: number }> {
-    assertCoverage(coverage);
+    assertCoverage(coverage, this.profile);
     return this.transaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [IMPORT_LOCK]);
       const seasonResult = await client.query<{ id: string }>(
         `SELECT cs.id FROM sports.competition_seasons cs JOIN sports.competitions c ON c.id=cs.competition_id
-         WHERE c.provider='apifootball' AND c.provider_id=$1 AND cs.label=$2 AND c.enabled AND cs.enabled`, [coverage.id, coverage.season],
+         WHERE ${this.providerSql("c")} AND c.provider_id=$1 AND cs.label=$2 AND c.enabled AND cs.enabled`, [coverage.id, coverage.season],
       );
       if (!seasonResult.rows[0]) return { snapshots: 0, complete: false, issues: 1 };
       const seasonId = seasonResult.rows[0].id;
@@ -565,7 +611,7 @@ export class IngestionStore {
         if (adjustment.leagueId !== coverage.id || coverage.season !== "2026/27") continue;
         const clubId = clubIds.get(adjustment.clubId);
         if (!clubId) continue;
-        const revision = await this.revision(client, source, "points_adjustment", `${coverage.id}:${coverage.season}:${adjustment.clubId}:${adjustment.effectiveAt}`, adjustment);
+        const revision = await this.revision(client, source, "points_adjustment", this.key("points_adjustment", coverage.id, coverage.season, adjustment.clubId, adjustment.effectiveAt), adjustment);
         await client.query(
           `INSERT INTO sports.points_adjustments(season_id,club_id,points,reason,effective_at,provenance_url,normalized_revision_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (season_id,club_id,effective_at,provenance_url) DO NOTHING`,
@@ -598,7 +644,7 @@ export class IngestionStore {
           return fixture.kickoffAt === null || localDate(fixture.kickoffAt, coverage.timezone) < date;
         }).map((row) => ({ fixtureId: row.provider_id, revisionId: row.id, contentSha256: row.content_sha256, sourceRevisionId: row.source_revision_id }))
           .sort((a, b) => a.fixtureId.localeCompare(b.fixtureId));
-        const revision = await this.revision(client, source, "standings", `${coverage.id}:${coverage.season}:${date}`, {
+        const revision = await this.revision(client, source, "standings", this.key("standings", coverage.id, coverage.season, date), {
           date, rows: reconstructed.rows, complete: reconstructed.complete, issues: reconstructed.issues,
           fixtureInputs: fixtures.filter((fixture) => fixture.kickoffAt === null || localDate(fixture.kickoffAt, coverage.timezone) < date)
             .map((fixture) => ({ id: fixture.id, ...header(fixture) })),
@@ -620,7 +666,7 @@ export class IngestionStore {
         await client.query(
           `INSERT INTO sports.audit_log(normalized_revision_id,actor_type,action,entity_type,entity_key,detail)
            VALUES ($1,'worker','reconstruct','standings',$2,$3)`,
-          [revision.id, `${coverage.id}:${coverage.season}:${date}`, JSON.stringify({ fixtureRevisions, issues: reconstructed.issues })],
+          [revision.id, this.key("standings", coverage.id, coverage.season, date), JSON.stringify({ fixtureRevisions, issues: reconstructed.issues })],
         );
         await this.outbox(client, "standings.changed", "standings", snapshot.rows[0].id, `standings:${revision.id}`, { leagueId: coverage.id, season: coverage.season, cutoffDate: date, revisionId: revision.id });
         snapshots++;

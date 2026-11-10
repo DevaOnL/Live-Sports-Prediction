@@ -7,7 +7,7 @@ player discovery and comparison, with a compact method summary. API results pres
 
 ## Configure local access
 
-Apply pending migrations explicitly, including `009_auth_rate_limit.sql`. Keep
+Apply pending migrations explicitly, through `010_current_coverage.sql`. Keep
 existing volumes. Set these ignored `.env` variables before recreating the app:
 
 ```dotenv
@@ -95,20 +95,26 @@ failures return 503. Administrator routes with unsupported methods return 404.
 | `GET /api/me` | Current identity, authoritative role and session expiry |
 | `GET /api/overview` | Covered competition/club/player and stored forecast counts, source watermark |
 | `GET /api/competitions` | Enabled approved competitions/seasons |
-| `GET /api/clubs?leagueId=153` | Covered registered clubs; optional league filter |
+| `GET /api/clubs?leagueId=premier-league-gb-eng` | Covered registered clubs; optional league filter |
 | `GET /api/players` | Player summaries with `bestStatistic`; `q`, `leagueId`, `clubId`, `position`, `availability`, `page`, `pageSize` |
 | `GET /api/players/PLAYER_ID` | Identity and `bestStatistic`, up to 50 recent observed appearances, saved forecast and provenance |
 | `GET /api/players/PLAYER_ID/forecast` | Saved immutable revision and latest evaluation envelope |
 | `GET /api/compare?playerId=ID&playerId=ID` | Current canonical comparison at one cutoff/source snapshot |
 
-Football IDs are positive provider identifiers represented as strings, including
-in JSON bodies. SQL revision/job identifiers and command request identifiers are
-UUIDs. Catalogue pages default to page 1 with 20 items, with a maximum page size
-of 50; search text is at most 80 characters. Positions are
+Current football identities are Sorare native node identifiers represented as
+strings: `Player:UUID`, `Club:UUID` and `Game:UUID`. Keep the prefix, including in
+JSON bodies, and URL-encode identifiers used in paths or query parameters.
+League IDs are `premier-league-gb-eng` and `laliga-es`. Player summaries can
+include `sourceUrl`, built only from the stored genuine Sorare player slug; a
+slug is separate from the player's identifier. SQL revision/job identifiers and
+command request identifiers are bare UUIDs. Catalogue pages default to page 1
+with 20 items, with a maximum page size of 50; search text is at most 80 characters. Positions are
 `GK`, `DEF`, `MID`, `FWD`, `UNKNOWN`; availability is `available`, `partial`,
 `unavailable` or `uncomputed`. Search is literal parameterized text. Coverage stays
-restricted to enabled regular-season Championship/Ligue 2, 2026/27. Current club
-requires complete, unambiguous latest roster evidence; old appearances do not
+restricted to enabled regular-season Premier League/La Liga, 2026/27. Former
+APIFootball records remain stored for archival provenance and do not appear in
+current product reads. Current club requires complete, unambiguous latest roster
+evidence; old appearances do not
 establish current membership.
 Missing/incomplete roster blockers apply only to seasons with this player's
 pre-cutoff appearance or roster-inclusion evidence. An unrelated league's missing
@@ -202,15 +208,16 @@ by another administrator or with a different command is
 a 409 conflict. Actor audit and command effects commit together. Queue submissions
 return 202 and mean accepted, not completed. Inspect jobs for completion/retry.
 The worker executes source synchronization and statistics fetches using its own
-existing provider credentials and shared rolling-hour budget. The web process
-never fetches provider data or bypasses that budget. Forecast refresh is local.
+Sorare credential and the shared 60-attempt rolling-minute application budget,
+with one-second request spacing. Every HTTP page consumes an attempt. The web
+process never fetches provider data or bypasses that budget. Forecast refresh is local.
 
 Job summaries expose `outboxId` to correlate source commands. Forecast refresh
 commands can coalesce into shared work, so a command does not guarantee a distinct
 completed job. Committed import pages expose counts, dates, safe resource
 identifiers and up to 50 allowlisted issue previews per batch, with `issueTotal`
 and an explicit truncation flag. They expose no raw provider payloads or keys.
-The application rolling-hour request budget is separate from provider-side limits.
+The application request budget is separate from provider-side limits.
 Administrator list endpoints default to page 1 with 25 items. They accept at most
 100 items per page and page numbers through 10,000. Job statuses are `ready`,
 `running`, `succeeded`, `failed`; kinds are `source.sync`, `fixture.statistics`,
@@ -249,3 +256,8 @@ identities documented in [database.md](database.md#isolated-integration-tests)
 and [ingestion.md](ingestion.md#isolated-integration-tests). HTTP tests also need
 the isolated MongoDB marker because they seed synthetic archives. They never run
 against a demo/shared database and never make provider requests. CI runs all suites.
+`npm run test:source` additionally verifies current Sorare native identifiers,
+scope isolation, missing fields, observed scouting reads and migration/reporting
+overloads in that guarded PostgreSQL/MongoDB environment. Archived synthetic
+HTTP/browser fixtures use `LSP_TEST_SOURCE=legacy` only in a valid `_test`
+database; that selector does not re-enable archived leagues in production.

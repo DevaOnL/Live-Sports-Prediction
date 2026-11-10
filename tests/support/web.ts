@@ -108,12 +108,13 @@ export function createWebHarness() {
     const environment: NodeJS.ProcessEnv = {
       PATH: process.env.PATH, NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", HOSTNAME: "127.0.0.1", PORT: String(port),
       AUTH_BASE_URL: origin, BETTER_AUTH_SECRET: authSecret,
+      LSP_TEST_SOURCE: "legacy",
       POSTGRES_HOST: connection.host, POSTGRES_PORT: String(connection.port), POSTGRES_DB: database,
       POSTGRES_READER_PASSWORD: process.env.POSTGRES_READER_PASSWORD,
       POSTGRES_WRITER_PASSWORD: process.env.POSTGRES_WRITER_PASSWORD,
       POSTGRES_AUTH_PASSWORD: process.env.POSTGRES_AUTH_PASSWORD,
     };
-    assert(Object.keys(environment).every((key) => !/MIGRATOR|BOOTSTRAP|MONGO|APIFOOTBALL/.test(key)));
+    assert(Object.keys(environment).every((key) => !/MIGRATOR|BOOTSTRAP|MONGO|APIFOOTBALL|SORARE/.test(key)));
     server = spawn(process.execPath, [join(root, ".next/standalone/server.js")], { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
     server.stdout?.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
     server.stderr?.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });

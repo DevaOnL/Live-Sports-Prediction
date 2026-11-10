@@ -4,6 +4,7 @@ import { createAuthentication } from "../auth/config";
 import { ReadService } from "../api/read";
 import { AdminService } from "../api/admin";
 import { port, required } from "../ingestion/connections";
+import { runtimeSource } from "../ingestion/sources";
 
 function settings() {
   const baseURL = new URL(required("AUTH_BASE_URL"));
@@ -47,7 +48,7 @@ function createRuntime() {
   return {
     origin: config.baseURL, authPool, reader, writer,
     auth: createAuthentication(authPool, { baseURL: config.baseURL, secret: config.secret }),
-    read: new ReadService(reader), admin: new AdminService(writer),
+    read: new ReadService(reader, runtimeSource()), admin: new AdminService(writer, runtimeSource()),
   };
 }
 

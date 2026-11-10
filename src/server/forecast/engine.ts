@@ -59,6 +59,12 @@ function eligibility(input: ForecastInput) {
       gap("unknown_membership", "clubId"); continue;
     }
     if (appearance.participation === "unknown") { gap("unknown_participation", "participation"); continue; }
+    // A current-source DNP is explicit participation evidence even when the
+    // provider omits minutes. Preserve the null observation and legacy rules.
+    if (appearance.sourceProvider === "sorare" && appearance.participation === "dnp" && appearance.minutes === null) {
+      if (Object.values(appearance.metrics).some((value) => value !== null && value > 0)) gap("conflicting_participation", "participation");
+      continue;
+    }
     if (!validCount(appearance.minutes)) { gap(appearance.minutes === null ? "unknown_minutes" : "invalid_minutes", "minutes"); continue; }
     if (appearance.participation === "dnp") {
       if (appearance.minutes !== 0) gap("conflicting_participation", "minutes");

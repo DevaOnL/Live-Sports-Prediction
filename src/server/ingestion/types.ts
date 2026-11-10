@@ -4,8 +4,8 @@ export type Coverage = {
   startsOn: string; endsOn: string; expectedClubs: number;
 };
 export type Issue = { code: string; resource: string; field?: string };
-export type Club = { id: string; name: string };
-export type Player = { id: string; name: string; position: "GK" | "DEF" | "MID" | "FWD" | "UNKNOWN"; clubId?: string };
+export type Club = { id: string; name: string; slug?: string };
+export type Player = { id: string; name: string; slug?: string; position: "GK" | "DEF" | "MID" | "FWD" | "UNKNOWN"; clubId?: string };
 export type Appearance = {
   player: Player; clubId: string; participation: "unknown" | "played" | "dnp";
   minutes: number | null; rating: number | null; goals: number | null;

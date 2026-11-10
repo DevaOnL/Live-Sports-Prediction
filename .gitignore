@@ -29,6 +29,11 @@
 !/tests/standings.test.ts
 !/tests/forecast.test.ts
 !/tests/scouting.test.ts
+!/tests/source-profiles.test.ts
+!/tests/sorare.test.ts
+!/tests/sorare.database.test.ts
+!/tests/sorare-read.database.test.ts
+!/tests/source-reporting.database.test.ts
 !/tests/forecast.database.test.ts
 !/tests/forecast-jobs.database.test.ts
 !/tests/jobs.test.ts

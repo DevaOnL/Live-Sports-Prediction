@@ -10,8 +10,14 @@ metadata. The executable definitions are
 [`005_rosters.sql`](../db/migrations/005_rosters.sql),
 [`006_forecasts.sql`](../db/migrations/006_forecasts.sql),
 [`007_forecast_freshness.sql`](../db/migrations/007_forecast_freshness.sql),
-[`008_reporting.sql`](../db/migrations/008_reporting.sql), and
-[`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql).
+[`008_reporting.sql`](../db/migrations/008_reporting.sql),
+[`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql), and
+[`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql).
+
+Current product coverage is Sorare Premier League/La Liga, 2026/27. Migration
+010 disables the former APIFootball competitions/seasons while preserving their
+canonical rows and immutable provenance. It adds nullable player/club lookup
+slugs and provider-aware reporting overloads without altering migrations 001–009.
 
 The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
 football reads and administrator operations. The interface includes login, a player
@@ -71,16 +77,19 @@ independent tables.
 Football and processing tables live in `sports`, authentication tables in `auth`,
 and the migration ledger in `infra`. Most `sports` tables have a generated UUID
 primary key named `id`; `season_clubs` and `standings_rows` use composite keys,
-and `ingestion_batches` uses its archive identifier. External identifiers remain text; `provider` defaults to
-`apifootball`. Authentication primary keys are nonempty text.
+and `ingestion_batches` uses its archive identifier. External identifiers remain
+text. The original schema's `provider` default is `apifootball`; current ingestion
+explicitly supplies `sorare`. Native `Player:UUID`, `Club:UUID` and `Game:UUID`
+identifiers retain their prefixes. Competition business IDs are
+`premier-league-gb-eng` and `laliga-es`. Authentication primary keys are nonempty text.
 
 | Table | Keys, relationships, and stored data |
 | --- | --- |
 | `sports.competitions` | Unique `(provider, provider_id)`; name, country, validated timezone, coefficient restricted to 1.5 or 2, explicit enabled flag |
 | `sports.competition_seasons` | Competition FK; unique `(competition_id, label)`; ordered start/end dates, expected club count of at least two, explicit enabled flag |
-| `sports.clubs` | Unique `(provider, provider_id)`; club name |
+| `sports.clubs` | Unique `(provider, provider_id)`; club name and nullable `provider_slug` lookup/link metadata |
 | `sports.season_clubs` | PK `(season_id, club_id)`; season and club FKs |
-| `sports.players` | Unique `(provider, provider_id)`; name; position `GK`, `DEF`, `MID`, `FWD`, or `UNKNOWN` |
+| `sports.players` | Unique `(provider, provider_id)`; name; position `GK`, `DEF`, `MID`, `FWD`, or `UNKNOWN`; nullable `provider_slug` separate from identity |
 | `sports.player_memberships` | Player FK and registered season-club FK; half-open interval `[valid_from, valid_until)`, optionally open-ended; unique `(player_id, club_id, season_id, valid_from)` |
 | `sports.fixtures` | Unique `(provider, provider_id)`; season and two registered season-club FKs; nullable kickoff/scores; separate fixture and statistics statuses |
 | `sports.appearances` | Unique `(fixture_id, player_id)`; player FK; composite fixture-season and membership-player-club-season FKs; optional club/membership; participation, minutes, rating, and eight count metrics |
@@ -93,7 +102,7 @@ and `ingestion_batches` uses its archive identifier. External identifiers remain
 | `sports.jobs` | Outbox FK; unique deduplication key; kind, JSON object payload, status, attempts/limit, schedule, lease, error, completion time |
 | `sports.audit_log` | Optional normalized revision FK; actor type/identifier, action, entity type/key, JSON object detail, occurrence time |
 | `sports.ingestion_batches` | PK `archive_id`; source and optional normalized revision FKs; committed fixture/appearance counts and validation issues; durable SQL import marker |
-| `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-hour budget index |
+| `sports.provider_requests` | UUID PK; approved provider action, credential-free resource key, attempted time; rolling-window budget index. Current Sorare reservations enforce 60 attempts per minute and one-second spacing |
 | `sports.roster_snapshots` | UUID PK; season FK, unique source revision FK, original observation time, completeness and normalized revision; append-only |
 | `sports.roster_entries` | PK `(snapshot_id, player_id, club_id)`; snapshot-season, registered season-club and player FKs; preserves conflicting club observations |
 | `sports.forecast_revisions` | UUID PK and increasing ordinal; player FK; same-player earlier parent FK; model version, semantic hash, canonical source ordinal, cutoff, full input/provenance/result JSON objects; append-only |
@@ -248,10 +257,12 @@ For an existing managed database, preserve its data and apply only new migration
 npm run db:migrate
 ```
 
-Apply `009_auth_rate_limit.sql` before starting upgraded web sessions; it adds
-the database-backed authentication limiter and its auth-role grants. The same
-command applies all earlier pending files, including ingestion commit markers,
-forecast freshness and reporting routines. MongoDB
+Apply all pending files through `010_current_coverage.sql` before starting the
+upgraded app/worker. Migration 009 adds the database-backed authentication limiter
+and its auth-role grants; 010 retires prior product coverage and adds
+source-aware reporting overloads and lookup slugs. The same command applies all
+earlier pending files, including ingestion commit markers, forecast freshness
+and reporting routines. MongoDB
 collection validators, indexes, and restricted runtime privileges are provisioned
 separately with `npm run mongo:provision`; that command requires the local MongoDB
 bootstrap credentials. The Compose app receives only the auth secret and the
@@ -299,6 +310,22 @@ a refresh-request procedure and a transactional forecast-head trigger. The
 [demonstration guide](demo.md) describes their signatures, grants and executable
 examples. Runtime roles cannot change these routines.
 
+Migration 010 adds these provider-aware signatures; every argument is required:
+
+| Routine | Behavior and grants |
+| --- | --- |
+| `sports.player_qualifying_history(source_provider text, player_provider_id text, requested_cutoff timestamptz)` | Latest five eligible candidate appearances with native IDs and nullable metrics under the exact source/season guard; reader/writer. Engine gap checks separately establish complete history |
+| `sports.forecast_lineage(source_provider text, player_provider_id text, max_rows integer)` | Current head and recursive same-player ancestry, with a 1–1,000 row bound; reader/writer. Retired-source lineage remains explicitly inspectable |
+| `sports.request_forecast_refresh(source_provider text, request_id uuid)` | Writer-only invoker procedure, transactional outbox/audit, idempotent by provider/request UUID; Sorare work carries `provider:"sorare"` and performs no provider request |
+
+Use `source_provider='sorare'` and the native `Player:UUID` for current history or
+lineage. Unsupported source names are rejected. The original two-argument
+history/lineage functions and one-argument refresh procedure remain byte-for-byte
+unchanged for archived demonstrations. An explicit `apifootball` overload delegates
+to the original routine and retains its enabled-coverage conditions; it does not
+reactivate retired competitions. These are `SECURITY INVOKER` routines, so callers
+retain their own SQL privilege boundaries.
+
 ## Isolated integration tests
 
 [`tests/database.test.ts`](../tests/database.test.ts) verifies fresh migrations,
@@ -321,7 +348,7 @@ Run it after `npm ci`:
 ```bash
 (
   set -eu
-  export NODE_ENV=test POSTGRES_DB=sports_test
+  export NODE_ENV=test POSTGRES_DB=sports_test LSP_TEST_SOURCE=legacy
   export POSTGRES_USER=sports_test_bootstrap POSTGRES_HOST=127.0.0.1
   for db_test_credential in BOOTSTRAP READER WRITER AUTH MIGRATOR; do
     export "POSTGRES_${db_test_credential}_PASSWORD=$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
@@ -368,5 +395,11 @@ login throttling. `npm run test:api` also needs that isolated MongoDB identity a
 a preceding `npm run build`; use the combined ingestion recipe for those tests.
 Historical and forward evaluation database tests need only this guarded PostgreSQL
 cluster; they verify reader-only scoring against synthetic evidence.
+`LSP_TEST_SOURCE=legacy` selects the retained synthetic fixture profile only in a
+valid `_test` database. Production runtime selects Sorare. The combined recipe
+also runs `npm run test:source`, which checks actual 001–009→010 upgrades,
+preserved archived evidence/routine definitions, native IDs, source isolation,
+null metrics, and provider-aware routine grants and atomic idempotence. That
+command requires both guarded PostgreSQL and MongoDB services.
 `npm run demo` manages its own independent containers and requires no environment
 file; it must be run outside any custom shared database workflow.

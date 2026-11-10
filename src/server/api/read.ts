@@ -1,7 +1,8 @@
 import type { Pool, PoolClient } from "pg";
 import { PublicApiError } from "./error";
 import { evaluateForecast, inputHash } from "../forecast/engine";
-import { prepareInputs, prepareObservedInputs } from "../forecast/inputs";
+import { prepareSourceInputs, prepareObservedInputs } from "../forecast/inputs";
+import { LEGACY_SOURCE, sourceCoverage, sourceSeasonGuard, type SourceProfile } from "../ingestion/sources";
 import type { SavedForecast } from "../forecast/store";
 import { METRICS, type ForecastInput, type ForecastResult, type Metric, type Position } from "../forecast/types";
 import { computeBestStatistics, type BestStatistic } from "../scouting/highlights";
@@ -21,6 +22,7 @@ export type PlayerFilters = {
 };
 export type PlayerSummary = {
   id: string; name: string; position: Position;
+  sourceUrl?: string;
   currentClub: { id: string; name: string; leagueId: string; leagueName: string; season: string } | null;
   currentClubReasons: string[];
   bestStatistic: BestStatistic;
@@ -32,25 +34,23 @@ export type PlayerSummary = {
 
 // These guards deliberately match the ingestion/model allowlist. A matching ID
 // alone must not enable a different season, coefficient or competition context.
-const APPROVED = `approved AS (
+function approved(profile: SourceProfile) { return `approved AS (
   SELECT cs.id AS season_id,cs.label,cs.expected_clubs,c.provider_id AS league_id,
     c.name AS league_name,c.country_name,c.timezone,c.coefficient
   FROM sports.competition_seasons cs JOIN sports.competitions c ON c.id=cs.competition_id
-  WHERE c.provider='apifootball' AND c.enabled AND cs.enabled
-    AND c.provider_id IN ('153','164') AND cs.label='2026/27'
-    AND cs.starts_on=DATE '2026-07-01' AND cs.ends_on=DATE '2027-06-30' AND c.coefficient=1.5
-    AND ((c.provider_id='153' AND cs.expected_clubs=24 AND c.timezone='Europe/London')
-      OR (c.provider_id='164' AND cs.expected_clubs=18 AND c.timezone='Europe/Paris'))
-)`;
+  WHERE ${sourceSeasonGuard(profile)}
+)`; }
 
 // Equal-time roster observations are considered together. Incomplete latest
 // evidence, conflicting clubs, and simultaneous inclusion/exclusion cannot be
 // resolved by an arbitrary database UUID or an old appearance. Missing evidence
 // in a league unrelated to the player cannot contradict a confirmed club.
-const CATALOGUE = `${APPROVED}, catalogue AS (
-  SELECT p.* FROM sports.players p WHERE p.provider='apifootball' AND (
+function catalogue(profile: SourceProfile) {
+  const provider = `'${profile.provider.replaceAll("'", "''")}'`;
+  return `${approved(profile)}, catalogue AS (
+  SELECT p.* FROM sports.players p WHERE p.provider=${provider} AND (
     EXISTS (SELECT 1 FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id
-      JOIN approved a ON a.season_id=f.season_id WHERE x.player_id=p.id AND f.provider='apifootball')
+      JOIN approved a ON a.season_id=f.season_id WHERE x.player_id=p.id AND f.provider=${provider})
     OR EXISTS (SELECT 1 FROM sports.roster_entries e JOIN approved a ON a.season_id=e.season_id WHERE e.player_id=p.id)
   )
 ), latest_times AS (
@@ -62,7 +62,7 @@ const CATALOGUE = `${APPROVED}, catalogue AS (
     ON t.season_id=r.season_id AND t.observed_at=r.observed_at
 ), player_seasons AS (
   SELECT x.player_id,f.season_id FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id
-    JOIN approved a ON a.season_id=f.season_id WHERE f.provider='apifootball'
+    JOIN approved a ON a.season_id=f.season_id WHERE f.provider=${provider}
       AND (f.kickoff_at IS NULL OR f.kickoff_at<$1::timestamptz)
   UNION
   SELECT e.player_id,e.season_id FROM sports.roster_entries e JOIN sports.roster_snapshots r ON r.id=e.snapshot_id
@@ -85,7 +85,7 @@ const CATALOGUE = `${APPROVED}, catalogue AS (
     bool_or(clubs>1 OR (clubs>0 AND NOT all_present)) OR sum(clubs)>1 AS ambiguous_roster
   FROM claims GROUP BY player_id
 ), summaries AS (
-  SELECT p.id AS sql_id,p.provider_id,p.name,p.position,
+  SELECT p.id AS sql_id,p.provider_id,p.provider_slug,p.name,p.position,
     CASE WHEN r.known THEN c.provider_id END AS club_id,
     CASE WHEN r.known THEN c.name END AS club_name,
     CASE WHEN r.known THEN a.league_id END AS league_id,
@@ -95,14 +95,14 @@ const CATALOGUE = `${APPROVED}, catalogue AS (
     coalesce(f.result_json->>'status','uncomputed') AS availability,
     h.checked_at,h.evaluation_cutoff_at,h.evaluation_source_ordinal::text
   FROM catalogue p LEFT JOIN resolved r ON r.player_id=p.id
-  LEFT JOIN sports.clubs c ON c.id=r.club_id::uuid AND c.provider='apifootball'
+  LEFT JOIN sports.clubs c ON c.id=r.club_id::uuid AND c.provider=${provider}
   LEFT JOIN approved a ON a.season_id=r.season_id::uuid
   LEFT JOIN sports.forecast_heads h ON h.player_id=p.id
   LEFT JOIN sports.forecast_revisions f ON f.id=h.revision_id
-)`;
+)`; }
 
 type SummaryRow = {
-  sql_id: string; provider_id: string; name: string; position: Position;
+  sql_id: string; provider_id: string; provider_slug: string | null; name: string; position: Position;
   club_id: string | null; club_name: string | null; league_id: string | null; league_name: string | null; season: string | null;
   missing_roster: boolean; incomplete_roster: boolean; ambiguous_roster: boolean;
   availability: PlayerSummary["forecast"]["status"]; checked_at: Date | null; evaluation_cutoff_at: Date | null; evaluation_source_ordinal: string | null;
@@ -114,18 +114,23 @@ const positionMetrics: Record<Position, Metric[]> = {
   DEF: ["tackles", "interceptions"], GK: ["saves", "goalsConceded"], UNKNOWN: [],
 };
 const invalid = (code = "invalid_input", message = "Invalid request parameters."): never => { throw new ReadError(400, code, message); };
-function identifier(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !/^[1-9]\d{0,17}$/.test(value) || !Number.isSafeInteger(Number(value))) invalid("invalid_identifier", "Invalid provider identifier.");
+function identifier(value: unknown, profile: SourceProfile, kind: "Player" | "Club" = "Player"): asserts value is string {
+  const valid = typeof value === "string" && (profile.provider === "apifootball"
+    ? /^[1-9]\d{0,17}$/.test(value) && Number.isSafeInteger(Number(value))
+    : value.startsWith(`${kind}:`) && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.slice(kind.length + 1)));
+  if (!valid) invalid("invalid_identifier", "Invalid provider identifier.");
 }
 function fields(value: unknown, allowed: string[]): asserts value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)
     || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
     || Object.keys(value).some((key) => !allowed.includes(key))) invalid();
 }
-function league(value: unknown) {
-  if (value !== undefined && value !== "153" && value !== "164") invalid("invalid_league", "Unsupported competition.");
+function league(value: unknown, profile: SourceProfile) {
+  if (value === undefined) return;
+  try { if (typeof value !== "string") throw new Error(); sourceCoverage(profile, value); }
+  catch { invalid("invalid_league", "Unsupported competition."); }
 }
-function summary(row: SummaryRow, bestStatistic: BestStatistic): PlayerSummary {
+function summary(row: SummaryRow, bestStatistic: BestStatistic, profile: SourceProfile): PlayerSummary {
   const reasons = [
     ...(row.missing_roster ? ["missing_roster_observation"] : []),
     ...(row.incomplete_roster ? ["incomplete_roster_observation"] : []),
@@ -134,6 +139,8 @@ function summary(row: SummaryRow, bestStatistic: BestStatistic): PlayerSummary {
   if (!row.club_id && !reasons.length) reasons.push("unknown_current_club");
   return {
     id: row.provider_id, name: row.name, position: row.position,
+    ...(profile.provider === "sorare" && row.provider_slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.provider_slug)
+      ? { sourceUrl: `https://sorare.com/football/players/${encodeURIComponent(row.provider_slug)}` } : {}),
     currentClub: row.club_id ? { id: row.club_id, name: row.club_name!, leagueId: row.league_id!, leagueName: row.league_name!, season: row.season! } : null,
     currentClubReasons: reasons, bestStatistic,
     forecast: { kind: "stored-evaluation", status: row.availability, checkedAt: row.checked_at ? iso(row.checked_at) : null,
@@ -150,7 +157,14 @@ function publicProvenance(value: Record<string, unknown>): Record<string, unknow
 type LoadScouting = () => Promise<Map<string, BestStatistic>>;
 
 export class ReadService {
-  constructor(private readonly pool: Pool) {}
+  private readonly approved: string;
+  private readonly catalogue: string;
+  private readonly provider: string;
+  constructor(private readonly pool: Pool, private readonly profile: SourceProfile = LEGACY_SOURCE) {
+    this.approved = approved(profile);
+    this.catalogue = catalogue(profile);
+    this.provider = `'${profile.provider.replaceAll("'", "''")}'`;
+  }
 
   private async snapshot<T>(operation: (client: PoolClient, source: SourceFreshness, loadScouting: LoadScouting) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
@@ -159,11 +173,11 @@ export class ReadService {
       const row = (await client.query<{ cutoff_at: Date; source_ordinal: string; latest_retrieved_at: Date | null }>(
         `SELECT transaction_timestamp() AS cutoff_at,coalesce(max(n.ordinal),0)::text AS source_ordinal,
           max(s.retrieved_at) AS latest_retrieved_at FROM sports.normalized_revisions n
-          LEFT JOIN sports.source_revisions s ON s.id=n.source_revision_id AND s.provider='apifootball'`)).rows[0];
+          LEFT JOIN sports.source_revisions s ON s.id=n.source_revision_id AND s.provider=${this.provider}`)).rows[0];
       const source = { cutoffAt: iso(row.cutoff_at), sourceOrdinal: row.source_ordinal, latestRetrievedAt: row.latest_retrieved_at ? iso(row.latest_retrieved_at) : null };
       // Filters and comparison selections never define the statistical cohort.
       let scouting: Promise<Map<string, BestStatistic>> | undefined;
-      const loadScouting = () => scouting ??= prepareObservedInputs(client, source.cutoffAt).then((prepared) =>
+      const loadScouting = () => scouting ??= prepareObservedInputs(client, source.cutoffAt, this.profile).then((prepared) =>
         computeBestStatistics([...prepared.values()].map((evidence) => evidence.input)));
       const result = await operation(client, source, loadScouting);
       await client.query("COMMIT");
@@ -176,9 +190,9 @@ export class ReadService {
 
   private async identity(client: PoolClient, source: SourceFreshness, playerId: string,
     loadScouting: LoadScouting): Promise<{ row: SummaryRow; player: PlayerSummary }> {
-    const row = (await client.query<SummaryRow>(`WITH ${CATALOGUE} SELECT * FROM summaries WHERE provider_id=$2`, [source.cutoffAt, playerId])).rows[0];
+    const row = (await client.query<SummaryRow>(`WITH ${this.catalogue} SELECT * FROM summaries WHERE provider_id=$2`, [source.cutoffAt, playerId])).rows[0];
     if (!row) throw new ReadError(404, "player_not_found", "Player not found in enabled coverage.");
-    return { row, player: summary(row, (await loadScouting()).get(row.provider_id)!) };
+    return { row, player: summary(row, (await loadScouting()).get(row.provider_id)!, this.profile) };
   }
 
   private async stored(client: PoolClient, sqlPlayerId: string): Promise<SavedForecast | null> {
@@ -201,9 +215,9 @@ export class ReadService {
   async overview() {
     return this.snapshot(async (client, source) => {
       const row = (await client.query<{ competitions: number; clubs: number; players: number; available: number; partial: number; unavailable: number; uncomputed: number }>(
-        `WITH ${CATALOGUE} SELECT (SELECT count(*)::integer FROM approved) AS competitions,
+        `WITH ${this.catalogue} SELECT (SELECT count(*)::integer FROM approved) AS competitions,
           (SELECT count(DISTINCT sc.club_id)::integer FROM sports.season_clubs sc JOIN approved a ON a.season_id=sc.season_id
-            JOIN sports.clubs c ON c.id=sc.club_id WHERE c.provider='apifootball') AS clubs,
+            JOIN sports.clubs c ON c.id=sc.club_id WHERE c.provider=${this.provider}) AS clubs,
           count(*)::integer AS players,count(*) FILTER(WHERE availability='available')::integer AS available,
           count(*) FILTER(WHERE availability='partial')::integer AS partial,
           count(*) FILTER(WHERE availability='unavailable')::integer AS unavailable,
@@ -216,19 +230,19 @@ export class ReadService {
   async competitions() {
     return this.snapshot(async (client, source) => {
       const rows = (await client.query<{ league_id: string; league_name: string; country_name: string; label: string; timezone: string; expected_clubs: number; coefficient: string }>(
-        `WITH ${APPROVED} SELECT * FROM approved ORDER BY league_id COLLATE "C"`)).rows;
+        `WITH ${this.approved} SELECT * FROM approved ORDER BY league_id COLLATE "C"`)).rows;
       return { items: rows.map((row) => ({ id: row.league_id, name: row.league_name, country: row.country_name, season: row.label,
         timezone: row.timezone, expectedClubs: row.expected_clubs, coefficient: Number(row.coefficient) })), source };
     });
   }
 
   async clubs(filters: { leagueId?: string } = {}) {
-    fields(filters, ["leagueId"]); league(filters.leagueId);
+    fields(filters, ["leagueId"]); league(filters.leagueId, this.profile);
     return this.snapshot(async (client, source) => {
       const rows = (await client.query<{ provider_id: string; name: string; league_id: string; league_name: string; label: string }>(
-        `WITH ${APPROVED} SELECT c.provider_id,c.name,a.league_id,a.league_name,a.label FROM sports.clubs c
+        `WITH ${this.approved} SELECT c.provider_id,c.name,a.league_id,a.league_name,a.label FROM sports.clubs c
           JOIN sports.season_clubs sc ON sc.club_id=c.id JOIN approved a ON a.season_id=sc.season_id
-          WHERE c.provider='apifootball' AND ($1::text IS NULL OR a.league_id=$1)
+          WHERE c.provider=${this.provider} AND ($1::text IS NULL OR a.league_id=$1)
           ORDER BY a.league_id COLLATE "C",c.name,c.provider_id COLLATE "C"`, [filters.leagueId ?? null])).rows;
       return { items: rows.map((row) => ({ id: row.provider_id, name: row.name, leagueId: row.league_id, leagueName: row.league_name, season: row.label })), source };
     });
@@ -236,8 +250,8 @@ export class ReadService {
 
   async players(filters: PlayerFilters = {}) {
     fields(filters, ["q", "leagueId", "clubId", "position", "availability", "page", "pageSize"]);
-    league(filters.leagueId);
-    if (filters.clubId !== undefined) identifier(filters.clubId);
+    league(filters.leagueId, this.profile);
+    if (filters.clubId !== undefined) identifier(filters.clubId, this.profile, "Club");
     if (filters.position !== undefined && !positions.includes(filters.position)) invalid("invalid_position", "Unsupported player position.");
     if (filters.availability !== undefined && !["available", "partial", "unavailable", "uncomputed"].includes(filters.availability)) invalid("invalid_availability", "Unsupported forecast availability.");
     if (filters.q !== undefined && (typeof filters.q !== "string" || filters.q.length > 80 || /[\u0000-\u001f\u007f]/.test(filters.q))) invalid("invalid_search", "Search must contain at most 80 characters.");
@@ -248,24 +262,24 @@ export class ReadService {
     const search = filters.q?.trim().replace(/[\\%_]/g, "\\$&");
     return this.snapshot(async (client, source, loadScouting) => {
       if (filters.clubId) {
-        const found = await client.query(`WITH ${APPROVED} SELECT 1 FROM sports.clubs c JOIN sports.season_clubs sc ON sc.club_id=c.id
-          JOIN approved a ON a.season_id=sc.season_id WHERE c.provider='apifootball' AND c.provider_id=$1
+        const found = await client.query(`WITH ${this.approved} SELECT 1 FROM sports.clubs c JOIN sports.season_clubs sc ON sc.club_id=c.id
+          JOIN approved a ON a.season_id=sc.season_id WHERE c.provider=${this.provider} AND c.provider_id=$1
           AND ($2::text IS NULL OR a.league_id=$2) LIMIT 1`, [filters.clubId, filters.leagueId ?? null]);
         if (!found.rowCount) invalid("invalid_club", "Club not found in the selected enabled coverage.");
       }
       const values = [source.cutoffAt, search ? `%${search}%` : null, filters.leagueId ?? null, filters.clubId ?? null, filters.position ?? null, filters.availability ?? null];
       const condition = `($2::text IS NULL OR name ILIKE $2 ESCAPE '\\') AND ($3::text IS NULL OR league_id=$3)
         AND ($4::text IS NULL OR club_id=$4) AND ($5::text IS NULL OR position=$5) AND ($6::text IS NULL OR availability=$6)`;
-      const total = (await client.query<{ total: number }>(`WITH ${CATALOGUE} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
-      const rows = (await client.query<SummaryRow>(`WITH ${CATALOGUE} SELECT * FROM summaries WHERE ${condition}
+      const total = (await client.query<{ total: number }>(`WITH ${this.catalogue} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
+      const rows = (await client.query<SummaryRow>(`WITH ${this.catalogue} SELECT * FROM summaries WHERE ${condition}
         ORDER BY name,provider_id COLLATE "C" LIMIT $7 OFFSET $8`, [...values, pageSize, (page - 1) * pageSize])).rows;
       const statistics = rows.length ? await loadScouting() : new Map<string, BestStatistic>();
-      return { items: rows.map((row) => summary(row, statistics.get(row.provider_id)!)), pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) }, source };
+      return { items: rows.map((row) => summary(row, statistics.get(row.provider_id)!, this.profile)), pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) }, source };
     });
   }
 
   async player(playerId: string) {
-    identifier(playerId);
+    identifier(playerId, this.profile);
     return this.snapshot(async (client, source, loadScouting) => {
       const identity = await this.identity(client, source, playerId, loadScouting);
       const rows = (await client.query<{
@@ -274,10 +288,10 @@ export class ReadService {
         participation: string; minutes: number | null; rating: string | null; goals: number | null; assists: number | null;
         revision_id: string | null; membership_known: boolean;
         shots_on_target: number | null; key_passes: number | null; tackles: number | null; interceptions: number | null; saves: number | null; goals_conceded: number | null;
-      }>(`WITH ${APPROVED} SELECT f.provider_id AS fixture_id,a.league_id,a.label AS season,f.kickoff_at,f.status,f.statistics_status,
+      }>(`WITH ${this.approved} SELECT f.provider_id AS fixture_id,a.league_id,a.label AS season,f.kickoff_at,f.status,f.statistics_status,
           home.provider_id AS home_id,home.name AS home_name,away.provider_id AS away_id,away.name AS away_name,
           club.provider_id AS club_id,club.name AS club_name,x.participation,x.minutes,x.rating,x.goals,x.assists,
-          x.normalized_revision_id AS revision_id,coalesce(club.provider='apifootball'
+          x.normalized_revision_id AS revision_id,coalesce(club.provider=${this.provider}
             AND x.club_id IN (f.home_club_id,f.away_club_id) AND m.player_id=x.player_id
             AND m.club_id=x.club_id AND m.season_id=x.season_id AND isfinite(f.kickoff_at)
             AND f.kickoff_at>=m.valid_from AND (m.valid_until IS NULL OR f.kickoff_at<m.valid_until),false) AS membership_known,
@@ -285,7 +299,7 @@ export class ReadService {
         FROM sports.appearances x JOIN sports.fixtures f ON f.id=x.fixture_id JOIN approved a ON a.season_id=f.season_id
         JOIN sports.clubs home ON home.id=f.home_club_id JOIN sports.clubs away ON away.id=f.away_club_id
         LEFT JOIN sports.clubs club ON club.id=x.club_id LEFT JOIN sports.player_memberships m ON m.id=x.membership_id
-        WHERE x.player_id=$1 AND f.provider='apifootball'
+        WHERE x.player_id=$1 AND f.provider=${this.provider}
         ORDER BY f.kickoff_at DESC NULLS FIRST,f.provider_id COLLATE "C" DESC LIMIT 50`, [identity.row.sql_id])).rows;
       const observedAppearances = rows.map((row) => ({
         fixtureId: row.fixture_id, leagueId: row.league_id, season: row.season, kickoffAt: row.kickoff_at ? iso(row.kickoff_at) : null,
@@ -303,7 +317,7 @@ export class ReadService {
   }
 
   async forecast(playerId: string) {
-    identifier(playerId);
+    identifier(playerId, this.profile);
     return this.snapshot(async (client, source, loadScouting) => {
       const identity = await this.identity(client, source, playerId, loadScouting);
       return { player: identity.player, forecast: await this.stored(client, identity.row.sql_id), source };
@@ -313,14 +327,14 @@ export class ReadService {
   async compare(playerIds: readonly string[], allowCrossPosition = false) {
     if (!Array.isArray(playerIds) || playerIds.length < 2 || playerIds.length > 4 || new Set(playerIds).size !== playerIds.length
       || typeof allowCrossPosition !== "boolean") invalid("invalid_comparison", "Choose two to four distinct players.");
-    playerIds.forEach(identifier);
+    playerIds.forEach((id) => identifier(id, this.profile));
     return this.snapshot(async (client, source, loadScouting) => {
       const identities: { row: SummaryRow; player: PlayerSummary }[] = [];
       for (const playerId of playerIds) identities.push(await this.identity(client, source, playerId, loadScouting));
       const crossPosition = new Set(identities.map(({ player }) => player.position)).size > 1;
       if (crossPosition && !allowCrossPosition) invalid("position_mismatch", "Cross-position comparison requires explicit opt-in.");
       const sharedMetrics = METRICS.filter((metric) => identities.every(({ player }) => positionMetrics[player.position].includes(metric)));
-      const prepared = await prepareInputs(client, source.cutoffAt, playerIds);
+      const prepared = await prepareSourceInputs(client, source.cutoffAt, this.profile, playerIds);
       const players = [];
       for (const { row, player } of identities) {
         const evidence = prepared.get(player.id)!;
