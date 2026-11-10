@@ -14,10 +14,11 @@ export type Context = {
 export type Match = {
   fixtureId: string; leagueId: string; season: string; competition: CompetitionCode;
   kickoffAt: string | null;
-  status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled";
+  status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled" | "suspended";
   homeClubId: string; awayClubId: string;
 };
 export type HistoryAppearance = Match & {
+  sourceProvider?: "sorare";
   covered: boolean; clubId: string | null; membershipKnown: boolean;
   participation: "unknown" | "played" | "dnp"; minutes: number | null;
   rating: number | null; metrics: Record<Metric, number | null>; context: Context | null;

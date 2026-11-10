@@ -71,4 +71,14 @@ test("login return destinations stay inside allowed product routes", () => {
   for (const value of [null, "https://foreign.example", "//foreign.example/overview", "javascript:alert(1)", "/api/admin/imports", "/login", "/overview\\evil", "/overview\n", "/players/1#redirect"]) assert.equal(returnPath(value), "/overview");
   assert.equal(returnPath("/players/8001"), "/players/8001");
   assert.equal(returnPath("/compare?playerId=8001&playerId=8002"), "/compare?playerId=8001&playerId=8002");
+  const identifier = "Player:12345678-1234-1234-1234-123456789abc";
+  for (const id of [identifier, encodeURIComponent(identifier)]) {
+    assert.equal(returnPath(`/players/${id}`), `/players/${id}`);
+    for (const path of [`/players/${id}/extra`, `/players/${id}%2fextra`, `/players/${id}#redirect`]) {
+      assert.equal(returnPath(path), "/overview");
+    }
+  }
+  for (const id of [identifier.replace("Player:", "Game:"), "Player:invalid", `${identifier}0`, identifier.replace(":", "%253A")]) {
+    assert.equal(returnPath(`/players/${id}`), "/overview");
+  }
 });

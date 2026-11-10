@@ -119,6 +119,8 @@ jobs:
           printf 'MONGO_TEST_HOST_ID=%s\n' "$mongo_test_host" >> "$GITHUB_ENV"
       - name: Verify archives, ingestion, recovery, and jobs
         run: npm run test:ingestion
+      - name: Verify current league source isolation and reporting
+        run: npm run test:source
       - name: Verify forecast revisions and refresh processing
         run: npm run test:forecast
       - name: Verify isolated historical observation replay

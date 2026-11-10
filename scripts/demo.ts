@@ -27,7 +27,7 @@ const passwords = Object.fromEntries(["BOOTSTRAP", "READER", "WRITER", "AUTH", "
 // Local dotenv files and existing database/provider credentials are never used.
 const isolated: NodeJS.ProcessEnv = { ...process.env };
 for (const key of Object.keys(isolated)) {
-  if (/^(POSTGRES_|MONGO_|APIFOOTBALL_|PG[A-Z_]|DATABASE_URL$)/.test(key)) delete isolated[key];
+  if (/^(POSTGRES_|MONGO_|APIFOOTBALL_|SORARE_|PG[A-Z_]|DATABASE_URL$)/.test(key)) delete isolated[key];
 }
 Object.assign(isolated, {
   NODE_ENV: "test", POSTGRES_HOST: "127.0.0.1", POSTGRES_DB: database, POSTGRES_USER: "sports_bootstrap",

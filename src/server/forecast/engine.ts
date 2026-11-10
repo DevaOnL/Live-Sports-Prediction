@@ -45,7 +45,7 @@ function eligibility(input: ForecastInput) {
   const gaps: EligibilityGap[] = [...input.gaps];
   const seen = new Set<string>();
   for (const appearance of orderedAppearances(input.appearances.filter((item) => item.covered))) {
-    if (["live", "postponed", "cancelled"].includes(appearance.status)) continue;
+    if (["live", "postponed", "cancelled", "suspended"].includes(appearance.status)) continue;
     const kickoff = instant(appearance.kickoffAt);
     const gap = (code: string, field?: string) => gaps.push({ code, fixtureId: appearance.fixtureId, kickoffAt: appearance.kickoffAt, ...(field ? { field } : {}) });
     if (!Number.isFinite(kickoff)) { gap("unknown_kickoff", "kickoffAt"); continue; }
@@ -59,6 +59,12 @@ function eligibility(input: ForecastInput) {
       gap("unknown_membership", "clubId"); continue;
     }
     if (appearance.participation === "unknown") { gap("unknown_participation", "participation"); continue; }
+    // A current-source DNP is explicit participation evidence even when the
+    // provider omits minutes. Preserve the null observation and legacy rules.
+    if (appearance.sourceProvider === "sorare" && appearance.participation === "dnp" && appearance.minutes === null) {
+      if (Object.values(appearance.metrics).some((value) => value !== null && value > 0)) gap("conflicting_participation", "participation");
+      continue;
+    }
     if (!validCount(appearance.minutes)) { gap(appearance.minutes === null ? "unknown_minutes" : "invalid_minutes", "minutes"); continue; }
     if (appearance.participation === "dnp") {
       if (appearance.minutes !== 0) gap("conflicting_participation", "minutes");
@@ -199,7 +205,7 @@ function semanticContext(context: Context | null) {
 export function inputHash(input: ForecastInput, result: ForecastResult = evaluateForecast(input)): string {
   const window = eligibility(input);
   const selectedIds = new Set(window.selected.map((appearance) => appearance.fixtureId));
-  const relevantAppearances = input.appearances.filter((appearance) => appearance.covered && !["live", "postponed", "cancelled"].includes(appearance.status)
+  const relevantAppearances = input.appearances.filter((appearance) => appearance.covered && !["live", "postponed", "cancelled", "suspended"].includes(appearance.status)
     && window.relevant({ code: "evidence", fixtureId: appearance.fixtureId, kickoffAt: appearance.kickoffAt }))
     .map((appearance) => ({
       fixtureId: appearance.fixtureId, leagueId: appearance.leagueId, season: appearance.season,

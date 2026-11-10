@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { canonicalJson, evaluateForecast, inputHash } from "./engine";
-import { prepareInputs } from "./inputs";
+import { prepareSourceInputs } from "./inputs";
+import { LEGACY_SOURCE, type SourceProfile } from "../ingestion/sources";
 import type { ForecastInput, ForecastResult, PreparedInput, RefreshResult } from "./types";
 
 export type SavedForecast = {
@@ -12,7 +13,7 @@ export type SavedForecast = {
 
 /** The ingestion lock freezes canonical evidence for the entire comparison batch. */
 export class ForecastStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly profile: SourceProfile = LEGACY_SOURCE) {}
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
@@ -33,8 +34,9 @@ export class ForecastStore {
 
   private async persist(client: PoolClient, prepared: PreparedInput): Promise<{ created: boolean; result: ForecastResult }> {
     const input = prepared.input;
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`lsp:forecast:${input.player.id}`]);
-    const player = await client.query<{ id: string }>("SELECT id FROM sports.players WHERE provider='apifootball' AND provider_id=$1", [input.player.id]);
+    const lock = this.profile.provider === "apifootball" ? `lsp:forecast:${input.player.id}` : `lsp:forecast:${this.profile.provider}:${input.player.id}`;
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [lock]);
+    const player = await client.query<{ id: string }>("SELECT id FROM sports.players WHERE provider_id=$1 AND provider=$2", [input.player.id, this.profile.provider]);
     const playerId = player.rows[0].id;
     const previous = await client.query<{ id: string; input_hash: string; result_json: ForecastResult }>(
       `SELECT r.id,r.input_hash,r.result_json FROM sports.forecast_heads h
@@ -69,7 +71,7 @@ export class ForecastStore {
   private async refreshBatch(ids: readonly string[] | undefined, cutoffAt = new Date().toISOString()): Promise<RefreshResult> {
     if (!Number.isFinite(Date.parse(cutoffAt))) throw new RangeError("Invalid forecast cutoff");
     return this.transaction(async (client) => {
-      const inputs = await prepareInputs(client, cutoffAt, ids);
+      const inputs = await prepareSourceInputs(client, cutoffAt, this.profile, ids);
       const summary: RefreshResult = { players: inputs.size, created: 0, unchanged: 0, available: 0, partial: 0, unavailable: 0 };
       for (const prepared of inputs.values()) {
         const saved = await this.persist(client, prepared);
@@ -92,7 +94,7 @@ export class ForecastStore {
       evaluation_cutoff_at: Date; evaluation_source_ordinal: string; evaluation_provenance_json: Record<string, unknown>; checked_at: Date;
     }>(`SELECT r.*,p.provider_id,h.evaluation_cutoff_at,h.evaluation_source_ordinal,h.evaluation_provenance_json,h.checked_at
         FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id
-        JOIN sports.players p ON p.id=h.player_id WHERE p.provider='apifootball' AND p.provider_id=$1`, [providerPlayerId]);
+        JOIN sports.players p ON p.id=h.player_id WHERE p.provider_id=$1 AND p.provider=$2`, [providerPlayerId, this.profile.provider]);
     const row = rows.rows[0];
     return row ? {
       id: row.id, ordinal: row.ordinal, playerId: row.provider_id, parentId: row.parent_id,
@@ -106,11 +108,12 @@ export class ForecastStore {
 
   async status(): Promise<Record<string, number>> {
     const counts = await this.pool.query<{ revisions: number; players: number; available: number; partial: number; unavailable: number }>(
-      `SELECT (SELECT count(*)::integer FROM sports.forecast_revisions) AS revisions,count(*)::integer AS players,
+      `SELECT (SELECT count(*)::integer FROM sports.forecast_revisions x JOIN sports.players p ON p.id=x.player_id WHERE p.provider=$1) AS revisions,count(*)::integer AS players,
        count(*) FILTER (WHERE r.result_json->>'status'='available')::integer AS available,
        count(*) FILTER (WHERE r.result_json->>'status'='partial')::integer AS partial,
        count(*) FILTER (WHERE r.result_json->>'status'='unavailable')::integer AS unavailable
-       FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id`);
+       FROM sports.forecast_heads h JOIN sports.forecast_revisions r ON r.id=h.revision_id
+       JOIN sports.players p ON p.id=h.player_id WHERE p.provider=$1`, [this.profile.provider]);
     return counts.rows[0];
   }
 }

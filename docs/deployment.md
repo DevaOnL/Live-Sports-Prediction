@@ -119,7 +119,8 @@ the local checks do not establish an Internet deployment.
 `INGESTION_ENABLED=false` stops the long-running worker's database/provider work.
 Explicit `ingest sync` and `ingest once` can still make provider calls. Do not run
 them during an offline check. The app queues source work; the enabled worker
-executes it within the shared 120-attempt rolling-hour application budget. Queue
+executes it within the shared 60-attempt rolling-minute Sorare application budget
+and one-second request pacing. Queue
 acceptance is not completion. Inspect job errors and freshness rather than
 creating additional accounts or bypassing the cap.
 
@@ -128,6 +129,30 @@ For an interrupted import, restore database/service access and use
 It makes no provider requests. Retry a failed job explicitly after correcting its
 cause. Local forecast refresh needs only the SQL writer and no provider budget.
 See [ingestion recovery](ingestion.md#storage-and-recovery) for exact semantics.
+
+## Switching an existing installation to current coverage
+
+Take a coordinated backup before the source upgrade. Stop the app, worker, preview
+instances and host CLI writers; preserve database volumes and runtime secrets.
+Apply `npm run db:migrate` through `011_suspended_fixtures.sql`. Migration 010
+disables former active coverage and adds source-aware reporting without deleting
+historical observations, forecasts or archives; 011 adds the explicit suspended
+fixture status. Keep already-applied migrations unchanged.
+
+Configure the ignored `SORARE_API_KEY`, then run `npm run ingest -- sync` and
+`npm run ingest -- once` to begin current imports. The long-running worker drains
+the remaining match-statistics backlog. Rebuild and recreate app/worker containers
+with the same project/volumes. Verify both current leagues, import issues,
+statistics backlog and authenticated player reads. The app must receive no Sorare
+key or MongoDB credentials. Existing sessions and account roles remain in SQL.
+Retired-source jobs and outboxes stay isolated from the current worker.
+
+`npm run forecast -- refresh all` recalculates available count outputs after imports.
+Conventional player ratings and key passes remain unavailable with this provider;
+check individual outputs rather than treating an overall rating gap as an import
+failure. Provisional score reviews and incomplete player history remain visible.
+A source change does not establish predictive accuracy or replace the archived
+historical evaluation.
 
 ## Coordinated backup
 
@@ -202,7 +227,7 @@ not include SQL login passwords or MongoDB administrator configuration.
 
 Copy the backup's `runtime.env` to this checkout's ignored `.env` (mode 0600).
 Before any startup, set a new unique `COMPOSE_PROJECT_NAME`,
-`INGESTION_ENABLED=false` and a blank `APIFOOTBALL_API_KEY`. For a same-host
+`INGESTION_ENABLED=false` and a blank `SORARE_API_KEY` (also clear any legacy `APIFOOTBALL_API_KEY`). For a same-host
 restore rehearsal, choose unused ports and set the host CLI variables
 `POSTGRES_PORT=15432`, `MONGO_PORT=17017` and
 `AUTH_BASE_URL=http://localhost:13000`. Keep host addresses loopback. A local

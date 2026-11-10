@@ -59,7 +59,7 @@ async function startWorker(fixtures: WorkerFixtures) {
     MONGO_HOST: process.env.MONGO_HOST ?? "127.0.0.1", MONGO_PORT: process.env.MONGO_TEST_PORT,
     MONGO_DB: process.env.MONGO_TEST_DATABASE, MONGO_WORKER_USER: process.env.MONGO_WORKER_USER ?? "lsp_ingestion",
     MONGO_WORKER_PASSWORD: process.env.MONGO_WORKER_PASSWORD, APIFOOTBALL_API_KEY: "synthetic-worker-process-only",
-    WORKER_FIXTURE_CLOCK_MS: String(clockReference + Date.now() - clockOrigin),
+    WORKER_FIXTURE_CLOCK_MS: String(clockReference + Date.now() - clockOrigin), LSP_TEST_SOURCE: "legacy",
   };
   assert(!Object.keys(environment).some((key) => /BOOTSTRAP|MIGRATOR|READER|AUTH|SECRET|DATABASE_URL/.test(key)));
   const child = spawn(process.execPath, ["--import", "tsx", "--import", join(root, "tests/support/worker-provider.ts"), join(root, "src/worker/index.ts")], {

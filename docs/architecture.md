@@ -6,10 +6,13 @@ TypeScript worker. It produces an explainable fixed heuristic from five eligible
 appearances, retaining the evidence and reasons for unavailable outputs. Observed
 statistics, adjusted form and next-match forecasts remain distinct.
 
-Coverage is restricted to regular-season Championship (153) and Ligue 2 (164),
-2026/27, through APIFootball.com's permanent free plan. Provider access is a dated
-observation, not a guarantee. The [ingestion guide](ingestion.md) describes the
-allowlist and request budget; [forecasting](forecasting.md) defines the model.
+Current coverage is Premier League (`premier-league-gb-eng`) and La Liga
+(`laliga-es`), 2026/27 regular seasons, through Sorare's registered free developer
+API. Both have 20 clubs and coefficient 2, with London/Madrid local cutoffs.
+Access was verified on 2026-11-10 and can change. The [ingestion guide](ingestion.md)
+defines the source/allowlist; [forecasting](forecasting.md) defines the model.
+Archived APIFootball evaluation/replay protocols retain their original two-league
+scope and dated results; they do not measure the current source.
 
 ## Components and data flow
 
@@ -19,7 +22,7 @@ flowchart LR
   Web -->|Football reads: lsp_reader| PG[(PostgreSQL 17)]
   Web -->|Session and trusted role: lsp_auth| PG
   Web -->|Authorized commands and corrections: lsp_writer| PG
-  Worker[TypeScript worker] -->|Budgeted requests| Provider[APIFootball.com]
+  Worker[TypeScript worker] -->|Budgeted requests| Provider[Sorare GraphQL API]
   Provider -->|Source response| Worker
   Worker -->|Archive before normalization| Mongo[(MongoDB 8)]
   Worker -->|Canonical data and refresh: lsp_writer| PG
@@ -34,14 +37,20 @@ flowchart LR
 | HTTP boundary | Validated parameters/bodies, session lookup, viewer/admin checks, canonical-origin mutation checks, bounded no-store responses | [`handler.ts`](../src/server/web/handler.ts), [`http.ts`](../src/server/web/http.ts), [`access.ts`](../src/server/web/access.ts) |
 | Read and administrator services | Parameterized SQL, coherent read snapshots, idempotent audited commands and optimistic metric corrections | [`read.ts`](../src/server/api/read.ts), [`admin.ts`](../src/server/api/admin.ts) |
 | PostgreSQL | Football entities, constraints, provenance, roster observations, standings, forecasts, auth storage, audit, outbox and jobs | [`db/migrations`](../db/migrations/), [schema and ER diagram](database.md) |
-| MongoDB | Immutable original response text and separate validation/import state | [`archive.ts`](../src/server/ingestion/archive.ts), [`mongo.ts`](../scripts/mongo.ts) |
+| MongoDB | Immutable per-page source captures in versioned bundles and separate validation/import state | [`archive.ts`](../src/server/ingestion/archive.ts), [`mongo.ts`](../scripts/mongo.ts) |
 | Worker | Source polling, archive reconciliation, statistics jobs, standings reconstruction and local forecast refresh | [`src/worker`](../src/worker/), [`runtime.ts`](../src/server/ingestion/runtime.ts) |
 | Forecast engine/store | Exact-five selection, context and missing-data rules, deterministic calculation, immutable revisions and current heads | [`src/server/forecast`](../src/server/forecast/), [model guide](forecasting.md) |
+| Source profiles and scouting | Explicit current/archived provider identities and guards; observed best statistics ranked against full eligible cohorts | [`sources.ts`](../src/server/ingestion/sources.ts), [`highlights.ts`](../src/server/scouting/highlights.ts) |
 | Evaluation tools | Frozen historical scoring and separately versioned forward capture/scoring without sports-data writes or provider requests | [`evaluate.ts`](../scripts/evaluate.ts), [`measure.ts`](../scripts/measure.ts), [evaluation guide](evaluation.md) |
 | Real-data replay | Read a source snapshot with the restricted reader, then demonstrate sixth-appearance arrival and queued refresh in an owned disposable PostgreSQL clone | [`replay.ts`](../scripts/replay.ts), [replay guide](replay.md) |
 
-The browser receives application responses, not database connections or provider
-credentials. Administrator source commands enter SQL work queues; the web process
+The browser receives application responses. Database connections and provider
+credentials remain server-side. Native `Player:UUID`, `Club:UUID` and `Game:UUID`
+identities remain separate from stored Sorare lookup slugs. Attribution links use
+those genuine slugs. The current adapter preserves nulls, accepting explicit
+matching detailed-stat zeros; it never substitutes fantasy scores for ratings or
+won tackles for total tackles. Ratings/key passes remain missing where unsupported.
+Administrator source commands enter SQL work queues; the web process
 does not call the football provider. Local CLI tools are separately controlled
 operational entry points and do not authenticate a web session.
 
@@ -49,10 +58,12 @@ operational entry points and do not authenticate a web session.
 
 An import has four steps:
 
-1. Reserve a provider attempt against the shared rolling-hour SQL budget, fetch
-   an allowlisted resource and archive the original response text in MongoDB.
-   Its source action, credential-free parameters, retrieval time and SHA-256 hash
-   identify the observation.
+1. Reserve each actual HTTP attempt against the shared 60-per-rolling-minute
+   SQL budget, with one-second spacing. Fetch allowlisted GraphQL pages and
+   archive a versioned capture bundle in MongoDB. Each page keeps its exact query,
+   credential-free variables, response text and actual retrieval time; SHA-256
+   identifies the bundle. Incomplete captures cannot establish roster/schedule
+   completeness.
 2. Validate and normalize it without turning absent metrics into zero or treating
    an absent player row as a confirmed DNP. Validation issues remain inspectable.
 3. Commit canonical changes, source/normalized revisions, an ingestion batch
@@ -64,8 +75,8 @@ There is no distributed transaction across MongoDB and PostgreSQL. A source
 response archived before a crash remains recoverable. A SQL commit followed by
 a failed MongoDB marker write can be recognized through its durable SQL batch
 marker and replayed without duplicating canonical changes. The worker reconciles
-archives before normal polling. Invalid observations remain archived with issues;
-transient persistence failures are retried. Recovery commands and failure cases
+current-source archives before normal polling. Invalid observations remain archived
+with issues; transient persistence failures are retried. Recovery commands and failure cases
 are documented in [ingestion](ingestion.md#storage-and-recovery).
 
 The MongoDB runtime role has `find`/`insert` on `raw_archives` and
@@ -90,9 +101,10 @@ interrupted jobs recoverable. These are retryable jobs, not a promise of exactly
 one execution; idempotent effects prevent repeated effective imports/revisions.
 
 The worker polls source data every 15 minutes with an application-wide maximum
-of 120 attempts per rolling hour. Both scheduled work and administrator commands
-share that budget. A separate local queue loop continues forecast processing
-while an upstream request is stalled or source work is budget-deferred. Canonical
+of 60 Sorare attempts per rolling minute and one-second request spacing. Every
+cursor page and detail request consumes a reservation. Scheduled work and
+administrator commands share that budget. A separate local queue loop continues
+forecast processing while an upstream request is stalled or source work is budget-deferred. Canonical
 changes, roster/standings events and time passing can all require refresh. A queue
 submission means accepted, not completed; forecast requests can coalesce.
 
@@ -109,9 +121,12 @@ Reading saved evidence does not recalculate it. The API/UI distinguish revision
 time, latest check and current read watermark, and warn about changed inputs or
 expired targets. Comparison instead computes two to four players from one current
 read-only snapshot, persists no revision and makes no provider request. Its
-canonical result and any prior stored revision are labeled separately.
+canonical result and any prior stored revision are labeled separately. Catalogue
+and profile best statistics independently summarize observed five-match counts,
+using at least ten eligible same-position/league/season players across the full
+cohort. They can be available while forecast ratings or future outputs are missing.
 
-The [real-data replay](replay.md) copies a current reader-only canonical snapshot
+The archived [real-data replay](replay.md) copies an APIFootball reader-only snapshot
 into an owned PostgreSQL 17 container with temporary storage. It preserves actual
 source/roster times and the present cutoff, withholds one latest eligible
 appearance, and requires the baseline to expose the resulting history gap. After
@@ -120,6 +135,13 @@ the latest five and match the untouched snapshot's calculation. All writes stay
 in that clone; no provider calls or source database writes occur. This demonstrates
 data arrival and refresh on real records, not a forecast issued before the
 restored match or an accuracy measurement.
+
+Migration `010_current_coverage.sql` disables former product competitions and
+seasons while retaining their evidence. It adds optional player/club lookup slugs
+and provider-aware history, lineage and refresh routine overloads; original
+routine signatures remain unchanged. Production runtime selects Sorare. Existing
+synthetic HTTP/worker fixtures can select the archived profile only with the
+explicit `LSP_TEST_SOURCE=legacy` selector inside a valid `_test` database.
 
 ## Authentication and privileges
 
@@ -195,12 +217,15 @@ auth/API/browser checks and worker recovery. Test data does not establish live
 coverage or predictive accuracy. Use the isolated recipes in the database and
 ingestion guides; integration suites must not target an application/shared database.
 
-Current model limits are material: the frozen historical evaluation scored
+The archived APIFootball model evaluation scored
 **0/2,596 eligible target appearances** because genuine pre-cutoff roster evidence
-was absent. Error statistics remain unavailable. A separate prospective protocol
+was absent. Error statistics remain unavailable. Its separate versioned prospective protocol
 keeps private pre-matchday captures and awaits real outcomes; pending outcomes
-are not measured accuracy. Missing history, metrics, club evidence, fixtures and
-standings continue to block dependent outputs. The [sixth-appearance replay](replay.md)
+are not measured accuracy. These protocols do not score current Sorare forecasts.
+Current rating/form/key-pass outputs remain unavailable without matching source
+metrics, while evidenced count projections can be available. Missing history,
+metrics, club evidence, fixtures and standings continue to block dependent outputs.
+The [sixth-appearance replay](replay.md)
 provides a separate real-data arrival demonstration in an isolated clone; the
 database demo and regression tests use synthetic data. See [evaluation](evaluation.md) and
 [requirement traceability](requirements.md) for the evidence and remaining limits.

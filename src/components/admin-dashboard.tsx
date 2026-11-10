@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { AdminStatusData, AuditData, ImportsData, JobsData } from "@/lib/contracts";
+import type { AdminStatusData, AuditData, CompetitionsData, ImportsData, JobsData } from "@/lib/contracts";
 import { useApi } from "@/lib/use-api";
 import { formatDate } from "@/lib/presentation";
 import type { QueuedAdminCommand, RetriedAdminCommand } from "@/server/api/admin";
@@ -32,17 +32,20 @@ function QueueAction({ kind, onAccepted }: { kind: "import" | "forecast"; onAcce
 }
 
 function StatisticsRequest({ onAccepted }: { onAccepted: () => void }) {
-  const [leagueId, setLeagueId] = useState("153");
+  const [leagueId, setLeagueId] = useState("");
   const [fixtureId, setFixtureId] = useState("");
+  const competitions = useApi<CompetitionsData>("competitions");
+  const selectedLeague = leagueId || competitions.data?.items[0]?.id || "";
   const command = useAdminCommand<QueuedAdminCommand>(onAccepted);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await command.send("admin/statistics", { leagueId, fixtureId });
+    await command.send("admin/statistics", { leagueId: selectedLeague, fixtureId });
   }
   return <details className="metric-card"><summary>Fixture statistics</summary><form className="page-stack" onSubmit={submit}><h3>Request statistics</h3><p className="muted">Existing covered fixture · Live or final · Worker request</p>
-    <div className="field-grid"><label className="field" htmlFor="statistics-league"><span className="field-label">Statistics competition</span><select id="statistics-league" className="field-select" value={leagueId} disabled={command.locked} onChange={(event) => setLeagueId(event.target.value)}><option value="153">Championship · 2026/27</option><option value="164">Ligue 2 · 2026/27</option></select></label>
-      <label className="field" htmlFor="statistics-fixture"><span className="field-label">Statistics fixture ID</span><input id="statistics-fixture" className="field-input" inputMode="numeric" pattern="[1-9][0-9]{0,17}" required value={fixtureId} disabled={command.locked} onChange={(event) => setFixtureId(event.target.value)} /></label></div>
-    <button className="button button-secondary" disabled={command.pending}>{command.pending ? "Submitting…" : command.uncertain ? "Retry same statistics request" : "Queue fixture statistics"}</button>
+    <PanelState loading={competitions.loading} error={competitions.error} />
+    <div className="field-grid"><label className="field" htmlFor="statistics-league"><span className="field-label">Statistics competition</span><select id="statistics-league" className="field-select" required value={selectedLeague} disabled={command.locked || competitions.loading} onChange={(event) => setLeagueId(event.target.value)}>{!selectedLeague && <option value="">No competition available</option>}{competitions.data?.items.map((competition) => <option key={competition.id} value={competition.id}>{competition.name} · {competition.season}</option>)}</select></label>
+      <label className="field" htmlFor="statistics-fixture"><span className="field-label">Statistics fixture ID</span><input id="statistics-fixture" className="field-input" maxLength={100} required value={fixtureId} disabled={command.locked} onChange={(event) => setFixtureId(event.target.value)} /></label></div>
+    <button className="button button-secondary" disabled={command.pending || !selectedLeague || Boolean(competitions.error)}>{command.pending ? "Submitting…" : command.uncertain ? "Retry same statistics request" : "Queue fixture statistics"}</button>
     <CommandFeedback {...command}>{command.result && <><p>Queued. Check job status for completion.</p><RequestReceipt result={command.result} /></>}</CommandFeedback>
   </form></details>;
 }
@@ -55,10 +58,10 @@ function RetryJob({ id, onAccepted }: { id: string; onAccepted: (result: Retried
 function OperationalStatus({ revision, onRetry }: { revision: number; onRetry: () => void }) {
   const status = useApi<AdminStatusData>("admin/status", revision);
   return <section aria-labelledby="operations-status"><h2 id="operations-status">At a glance</h2><PanelState loading={status.loading} error={status.error} onRetry={onRetry}>{status.data && <>
-    <div className="metric-grid"><article className="metric-card"><p className="eyebrow">App request budget</p><strong className="metric-value">{status.data.providerBudget.remaining}<small> / {status.data.providerBudget.limit}</small></strong><p>Attempts left · Rolling hour</p><p className="form-note">App cap; provider plan limits are separate.</p>{status.data.providerBudget.retryAt && <p className="form-note">Next opportunity: {formatDate(status.data.providerBudget.retryAt)}</p>}</article>
+    <div className="metric-grid"><article className="metric-card"><p className="eyebrow">App request budget</p><strong className="metric-value">{status.data.providerBudget.remaining}<small> / {status.data.providerBudget.limit}</small></strong><p>Attempts left · Rolling {status.data.providerBudget.windowSeconds === 60 ? "minute" : "hour"}</p><p className="form-note">App cap; provider plan limits are separate.</p>{status.data.providerBudget.retryAt && <p className="form-note">Next opportunity: {formatDate(status.data.providerBudget.retryAt)}</p>}</article>
       <article className="metric-card"><p className="eyebrow">Committed imports</p><strong className="metric-value">{status.data.imports.batches}</strong><p>{status.data.imports.validationIssues} validation issues</p><p className="form-note">Latest: {formatDate(status.data.imports.lastCommittedAt)}</p></article>
       <article className="metric-card"><p className="eyebrow">Worker jobs</p><strong className="metric-value">{status.data.jobs.reduce((sum, job) => sum + (job.status === "ready" || job.status === "running" ? job.count : 0), 0)}</strong><p>Ready or running</p><p className="form-note">{status.data.jobs.reduce((sum, job) => sum + (job.status === "failed" ? job.count : 0), 0)} failed · Review required</p></article></div>
-    <details className="provenance-details"><summary>Coverage details</summary><div className="table-wrap"><table className="data-table"><caption>Approved coverage in canonical storage</caption><thead><tr><th scope="col">Competition</th><th scope="col">Season</th><th scope="col">Fixtures</th><th scope="col">Final</th><th scope="col">Live/final stats incomplete</th></tr></thead><tbody>{status.data.coverage.map((item) => <tr key={item.leagueId}><th scope="row">{item.leagueId === "153" ? "Championship" : "Ligue 2"}</th><td>{item.season}</td><td>{item.fixtures}</td><td>{item.finalFixtures}</td><td>{item.incompleteStatistics}</td></tr>)}</tbody></table>{!status.data.coverage.length && <p className="muted">No approved coverage imported yet.</p>}</div></details>
+    <details className="provenance-details"><summary>Coverage details</summary><div className="table-wrap"><table className="data-table"><caption>Approved coverage in canonical storage</caption><thead><tr><th scope="col">Competition</th><th scope="col">Season</th><th scope="col">Fixtures</th><th scope="col">Final</th><th scope="col">Live/final stats incomplete</th></tr></thead><tbody>{status.data.coverage.map((item) => <tr key={item.leagueId}><th scope="row">{item.leagueName}</th><td>{item.season}</td><td>{item.fixtures}</td><td>{item.finalFixtures}</td><td>{item.incompleteStatistics}</td></tr>)}</tbody></table>{!status.data.coverage.length && <p className="muted">No approved coverage imported yet.</p>}</div></details>
   </>}</PanelState></section>;
 }
 

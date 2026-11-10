@@ -439,7 +439,7 @@ test("operational lists are bounded, filtered and sanitize arbitrary stored payl
   assert.equal(status.providerBudget.used, 120);
   assert.equal(status.providerBudget.remaining, 0);
   assert(status.providerBudget.retryAt);
-  assert.deepEqual(status.coverage[0], { leagueId: "153", season: "2026/27", fixtures: 1, finalFixtures: 1, incompleteStatistics: 0 });
+  assert.deepEqual(status.coverage[0], { leagueId: "153", leagueName: "Administration test league", season: "2026/27", fixtures: 1, finalFixtures: 1, incompleteStatistics: 0 });
 });
 
 test("committed imports bound issue previews and disclose only approved codes, resource identities and counts", async () => {

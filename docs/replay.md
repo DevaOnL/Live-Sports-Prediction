@@ -1,9 +1,12 @@
-# Real-data sixth-appearance replay
+# Archived real-data sixth-appearance replay
 
-`npm run replay` demonstrates how a newly available eligible appearance changes
-the selected five and creates a refreshed forecast revision. It reads a current
-canonical snapshot and performs the demonstration in a disposable PostgreSQL 17
-clone. Use genuine imported football records for the real-data demonstration;
+`npm run replay` retains the `historical-arrival-replay-v1` APIFootball
+demonstration of how a newly available eligible appearance changes the selected
+five and creates a refreshed forecast revision. It reads an archived canonical
+snapshot and performs the demonstration in a disposable PostgreSQL 17 clone.
+Its scope is Championship/Ligue 2, 2026/27; it does not demonstrate current Sorare
+Premier League/La Liga coverage. Use genuine imported football records for the
+real-data demonstration;
 [`npm run demo`](demo.md) provides a separate synthetic seed.
 
 This is a **present-cutoff data-arrival demonstration**. The sixth appearance is
@@ -25,9 +28,14 @@ Configure these source connection settings in the ignored local `.env`:
 - `POSTGRES_DB` (default: `sports`)
 - `POSTGRES_READER_PASSWORD`, for the restricted `lsp_reader` login
 
-The source must already contain the approved schema and genuine imported
-football evidence. Follow [setup](../README.md) and
-[ingestion](ingestion.md) if it is empty; the replay itself never imports data.
+Use a separate archived source snapshot and the matching
+[`v1.0.0`](https://github.com/DevaOnL/Live-Sports-Prediction/tree/v1.0.0)
+checkout/configuration with the original schema, enabled APIFootball coverage and
+genuine imported football evidence. Restore only into isolated owned services;
+see [deployment](deployment.md). The replay itself never imports data. Current
+migration 010 disables those former product leagues; a Sorare-only or upgraded
+active source is not a suitable archived replay input. Do not reactivate retired
+leagues or change active volumes to run this demonstration.
 
 ```bash
 npm ci
@@ -96,9 +104,10 @@ requires its own timely private capture and later real outcomes.
 
 ## Dated real-data verification
 
-On **2026-11-10**, the command passed against the application's imported football
-records. Its two selected windows each contained five appearances with four in
-common: the prior oldest left and the sixth entered. The baseline correctly
+On **2026-11-10**, before the current-source migration, the command passed against
+the application's then-imported APIFootball records. Its two selected windows each
+contained five appearances with four in common: the prior oldest left and the
+sixth entered. The baseline correctly
 reported incomplete history; restoring the exact observation produced an
 available forecast in a new child revision matching the untouched snapshot.
 Provenance/time preservation, idempotence, role restrictions, queue/audit effects

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Collection, Db } from "mongodb";
-import { COVERAGE } from "./coverage";
+import { LEGACY_SOURCE, type SourceProfile } from "./sources";
 import type { ArchivedResponse, ImportResult, Issue, ProviderResponse } from "./types";
 
 type RawArchive = ProviderResponse & { _id: string };
@@ -69,9 +69,11 @@ export class ArchiveStore {
     return archived(document);
   }
 
-  async pending(limit = 50): Promise<ArchivedResponse[]> {
+  async pending(limit = 50, provider?: "sorare" | "apifootball"): Promise<ArchivedResponse[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Invalid archive batch limit");
     const documents = await this.raw.aggregate<RawArchive>([
+      ...(provider === "sorare" ? [{ $match: { "params.provider": "sorare" } }]
+        : provider === "apifootball" ? [{ $match: { $or: [{ "params.provider": "apifootball" }, { "params.provider": { $exists: false } }] } }] : []),
       { $sort: { retrievedAt: 1, _id: 1 } },
       { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },
       { $match: { "metadata.state": { $nin: ["imported", "invalid"] } } },
@@ -92,9 +94,10 @@ export class ArchiveStore {
   }
 
   /** Retain every latest-time observation so offline upgrades preserve ambiguity. */
-  async latestRosters(): Promise<ArchivedResponse[]> {
+  async latestRosters(profile: SourceProfile = LEGACY_SOURCE): Promise<ArchivedResponse[]> {
     const documents = await this.raw.aggregate<RawArchive>([
-      { $match: { action: "get_teams", "params.league_id": { $in: COVERAGE.map((coverage) => coverage.id) } } },
+      { $match: { action: "get_teams", "params.league_id": { $in: profile.coverage.map((coverage) => coverage.id) },
+        ...(profile.provider === "sorare" ? { "params.provider": "sorare" } : { $or: [{ "params.provider": "apifootball" }, { "params.provider": { $exists: false } }] }) } },
       { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },
       { $match: { "metadata.state": "imported" } },
       { $setWindowFields: {

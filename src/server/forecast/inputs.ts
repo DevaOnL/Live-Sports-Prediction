@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { COVERAGE } from "../ingestion/coverage";
+import { LEGACY_SOURCE, sourceSeasonGuard, type SourceProfile } from "../ingestion/sources";
 import { cutoffUtc, localDate, reconstructStandings } from "../ingestion/standings";
 import type { Club, Coverage, Fixture, Player } from "../ingestion/types";
 import { canonicalJson } from "./engine";
@@ -33,10 +34,10 @@ function rosterEvidence(observations: Roster[], playerId: string) {
   };
 }
 
-function match(fixture: StoredFixture): Match {
+function match(fixture: StoredFixture, profile: SourceProfile): Match {
   return {
     fixtureId: fixture.id, leagueId: fixture.leagueId, season: fixture.season,
-    competition: fixture.leagueId === "153" ? "championship" : "ligue_2",
+    competition: profile.competitionCodes[fixture.leagueId],
     kickoffAt: fixture.kickoffAt, status: fixture.status,
     homeClubId: fixture.home.id, awayClubId: fixture.away.id,
   };
@@ -47,9 +48,13 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
   return prepare(client, cutoffAt, providerPlayerIds);
 }
 
+export async function prepareSourceInputs(client: PoolClient, cutoffAt: string, profile: SourceProfile, providerPlayerIds?: readonly string[]): Promise<Map<string, PreparedInput>> {
+  return prepare(client, cutoffAt, providerPlayerIds, undefined, false, profile);
+}
+
 /** Observed eligibility evidence for scouting, without forecast context or provenance copies. */
-export async function prepareObservedInputs(client: PoolClient, cutoffAt: string): Promise<Map<string, PreparedInput>> {
-  return prepare(client, cutoffAt, undefined, undefined, true);
+export async function prepareObservedInputs(client: PoolClient, cutoffAt: string, profile: SourceProfile = LEGACY_SOURCE): Promise<Map<string, PreparedInput>> {
+  return prepare(client, cutoffAt, undefined, undefined, true, profile);
 }
 
 /** Retrospectively corrected schedule with outcomes after the frozen date hidden. */
@@ -58,46 +63,43 @@ export async function prepareHistoricalInputs(client: PoolClient, cutoffAt: stri
   return prepare(client, cutoffAt, providerPlayerIds, date);
 }
 
-async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[], historicalDate?: string, observationOnly = false): Promise<Map<string, PreparedInput>> {
+async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[], historicalDate?: string, observationOnly = false,
+  profile: SourceProfile = LEGACY_SOURCE): Promise<Map<string, PreparedInput>> {
   const cutoff = Date.parse(cutoffAt);
   if (!Number.isFinite(cutoff)) throw new RangeError("Invalid forecast cutoff");
   cutoffAt = new Date(cutoff).toISOString();
+  const provider = `'${profile.provider.replaceAll("'", "''")}'`;
   const seasonRows = await client.query<{
     id: string; league_id: string; label: string; normalized_revision_id: string | null;
   }>(`SELECT cs.id,c.provider_id AS league_id,cs.label,cs.normalized_revision_id
       FROM sports.competition_seasons cs JOIN sports.competitions c ON c.id=cs.competition_id
-      WHERE c.provider='apifootball' AND c.enabled AND cs.enabled
-        AND c.provider_id IN ('153','164') AND cs.label='2026/27'
-        AND cs.starts_on=DATE '2026-07-01' AND cs.ends_on=DATE '2027-06-30'
-        AND c.coefficient=1.5
-        AND ((c.provider_id='153' AND cs.expected_clubs=24 AND c.timezone='Europe/London')
-          OR (c.provider_id='164' AND cs.expected_clubs=18 AND c.timezone='Europe/Paris'))
+      WHERE ${sourceSeasonGuard(profile)}
       ORDER BY c.provider_id,cs.id`);
   const seasons = new Map<string, Season>();
   for (const row of seasonRows.rows) {
-    const coverage = COVERAGE.find((candidate) => candidate.id === row.league_id && candidate.season === row.label)!;
+    const coverage = profile.coverage.find((candidate) => candidate.id === row.league_id && candidate.season === row.label)!;
     seasons.set(row.id, { id: row.id, coverage, revisionId: row.normalized_revision_id, clubs: [] });
   }
   const seasonIds = [...seasons.keys()];
   const players = await client.query<{ id: string; provider_id: string; position: Player["position"]; normalized_revision_id: string | null }>(
     `SELECT id,provider_id,position,normalized_revision_id FROM sports.players
-     WHERE provider='apifootball' AND ($1::text[] IS NULL OR provider_id=ANY($1::text[])) ORDER BY provider_id`,
+     WHERE provider=${provider} AND ($1::text[] IS NULL OR provider_id=ANY($1::text[])) ORDER BY provider_id`,
     [providerPlayerIds ? [...new Set(providerPlayerIds)] : null],
   );
   const registrations = await client.query<{ season_id: string; provider_id: string; name: string }>(
       `SELECT sc.season_id,c.provider_id,c.name FROM sports.season_clubs sc
-       JOIN sports.clubs c ON c.id=sc.club_id WHERE sc.season_id=ANY($1::uuid[]) ORDER BY sc.season_id,c.provider_id`, [seasonIds]);
+       JOIN sports.clubs c ON c.id=sc.club_id WHERE sc.season_id=ANY($1::uuid[]) AND c.provider=${provider} ORDER BY sc.season_id,c.provider_id`, [seasonIds]);
   const fixtureRows = await client.query<{
       id: string; provider_id: string; season_id: string; kickoff_at: Date | null; status: Fixture["status"];
       statistics_status: Fixture["statisticsStatus"]; home_score: number | null; away_score: number | null;
       home_id: string; home_name: string; away_id: string; away_name: string; normalized_revision_id: string | null;
     }>(`SELECT f.*,h.provider_id AS home_id,h.name AS home_name,a.provider_id AS away_id,a.name AS away_name
         FROM sports.fixtures f JOIN sports.clubs h ON h.id=f.home_club_id JOIN sports.clubs a ON a.id=f.away_club_id
-        WHERE f.provider='apifootball' AND f.season_id=ANY($1::uuid[]) ORDER BY f.provider_id`, [seasonIds]);
+        WHERE f.provider=${provider} AND f.season_id=ANY($1::uuid[]) ORDER BY f.provider_id`, [seasonIds]);
   const appearanceRows = await client.query<StoredAppearance>(
       `SELECT a.*,c.provider_id AS club_id FROM sports.appearances a
        JOIN sports.fixtures f ON f.id=a.fixture_id LEFT JOIN sports.clubs c ON c.id=a.club_id
-       WHERE f.provider='apifootball' AND f.season_id=ANY($1::uuid[]) AND a.player_id=ANY($2::uuid[]) ORDER BY a.player_id,a.fixture_id`,
+       WHERE f.provider=${provider} AND f.season_id=ANY($1::uuid[]) AND a.player_id=ANY($2::uuid[]) ORDER BY a.player_id,a.fixture_id`,
       [seasonIds, players.rows.map((player) => player.id)]);
   const rosterRows = await client.query<{ id: string; season_id: string; observed_at: Date; complete: boolean; source_revision_id: string }>(
       `SELECT id,season_id,observed_at,complete,source_revision_id FROM sports.roster_snapshots
@@ -195,7 +197,8 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
     const history: HistoryAppearance[] = stored.map((appearance) => {
       const fixture = fixtureById.get(appearance.fixture_id)!;
       return {
-        ...match(fixture), covered: true, clubId: appearance.club_id,
+        ...match(fixture, profile), covered: true, clubId: appearance.club_id,
+        ...(profile.provider === "sorare" ? { sourceProvider: "sorare" as const } : {}),
         membershipKnown: appearance.membership_id !== null && appearance.club_id !== null,
         participation: appearance.participation, minutes: appearance.minutes,
         rating: appearance.rating === null ? null : Number(appearance.rating),
@@ -278,7 +281,7 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
       }
     }
     for (const fixture of fixtures) {
-      if (byFixture.has(fixture.sqlId) || fixture.status === "cancelled" || fixture.status === "postponed" || fixture.status === "live") continue;
+      if (byFixture.has(fixture.sqlId) || ["cancelled", "postponed", "live", "suspended"].includes(fixture.status)) continue;
       if (fixture.kickoffAt && (Date.parse(fixture.kickoffAt) >= cutoff || (historicalDate && localDate(fixture.kickoffAt, seasons.get(fixture.seasonId)!.coverage.timezone) >= historicalDate))) continue;
       const time = fixture.kickoffAt ? Date.parse(fixture.kickoffAt) : null;
       const checkpoint = time === null ? null : checkpoints.findLast((item) => item.at <= time);
@@ -291,7 +294,7 @@ async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?:
       gaps, currentClub, rosterReasons: ["missing_roster_observation", "incomplete_roster_observation", "ambiguous_current_club", "unknown_current_club"]
         .filter((code) => rosterReasons.some((reason) => reason.code === code)).map((code) => ({ code })),
       targets: !observationOnly && currentClub ? fixtures.filter((fixture) => fixture.leagueId === currentClub.leagueId && fixture.season === currentClub.season
-        && [fixture.home.id, fixture.away.id].includes(currentClub.clubId)).map((fixture) => ({ ...match(fixture), context: contextFor(fixture, currentClub.clubId, true) })) : [],
+        && [fixture.home.id, fixture.away.id].includes(currentClub.clubId)).map((fixture) => ({ ...match(fixture, profile), context: contextFor(fixture, currentClub.clubId, true) })) : [],
     };
     result.set(player.provider_id, { input, sourceOrdinal, provenance: observationOnly ? {} : {
       sourceOrdinal, playerRevisionId: player.normalized_revision_id,

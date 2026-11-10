@@ -1,6 +1,7 @@
 import { createRuntime } from "../src/server/ingestion/runtime";
 import { RateLimitError } from "../src/server/ingestion/store";
 import { ProviderError } from "../src/server/ingestion/provider";
+import { sourceSeasonGuard } from "../src/server/ingestion/sources";
 
 async function main() {
   const [command, id, ...extra] = process.argv.slice(2);
@@ -28,13 +29,24 @@ async function main() {
     } else {
       const fixtures = await runtime.pool.query(`SELECT c.provider_id AS league_id,f.status,f.statistics_status,count(*)::text AS count
         FROM sports.fixtures f JOIN sports.competition_seasons s ON s.id=f.season_id
-        JOIN sports.competitions c ON c.id=s.competition_id GROUP BY c.provider_id,f.status,f.statistics_status ORDER BY 1,2,3`);
-      const archives = await runtime.db.collection("import_metadata").aggregate([{ $group: { _id: "$state", count: { $sum: 1 } } }]).toArray();
-      const budget = await runtime.pool.query("SELECT count(*)::int AS used,120-count(*)::int AS remaining FROM sports.provider_requests WHERE attempted_at>clock_timestamp()-interval '1 hour'");
+        JOIN sports.competitions c ON c.id=s.competition_id WHERE f.provider=$1 AND ${sourceSeasonGuard(runtime.profile, "s", "c")}
+        GROUP BY c.provider_id,f.status,f.statistics_status ORDER BY 1,2,3`, [runtime.profile.provider]);
+      const archives = await runtime.db.collection("raw_archives").aggregate([
+        { $match: runtime.profile.provider === "sorare" ? { "params.provider": "sorare" } : { "params.provider": { $exists: false } } },
+        { $lookup: { from: "import_metadata", localField: "_id", foreignField: "_id", as: "metadata" } },
+        { $unwind: "$metadata" }, { $group: { _id: "$metadata.state", count: { $sum: 1 } } },
+      ]).toArray();
+      const limit = runtime.profile.provider === "sorare" ? 60 : 120;
+      const windowSeconds = runtime.profile.provider === "sorare" ? 60 : 3600;
+      const budget = await runtime.pool.query(`SELECT count(*)::int AS used,$1::int-count(*)::int AS remaining
+        FROM sports.provider_requests WHERE attempted_at>clock_timestamp()-($2::int*interval '1 second')
+          AND ${runtime.profile.provider === "sorare" ? "resource_key LIKE 'sorare:%'" : "resource_key NOT LIKE 'sorare:%'"}`, [limit, windowSeconds]);
       const reconciliation = await runtime.pool.query(`SELECT entity_key,detail->'complete' AS complete,detail->'mismatches' AS mismatches,
         detail->'reconstructionIssues' AS issues,occurred_at FROM sports.audit_log
-        WHERE action='reconcile' ORDER BY occurred_at DESC LIMIT 2`);
-      console.info(JSON.stringify({ fixtures: fixtures.rows, archives, budget: budget.rows[0], jobs: await runtime.queue.status(), failures: await runtime.queue.failures(), reconciliation: reconciliation.rows }));
+        WHERE action='reconcile' AND ${runtime.profile.provider === "sorare" ? "entity_key LIKE 'sorare:%'" : "entity_key NOT LIKE 'sorare:%'"}
+        ORDER BY occurred_at DESC LIMIT 2`);
+      console.info(JSON.stringify({ provider: runtime.profile.provider, fixtures: fixtures.rows, archives,
+        budget: { ...budget.rows[0], limit, windowSeconds }, jobs: await runtime.queue.status(), failures: await runtime.queue.failures(), reconciliation: reconciliation.rows }));
     }
   } finally { await runtime.close(); }
 }

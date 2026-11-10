@@ -4,8 +4,8 @@ export type Coverage = {
   startsOn: string; endsOn: string; expectedClubs: number;
 };
 export type Issue = { code: string; resource: string; field?: string };
-export type Club = { id: string; name: string };
-export type Player = { id: string; name: string; position: "GK" | "DEF" | "MID" | "FWD" | "UNKNOWN"; clubId?: string };
+export type Club = { id: string; name: string; slug?: string };
+export type Player = { id: string; name: string; slug?: string; position: "GK" | "DEF" | "MID" | "FWD" | "UNKNOWN"; clubId?: string };
 export type Appearance = {
   player: Player; clubId: string; participation: "unknown" | "played" | "dnp";
   minutes: number | null; rating: number | null; goals: number | null;
@@ -15,7 +15,7 @@ export type Appearance = {
 };
 export type Fixture = {
   id: string; leagueId: string; season: string; home: Club; away: Club;
-  kickoffAt: string | null; status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled";
+  kickoffAt: string | null; status: "unknown" | "scheduled" | "live" | "final" | "postponed" | "cancelled" | "suspended";
   statisticsStatus: "unknown" | "missing" | "partial" | "complete";
   homeScore: number | null; awayScore: number | null;
   detailed: boolean; appearances: Appearance[];

@@ -50,7 +50,7 @@ services:
       MONGO_DB: ${MONGO_DB:-sports}
       MONGO_WORKER_USER: ${MONGO_WORKER_USER:-lsp_ingestion}
       MONGO_WORKER_PASSWORD: ${MONGO_WORKER_PASSWORD:-}
-      APIFOOTBALL_API_KEY: ${APIFOOTBALL_API_KEY:-}
+      SORARE_API_KEY: ${SORARE_API_KEY:-}
     expose:
       - "4001"
     healthcheck:

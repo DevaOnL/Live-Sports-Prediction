@@ -6,14 +6,16 @@ import Link from "next/link";
 type Selection = { id: string; name: string; position: string };
 type SelectionContext = { selected: Selection[]; toggle: (player: Selection) => void; replace: (players: Selection[]) => void; remove: (id: string) => void; clear: () => void };
 const context = createContext<SelectionContext | null>(null);
-const storageKey = "football-comparison";
+const storageKey = "football-comparison-current";
+const validPlayerId = (value: string) => (/^[1-9]\d{0,17}$/.test(value) && Number.isSafeInteger(Number(value)))
+  || /^Player:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
 export function SelectionProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<Selection[]>([]);
   useEffect(() => {
     try {
       const value: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? "[]");
       if (Array.isArray(value)) {
-        const safe = value.filter((item): item is Selection => item && typeof item === "object" && typeof item.id === "string" && /^[1-9]\d{0,15}$/.test(item.id) && typeof item.name === "string" && item.name.length <= 300 && ["GK", "DEF", "MID", "FWD", "UNKNOWN"].includes(item.position));
+        const safe = value.filter((item): item is Selection => item && typeof item === "object" && typeof item.id === "string" && validPlayerId(item.id) && typeof item.name === "string" && item.name.length <= 300 && ["GK", "DEF", "MID", "FWD", "UNKNOWN"].includes(item.position));
         // Loading untrusted display preferences never grants application access.
         queueMicrotask(() => setSelected([...new Map(safe.map((p) => [p.id, p])).values()].slice(0, 4)));
       }

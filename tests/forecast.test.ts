@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canonicalJson, competitionCoefficient, evaluateForecast, inputHash } from "../src/server/forecast/engine";
+import { canonicalJson, competitionCoefficient, evaluateForecast, inputHash, selectObservedWindow } from "../src/server/forecast/engine";
 import { METRICS, type Context, type ForecastInput, type HistoryAppearance, type Metric, type Position, type Target } from "../src/server/forecast/types";
 
 function context(own = 10, opponent = 10, clubs = 24): Context {
@@ -139,6 +139,28 @@ test("short appearances and confirmed DNP retain the window but remain refresh e
   assert.notEqual(inputHash(data), original);
 });
 
+test("current explicit DNP with omitted minutes preserves actual appearances and nullable evidence without changing legacy rules", () => {
+  const data = input();
+  const missed = appearance(6, { participation: "dnp", minutes: null, rating: null,
+    metrics: Object.fromEntries(METRICS.map((metric) => [metric, null])) as Record<Metric, null> });
+  data.appearances.push(missed);
+  assert.equal(selectObservedWindow(data).ready, false, "legacy omitted-minute behavior stays frozen");
+  assert(selectObservedWindow(data).gaps.some((gap) => gap.code === "unknown_minutes"));
+  missed.sourceProvider = "sorare";
+  const current = selectObservedWindow(data);
+  assert.equal(current.ready, true);
+  assert.deepEqual(current.selected.map((row) => row.fixtureId), ["101", "102", "103", "104", "105"]);
+  assert.equal(missed.minutes, null);
+  assert(Object.values(missed.metrics).every((value) => value === null));
+  missed.participation = "unknown";
+  assert.equal(selectObservedWindow(data).ready, false);
+  assert(selectObservedWindow(data).gaps.some((gap) => gap.code === "unknown_participation"));
+  missed.participation = "dnp";
+  missed.metrics.goals = 1;
+  assert.equal(selectObservedWindow(data).ready, false, "a DNP cannot hide known positive counts");
+  assert(selectObservedWindow(data).gaps.some((gap) => gap.code === "conflicting_participation"));
+});
+
 test("unknown eligibility cannot be skipped in favour of an older sixth match", () => {
   for (const change of [
     { minutes: null }, { participation: "unknown" as const }, { membershipKnown: false },
@@ -186,10 +208,10 @@ test("the cutoff excludes the target's own appearance and known nonfinal fixture
   close(result.forecastRating.value, 7);
 });
 
-test("known live, postponed and cancelled fixtures cannot enter history even with unknown kickoff", () => {
+test("known live, postponed, cancelled and suspended fixtures cannot enter history even with unknown kickoff", () => {
   const data = input();
   const originalHash = inputHash(data);
-  for (const status of ["live", "postponed", "cancelled"] as const) {
+  for (const status of ["live", "postponed", "cancelled", "suspended"] as const) {
     data.appearances.push(appearance(6, { fixtureId: status, status, kickoffAt: null, minutes: null, participation: "unknown" }));
   }
   const result = evaluateForecast(data);
@@ -304,6 +326,7 @@ test("next fixture requires known future schedule, club, league and season and r
   data.targets.unshift(
     target({ fixtureId: "cancelled", kickoffAt: "2026-09-21T12:00:00Z", status: "cancelled" }),
     target({ fixtureId: "postponed", kickoffAt: "2026-09-21T12:00:00Z", status: "postponed" }),
+    target({ fixtureId: "suspended", kickoffAt: "2026-09-21T12:00:00Z", status: "suspended" }),
     target({ fixtureId: "live", kickoffAt: "2026-09-21T12:00:00Z", status: "live" }),
     target({ fixtureId: "unknown", kickoffAt: null }),
     target({ fixtureId: "past", kickoffAt: "2026-09-20T12:00:00Z" }),

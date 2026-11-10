@@ -3,10 +3,12 @@
 This guide maps the DBMS demonstration requirements and football behavior to
 implemented artifacts and repeatable checks. Commands describe how to reproduce
 evidence; a source link or screenshot alone does not demonstrate a database
-operation. The [real-data sixth-appearance replay](replay.md) demonstrates window
-replacement and queued refresh in an isolated clone at a present cutoff. Existing
+operation. The archived [real-data sixth-appearance replay](replay.md) demonstrates
+window replacement and queued refresh in an isolated clone at a present cutoff. Existing
 window/recovery tests and the self-contained database demonstration use synthetic
 data; the replay does not establish historical forecast issuance or accuracy.
+Current product coverage is Sorare Premier League/La Liga, 2026/27. The original
+APIFootball evaluation/replay remains separately documented as archived evidence.
 
 ## Reproduction prerequisites
 
@@ -27,14 +29,15 @@ random credentials, synthetic data and temporary storage; no `.env`, provider
 key or existing application stack is required. See the
 [demonstration guide](demo.md) for expected results and cleanup behavior.
 
-`npm run replay --silent` separately reads genuine imported football records
+`npm run replay --silent` separately reads genuine archived APIFootball records
 through `lsp_reader` and performs a sixth-appearance arrival demonstration in its
-own PostgreSQL 17 clone. It needs the source reader connection and suitable real
-evidence, makes no provider calls and leaves source records unchanged. See the
+own PostgreSQL 17 clone. It needs a matching archived snapshot/checkout, the source
+reader connection and suitable real evidence, makes no provider calls and leaves
+source records unchanged. See the
 [replay prerequisites and interpretation](replay.md).
 
 All `test:db`, `test:ingestion`, `test:forecast`, `test:reporting`, `test:auth`,
-`test:api`, `test:evaluation`, `test:worker`, `test:ui` and
+`test:api`, `test:evaluation`, `test:worker`, `test:source`, `test:ui` and
 `test:accessibility` commands below require the guarded disposable environments
 in [database tests](database.md#isolated-integration-tests) or the combined
 [PostgreSQL/MongoDB recipe](ingestion.md#isolated-integration-tests). API/browser
@@ -54,14 +57,14 @@ source commands require the enabled worker and approved provider configuration.
 | --- | --- | --- |
 | ER diagram | [Entity relationships](database.md#entity-relationships) | Open the Mermaid diagram beside [`001_football.sql`](../db/migrations/001_football.sql), roster and forecast migrations; trace a season/club/fixture/appearance and the forecast parent/head relationships |
 | Relational schema with keys, relationships and constraints | [Tables, keys and integrity](database.md#tables-and-keys), [`db/migrations`](../db/migrations/) | `npm run test:db` verifies PK/unique/FK/check and deferred context rules; `npm run demo` shows an invalid roster-player FK being rejected |
-| SQL implementation: DDL with constraints | [`scripts/db.ts`](../scripts/db.ts), migrations 001–009 | `npm run test:db` applies the schema fresh, reruns it, rejects altered migration history and invalid records, and verifies failed DDL rolls back; actual setup uses `npm run db:provision` then `npm run db:migrate` |
+| SQL implementation: DDL with constraints | [`scripts/db.ts`](../scripts/db.ts), migrations 001–011 | `npm run test:db` applies the schema fresh, reruns it, rejects altered migration history and invalid records, and verifies failed DDL rolls back; `npm run test:source` verifies the 001–009→010 upgrade preserves existing evidence and routines. Actual setup uses `npm run db:provision` then `npm run db:migrate` |
 | NoSQL or vector database creation | [`scripts/mongo.ts`](../scripts/mongo.ts), [`archive.ts`](../src/server/ingestion/archive.ts) | `npm run test:ingestion` provisions MongoDB 8 validators/indexes and its restricted worker identity; `npm run demo` also verifies document collection creation/validation/indexes. This project implements MongoDB, not vector search |
 | Technology justification | [Architecture and choices](architecture.md#why-these-technologies) | Explain each component's data/privilege boundary and tradeoff using the diagram, SQL grants, archive permissions and worker flow |
 | DML: INSERT, UPDATE and DELETE | [`dml.sql`](../db/demo/sql/dml.sql) | `npm run demo` returns one row for each operation on a separate synthetic player, then verifies rollback restores the sports data |
 | Nested, correlated, recursive and JOIN queries | [`queries.sql`](../db/demo/sql/queries.sql) | `npm run demo` checks a club/player JOIN, nested eligible-player selection, correlated counts, latest-five CTE/window query and recursive forecast ancestry; expected rows are documented in [demo](demo.md#executable-examples) |
-| Functions/procedures, triggers and CTEs | [`008_reporting.sql`](../db/migrations/008_reporting.sql), [`advanced.sql`](../db/demo/sql/advanced.sql) | `npm run demo` runs history/lineage functions and an idempotent refresh procedure, then proves audit/outbox trigger effects and rollback; `npm run test:reporting` checks routine permissions, concurrency, recursive limits and unchanged-pointer behavior |
+| Functions/procedures, triggers and CTEs | [`008_reporting.sql`](../db/migrations/008_reporting.sql), [`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql), [`advanced.sql`](../db/demo/sql/advanced.sql) | `npm run demo` runs original history/lineage functions and an idempotent refresh procedure, then proves audit/outbox trigger effects and rollback; `npm run test:reporting` checks original routines, and `npm run test:source` checks current provider-aware overloads and privilege/idempotence boundaries |
 | NoSQL features and read/update/delete operations | [`operations.ts`](../db/demo/mongo/operations.ts) | `npm run demo` demonstrates indexed projected reads, `$set`, `$addToSet`, scoped deletion and `$match`/`$unwind`/`$group` aggregation; it leaves three synthetic annotations before dropping only the owned demo collection and verifies source archives are unchanged |
-| Next.js interface | [`src/app`](../src/app/), [`src/components`](../src/components/) | Visit `/login`, `/overview`, `/players`, `/players/PLAYER_ID`, `/compare`, `/account` and admin-only `/admin`; `npm run test:ui` exercises actual browser journeys and responsive layouts |
+| Next.js interface | [`src/app`](../src/app/), [`src/components`](../src/components/) | Visit `/login`, `/overview`, `/players`, `/players/PLAYER_ID`, `/compare`, `/account` and admin-only `/admin`; Operations is reached through Account settings. `npm run test:ui` exercises actual browser journeys and responsive layouts |
 | Backend/API and database integration | [`handler.ts`](../src/server/web/handler.ts), [`src/server/api`](../src/server/api/), [API contract](api.md) | `npm run test:api` exercises a built HTTP server with actual SQL reads, shared-snapshot comparison, audited/idempotent commands and correction conflict handling; `npm run test:worker` exercises the worker's cross-store/recovery path |
 | Frontend authentication, at least two roles and database RBAC | [`src/server/auth`](../src/server/auth/), [`003_grants.sql`](../db/migrations/003_grants.sql), [`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql), [`users.ts`](../scripts/users.ts) | Create viewer/admin accounts through the stdin-only CLI, sign in and inspect role-aware navigation; `npm run test:auth` checks sessions/revocation/throttling and SQL role boundaries, while `npm run test:api` denies unauthenticated requests, forged roles and viewer admin actions. Reader SQL writes are rejected |
 | Documentation and Git/GitHub | [`README.md`](../README.md), technical [`docs`](./), [CI workflow](../.github/workflows/ci.yml), repository commit/PR history | Follow setup, synthetic demo and [real-data replay](replay.md) prerequisites from a clean checkout; inspect published commits/PR checks. CI runs the locked install, static/build checks and isolated integration/browser demonstrations; the real-data replay requires an already imported source snapshot |
@@ -80,31 +83,35 @@ migrator credentials. See [privilege boundaries](architecture.md#authentication-
 | Replace the oldest eligible appearance regardless of performance | [`forecast.test.ts`](../tests/forecast.test.ts), [`forecast.database.test.ts`](../tests/forecast.database.test.ts), [`replay.ts`](../scripts/replay.ts) | Synthetic tests cover replacement, short appearances, DNP and deterministic revisions. `npm run replay --silent` withholds one real latest eligible appearance in an owned clone, verifies the honest incomplete-history baseline, restores the exact row and checks queued refresh advances the five and appends a revision matching the untouched snapshot; [protocol and limits](replay.md) |
 | Dynamic refresh after new source evidence or target expiry | [`jobs.ts`](../src/server/ingestion/jobs.ts), [`store.ts`](../src/server/forecast/store.ts), [`src/worker`](../src/worker/) | `npm run test:forecast` and `npm run test:worker` verify coalescing, retries, leases, restart recovery and local progress during source stalls; queue acceptance is distinct from completion |
 | Upper/middle/lower opposition with asymmetric team context | [`standings.ts`](../src/server/ingestion/standings.ts), [`engine.ts`](../src/server/forecast/engine.ts), [formulas](forecasting.md#context-and-formulas) | `npm run test:unit` checks competition-local cutoffs, deductions/ties, scaled tier boundaries and difficulty from opponent strength minus own-team strength |
-| Competition coefficient 2 or 1.5 | [`coverage.ts`](../src/server/ingestion/coverage.ts), model tests | Only the named top five **top divisions** use 2; both covered second divisions use 1.5. Formula tests do not enable additional data coverage |
+| Competition coefficient 2 or 1.5 | [`sources.ts`](../src/server/ingestion/sources.ts), [`engine.ts`](../src/server/forecast/engine.ts), model tests | Only Premier League, Ligue 1, Bundesliga, Serie A and La Liga use 2; both current leagues use 2. Archived second divisions retain 1.5. Formula tests do not enable additional data coverage |
 | Position-specific decimal per-90 estimates | [`engine.ts`](../src/server/forecast/engine.ts), [metric table/formula](forecasting.md#context-and-formulas) | Unit tests cover GK/DEF/MID/FWD, reported minutes above 90, valid zero and dependent missing fields; detail/comparison show units and the 90-minute assumption |
 | Separate observed statistics, adjusted form and forecast | [`forecast-view.tsx`](../src/components/forecast-view.tsx), [`player-detail.tsx`](../src/components/player-detail.tsx) | Player detail labels rating 0–10, adjusted form 0–100 and per-90 forecasts; disclosures retain exact inputs, provenance, warnings and output-specific reasons |
+| Observed player strength for scouting | [`highlights.ts`](../src/server/scouting/highlights.ts), [`best-statistic.tsx`](../src/components/best-statistic.tsx), [scouting rules](forecasting.md#observed-scouting-statistics) | Cards show Best statistic above Evaluation details; profiles show the same highlight. Rank the exact five-match per-90 rate against at least ten eligible same-position/league/season players, including the subject; only percentile ≥80 earns Top 20%. Unit/source/browser tests cover ties, zeros, missing evidence and display |
 | Player-to-player comparison | [`read.ts`](../src/server/api/read.ts), [`comparison.tsx`](../src/components/comparison.tsx), [comparison API](api.md#viewer-reads) | Compare 2–4 players at one cutoff/source snapshot. Default same-position; explicit cross-position opt-in shows a notice and shared metric intersection. `npm run test:api`/`test:ui` verify alignment; comparison creates no saved revision |
 | Honest unavailable/incomplete/stale/loading/error states | [`forecast-presentation.ts`](../src/lib/forecast-presentation.ts), [`use-api.ts`](../src/lib/use-api.ts), forecast/API/browser tests | Missing evidence blocks dependent outputs; form-only is distinguishable from a future forecast. Tests exercise null versus zero, expired targets, source changes, permission/session/service failures and asynchronous states |
-| Free, bounded, provenance-backed source ingestion | [`provider.ts`](../src/server/ingestion/provider.ts), [`coverage.ts`](../src/server/ingestion/coverage.ts), [`pipeline.ts`](../src/server/ingestion/pipeline.ts), [ingestion](ingestion.md) | `npm run test:unit`/`test:ingestion` verify allowlisting, shared 120-attempt rolling-hour budget, archive-first recovery and normalization with synthetic responses; tests require no provider key |
+| Free, bounded, provenance-backed source ingestion | [`sorare-client.ts`](../src/server/ingestion/sorare-client.ts), [`sorare-normalize.ts`](../src/server/ingestion/sorare-normalize.ts), [`sorare.ts`](../src/server/ingestion/sorare.ts), [`sources.ts`](../src/server/ingestion/sources.ts), [ingestion](ingestion.md) | Registered free access to current Premier League/La Liga statistics was verified on 2026-11-10. `npm run test:unit`/`test:source` verify allowlisting, native IDs, shared 60-attempt rolling-minute budget with one-second spacing, paginated capture completeness, archive-first recovery and nullable normalization; tests require no provider key |
 | Administrator recovery and numeric corrections | [`admin.ts`](../src/server/api/admin.ts), [`admin-correction.tsx`](../src/components/admin-correction.tsx), [operations API](api.md#administrator-operations) | `/admin` exposes job/import/audit status, queued commands and revision-checked corrections; `npm run test:api` covers 403/409, idempotency, actor audit and manual provenance. Corrections cannot invent participation/membership/finality |
 | Responsive, accessible navigation and evidence | [`accessibility.browser.test.ts`](../tests/accessibility.browser.test.ts), [`interface.browser.test.ts`](../tests/interface.browser.test.ts) | `npm run test:ui` and `npm run test:accessibility` check keyboard focus, labels, feedback, disclosures, touch targets and layouts at 390/768/1440 pixels. This is scoped automated/manual review, not a claim of exhaustive assistive-technology conformance |
-| Explain measured performance and coverage | [`src/server/evaluation`](../src/server/evaluation/), [evaluation protocol/result](evaluation.md) | `npm run evaluate --silent` reads one current snapshot using the fixed historical protocol without writes; published dated result is **0/2,596 scored**, with `null` errors. `npm run test:evaluation` uses synthetic positive cohorts to verify paired scoring/cutoffs/leakage boundaries |
-| Preserve predictions for later real-outcome scoring | [`measure.ts`](../scripts/measure.ts), [`prospective.ts`](../src/server/evaluation/prospective.ts), [forward protocol](evaluation.md#forward-measurement) | `npm run measure --silent -- capture ./forecast-capture.json`, then later `npm run measure --silent -- score ./forecast-capture.json`. Reader-only, immutable private 0600 capture before local matchday midnight; pending outcomes supply no measured accuracy |
+| Explain measured performance and coverage | [`src/server/evaluation`](../src/server/evaluation/), [evaluation protocol/result](evaluation.md) | `npm run evaluate --silent` reads an archived APIFootball snapshot using the fixed historical protocol without writes; reproduction needs the matching archived checkout/snapshot. Published dated result is **0/2,596 scored**, with `null` errors. `npm run test:evaluation` uses synthetic positive cohorts to verify paired scoring/cutoffs/leakage boundaries; it does not measure current Sorare accuracy |
+| Preserve predictions for later real-outcome scoring | [`measure.ts`](../scripts/measure.ts), [`prospective.ts`](../src/server/evaluation/prospective.ts), [archived forward protocol](evaluation.md#forward-measurement) | Under the archived APIFootball protocol/prerequisites, `npm run measure --silent -- capture ./forecast-capture.json`, then later `npm run measure --silent -- score ./forecast-capture.json`. Reader-only, immutable private 0600 capture before local matchday midnight; pending outcomes supply no measured accuracy. Existing captures retain their original source identity |
 
 ## Evidence limits
 
-The frozen historical window is October 1–November 9, 2026. No actual roster
+The archived APIFootball historical window is October 1–November 9, 2026. No actual roster
 observation preceded any holdout cutoff, so later roster imports cannot supply
 historical forecast evidence. The zero-scored result and unavailable error
 statistics remain part of the deliverable. Forward captures supplement that
 result; only finalized real outcomes and available paired cases can produce a
 future measured score. Private captures and original provider payloads are not
-published.
+published. Current Sorare rating/form/key-pass outputs remain unavailable without
+matching source metrics; fantasy scores are not conventional ratings. Supported
+count projections and observed scouting statistics can be available when their
+own evidence is complete. No measured current-source accuracy is established.
 
 ## Verification record
 
-On **2026-11-10**, the documented combined integration recipe and service-free
-unit suite passed **329 tests with no failures or skips** using isolated
+Before the current-source migration, on **2026-11-10**, the then-documented combined
+integration recipe and service-free unit suite passed **329 tests with no failures or skips** using isolated
 PostgreSQL 17/MongoDB 8, Node.js 24.13.1 and npm 11.8.0. The locked install, lint,
 typecheck, production build and independent synthetic database demo passed too.
 For that verification, the executable application code matched
@@ -124,9 +131,10 @@ verification never targeted the existing application databases.
 
 ## Screen evidence
 
-These interface examples were captured on **2026-11-10** using isolated
+These archived interface examples were captured on **2026-11-10** using isolated
 synthetic demonstration data and example accounts. They show implemented screen
-behavior, not live provider coverage or measured forecast accuracy. Reproduce
+behavior before the current-source/scouting/navigation changes, not current
+league coverage or measured forecast accuracy. Reproduce
 the journeys with the [UI test prerequisites](ingestion.md#isolated-integration-tests)
 and `npm run test:ui`, or sign in to an application configured through the
 [setup guide](../README.md).
@@ -145,7 +153,7 @@ availability. Neither screen substitutes missing evidence with invented values.
 
 The offline database demo uses clearly labeled synthetic football data to make
 SQL/NoSQL behavior repeatable. The separate [real-data replay](replay.md) uses
-observed records in a disposable clone and a fixed present cutoff. Neither
+archived observed records in a disposable clone and a fixed present cutoff. Neither
 demonstration establishes provider completeness or predictive accuracy.
 Interactive football availability depends on the actual imported evidence and
 worker progress. Preserve these distinctions when demonstrating the application.

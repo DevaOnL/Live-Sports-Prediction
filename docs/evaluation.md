@@ -1,10 +1,17 @@
-# Retrospective evaluation
+# Archived retrospective evaluation
 
 The fixed `heuristic-v1` model has no established predictive accuracy. The frozen
 real-data evaluation scored **0 of 2,596 eligible target appearances (0% coverage)**.
 Historical roster observations were unavailable at every target cutoff. MAE and
 median absolute error are therefore **unavailable (`null`)** for the heuristic and
 all paired baselines. These results do not establish whether one method is better.
+
+This versioned experiment concerns the former APIFootball Championship/Ligue 2
+source. It is retained as dated evidence. The current product uses Sorare for
+Premier League/La Liga; neither the frozen historical protocol nor
+`prospective-v1` measures that new source. No current Sorare accuracy result is
+claimed. Changing provider and coverage does not justify substituting new data
+into a frozen experiment.
 
 ## Fixed protocol
 
@@ -28,7 +35,8 @@ silently dropping missing values. Whole matches with no appearance rows and
 undated fixtures are reported separately because their missing player population
 cannot be counted from observed appearances. Exclusion reasons are nonexclusive.
 
-Only approved 2026/27 regular-season competitions 153 and 164 are included. The
+Only archived APIFootball 2026/27 regular-season competitions 153 (Championship)
+and 164 (Ligue 2) are included. The
 holdout, formulas and baselines are fixed; the command has no tuning arguments.
 Canonical positions, fixture headers and results are retrospectively corrected.
 Future results and target appearances are hidden from model history. Corrected
@@ -112,8 +120,12 @@ and unavailable heuristic and paired-baseline MAE/median error.
 
 ## Run and verify
 
-After migration and ingestion, configure `POSTGRES_HOST`, `POSTGRES_PORT`,
-`POSTGRES_DB` and `POSTGRES_READER_PASSWORD` in the ignored local `.env`, then run:
+To reproduce the archived result, use a separate archived source snapshot and
+the matching [`v1.0.0`](https://github.com/DevaOnL/Live-Sports-Prediction/tree/v1.0.0)
+checkout/configuration, with the original enabled APIFootball coverage. Restore
+only into isolated owned services as described in [deployment](deployment.md).
+Configure `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` and
+`POSTGRES_READER_PASSWORD` in that checkout's ignored local `.env`, then run:
 
 ```bash
 npm run evaluate --silent > evaluation.json
@@ -125,6 +137,11 @@ transaction. It makes no provider calls, needs no MongoDB or writer credentials,
 and never updates live forecast heads, revisions, jobs or source records. A later
 run can differ as canonical evidence changes; the dated result above describes
 its recorded source snapshot.
+Migration 010 disables both former leagues on the active database. Running this
+archived loader there can report an empty cohort; that is not a replacement for
+the recorded 2,596-target experiment and does not evaluate Premier League/La
+Liga. Do not reactivate retired product coverage, change active volumes or alter
+the frozen protocol to make the archived command produce a larger result.
 The command recomputes the fixed retrospective experiment from canonical records;
 today's stored forecast heads do not supply its predictions. Use `evaluate` for
 historical cutoffs; operational forecast refreshes use current time and write
@@ -174,9 +191,11 @@ Relevant incomplete rosters and explicit conflicting claims still block forecast
 
 ## Forward measurement
 
-A separate **prospective-v1** protocol freezes the unchanged model's predictions
-and paired baselines from one reader-only canonical snapshot. Its fixture
-population is each approved club's earliest scheduled future match at capture;
+A separate archived **prospective-v1** protocol freezes the unchanged model's
+predictions and paired baselines from one reader-only APIFootball canonical
+snapshot. It retains the original Championship/Ligue 2 scope and the same
+isolated archived-source prerequisites above. Its fixture population is each
+originally approved club's earliest scheduled future match at capture;
 the computation and durable file write must finish before that fixture's
 competition-local midnight.
 A missed deadline is recorded separately; the tool never promotes a later match
@@ -227,6 +246,10 @@ usable paired predictions. `measured` means at least one output was actually
 scored; per-output coverage and exclusions still apply. Real future outcomes are
 required before any accuracy number can be reported. This protocol supplements
 the original frozen historical report and never replaces its zero-coverage result.
+Existing private captures remain bound to their original source and protocol;
+they cannot be relabeled as current Sorare captures. A future current-source
+evaluation would need an explicitly versioned protocol and genuine timely
+evidence before any measured score could be reported.
 
 `npm run test:unit` and `npm run test:evaluation` also verify forward capture,
 file integrity/privacy, midnight/DST rules, pending versus observed outcomes,
