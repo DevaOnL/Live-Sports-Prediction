@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
 import type { BestStatistic } from "../src/server/scouting/highlights";
+import type { ComparisonData } from "../src/lib/contracts";
+import { formatNumber } from "../src/lib/presentation";
 import { createWebHarness } from "./support/web";
 
 const web = createWebHarness();
@@ -414,6 +416,7 @@ test("comparison preserves two-to-four selections in URLs and requires explicit 
   await page.getByLabel("Allow cross-position comparison", { exact: true }).check();
   await page.getByRole("button", { name: "Compare selected players", exact: true }).click();
   await page.getByRole("region", { name: "Aligned comparison results", exact: true }).waitFor();
+  assert.equal(await page.getByRole("complementary", { name: "Comparison selection", exact: true }).count(), 0, "the redundant tray must not cover comparison values");
   assert.equal(new URL(page.url()).searchParams.get("allowCrossPosition"), "true");
   assert.equal(await page.getByRole("article", { name: /^Evidence for Synthetic demo / }).count(), 2);
   const firstEvidence = page.getByRole("article", { name: `Evidence for ${names[0]}`, exact: true });
@@ -437,6 +440,61 @@ test("comparison preserves two-to-four selections in URLs and requires explicit 
   assert.equal(await page.getByRole("article", { name: /^Evidence for Synthetic demo / }).count(), 4);
   await noOverflow(page);
 }));
+
+test("comparison exposes partial observed ratings without hiding available ratings, zero values or count forecasts", { timeout: 90_000 }, async () => {
+  const original = (await web.administrator.query<{ player_id: string; fixture_id: string; rating: string | null }>(`SELECT a.player_id,a.fixture_id,a.rating
+    FROM sports.appearances a JOIN sports.players p ON p.id=a.player_id JOIN sports.fixtures f ON f.id=a.fixture_id
+    WHERE p.provider_id='8002' AND f.provider_id IN ('900002','900003')`)).rows;
+  assert.equal(original.length, 2);
+  const schedule = (await web.administrator.query<{ id: string; kickoff_at: string | null }>("SELECT id,kickoff_at::text FROM sports.fixtures WHERE status='scheduled'")).rows;
+  assert(schedule.length > 0);
+  try {
+    // Keep this rating-coverage scenario independent of the seed's calendar dates.
+    await web.administrator.query("UPDATE sports.fixtures SET kickoff_at=transaction_timestamp()+interval '30 days' WHERE status='scheduled'");
+    await web.administrator.query(`UPDATE sports.appearances a SET rating=CASE WHEN f.provider_id='900002' THEN 0 ELSE NULL END
+      FROM sports.players p,sports.fixtures f WHERE p.id=a.player_id AND f.id=a.fixture_id
+      AND p.provider_id='8002' AND f.provider_id IN ('900002','900003')`);
+    await withPage(async (page) => {
+      await login(page);
+      const query = "playerId=8002&playerId=8003&allowCrossPosition=true";
+      const response = await page.request.get(`${web.origin}/api/compare?${query}`);
+      assert.equal(response.status(), 200);
+      const data: ComparisonData = (await response.json()).data;
+      assert.equal(data.players[0].result.historyStatus, "ready");
+      assert.equal(data.players[0].result.forecastRating.status, "unavailable");
+      assert.equal(data.players[0].result.adjustedFormIndex.status, "unavailable");
+      assert.equal(data.players[0].result.projected90.tackles?.status, "available");
+      assert.equal(data.players[1].result.forecastRating.status, "available");
+      await page.goto(`${web.origin}/compare?${query}`);
+      const table = page.getByRole("table", { name: "Observed match ratings, aligned player forecasts and adjusted form indexes, with explicit units and availability", exact: true });
+      await table.waitFor();
+      const partial = table.getByRole("group", { name: `Observed match ratings for ${names[1]}`, exact: true });
+      await partial.getByText("4 of 5 match ratings", { exact: true }).waitFor();
+      assert.equal(await partial.getByRole("listitem").count(), 5);
+      assert.equal(await partial.locator(".match-rating-missing").count(), 1);
+      assert.match(await partial.locator(".match-rating-missing").innerText(), /3 Aug.*—/s);
+      assert((await partial.locator(".match-rating").allTextContents()).some((value) => value.includes("0 out of 10")), "an observed zero rating is present, not missing");
+      await table.getByRole("group", { name: `Observed match ratings for ${names[2]}`, exact: true }).getByText("5 of 5 match ratings", { exact: true }).waitFor();
+      for (const [name, expected] of [["Forecast rating", data.players[1].result.forecastRating.value], ["Adjusted form index", data.players[1].result.adjustedFormIndex.value]] as const) {
+        const cells = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: new RegExp(`^${name}`) }) }).getByRole("cell");
+        assert.equal(await cells.nth(0).locator(".comparison-value").innerText(), "—");
+        assert.equal(await cells.nth(1).locator(".comparison-value").innerText(), formatNumber(expected));
+      }
+      const counts = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: /^Tackles/ }) }).getByRole("cell");
+      assert.equal(await counts.nth(0).locator(".comparison-value").innerText(), formatNumber(data.players[0].result.projected90.tackles?.value));
+      await page.getByText("Rating and form need all five match ratings. Count forecasts use their own available statistics.", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("complementary", { name: "Comparison selection", exact: true }).count(), 0);
+      for (const width of [390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(page); }
+      await page.goto(`${web.origin}/players`);
+      await page.getByRole("complementary", { name: "Comparison selection", exact: true }).waitFor();
+      await page.getByRole("button", { name: `Remove ${names[1]} from comparison`, exact: true }).first().waitFor();
+    });
+  } finally {
+    for (const row of original) await web.administrator.query("UPDATE sports.appearances SET rating=$3 WHERE player_id=$1 AND fixture_id=$2", [row.player_id, row.fixture_id, row.rating]);
+    await web.administrator.query(`UPDATE sports.fixtures f SET kickoff_at=v.kickoff_at::timestamptz
+      FROM unnest($1::uuid[],$2::text[]) AS v(id,kickoff_at) WHERE f.id=v.id`, [schedule.map((row) => row.id), schedule.map((row) => row.kickoff_at)]);
+  }
+});
 
 test("loading, recoverable service errors, missing records and expired sessions remain actionable", { timeout: 60_000 }, async () => withPage(async (page) => {
   await login(page);

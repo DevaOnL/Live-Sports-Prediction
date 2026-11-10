@@ -52,6 +52,34 @@ test("real login returns HttpOnly cookies without JSON tokens and viewers can re
   assert.equal(injection.data.pagination.total, 0);
 });
 
+test("authenticated HTTP search accepts encoded accents and punctuation while keeping wildcards literal", async () => {
+  const original = (await web.writer.query("SELECT provider_id,name FROM sports.players WHERE provider_id=ANY($1::text[])", [["8001", "8002"]])).rows;
+  try {
+    await web.writer.query("UPDATE sports.players SET name=$1 WHERE provider_id='8001'", ["Kylian Mbappé"]);
+    await web.writer.query("UPDATE sports.players SET name=$1 WHERE provider_id='8002'", ["Literal%_\\ Player"]);
+    const cookie = await signIn();
+    for (const q of ["mbappe", "mbappe'", "MBAPPÉ", "mbap kyl", "kylian-mbappe"]) {
+      const result = await api(`players?${new URLSearchParams({ q, leagueId: "153", position: "GK", pageSize: "1" })}`, { cookie });
+      assert.equal(result.status, 200, q);
+      const data = (await result.json()).data;
+      assert.equal(data.pagination.total, 1, q);
+      assert.equal(data.items[0].id, "8001");
+      assert.equal(data.items[0].name, "Kylian Mbappé");
+    }
+    for (const q of ["%", "_", "\\"]) {
+      const result = await api(`players?${new URLSearchParams({ q })}`, { cookie });
+      assert.equal(result.status, 200);
+      const data = (await result.json()).data;
+      assert.equal(data.pagination.total, 1);
+      assert.equal(data.items[0].id, "8002");
+    }
+    assert.equal((await api("players?q=mbappe&q=mbappe%27", { cookie })).status, 400);
+    assert.equal((await api(`players?${new URLSearchParams({ q: "x".repeat(81) })}`, { cookie })).status, 400);
+  } finally {
+    for (const row of original) await web.writer.query("UPDATE sports.players SET name=$1 WHERE provider_id=$2", [row.name, row.provider_id]);
+  }
+});
+
 test("viewers and forged client roles cannot invoke any administrator operation", async () => {
   const cookie = await signIn();
   const before = (await web.administrator.query("SELECT count(*)::integer AS count FROM sports.audit_log")).rows[0].count;

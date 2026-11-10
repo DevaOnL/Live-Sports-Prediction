@@ -40,8 +40,8 @@ npm run db:migrate
 npm run mongo:provision
 ```
 
-`db:migrate` checks applied checksums and applies pending files, including
-`011_suspended_fixtures.sql`. Preserve existing volumes. MongoDB provisioning
+`db:migrate` checks applied checksums and applies pending files through
+`012_appearance_enrichment.sql`. Preserve existing volumes. MongoDB provisioning
 configures validators, indexes and the restricted archive identity. These
 administrative commands use local bootstrap/migrator credentials.
 

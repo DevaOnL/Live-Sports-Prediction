@@ -135,6 +135,75 @@ test("current native-ID reads and full-cohort highlights exclude retained legacy
   await assert.rejects(legacy.player(currentPlayers[0].id), { status: 400 });
 });
 
+async function searchNames() {
+  const names = ["Kylian Mbappé", "Wilfried Mbappé", "João Félix", "Nicolás González", "Trent Alexander-Arnold",
+    "Conor O’Neill", "Martin Ødegaard", "Lukas Müller", "Literal%_\\ Player", "Álex García"];
+  for (const [index, name] of names.entries()) {
+    await writer.query("UPDATE sports.players SET name=$1 WHERE provider='sorare' AND provider_id=$2", [name, currentPlayers[index].id]);
+  }
+  await writer.query("UPDATE sports.players SET name='Kylian Mbappé' WHERE provider='apifootball' AND provider_id=$1", [legacyPlayer.id]);
+  return names;
+}
+
+test("current catalogue discovery folds genuine accents, case and punctuation without changing identities", async () => {
+  const names = await searchNames();
+  const mbappes = new Set(currentPlayers.slice(0, 2).map((player) => player.id));
+  for (const q of ["mbappe", "mbappe'", "MBAPPÉ", "mbappe\u0301", "...MbApPe?!"]) {
+    const response = await service.players({ q });
+    assert.equal(response.pagination.total, 2, q);
+    assert.deepEqual(new Set(response.items.map((player) => player.id)), mbappes, q);
+    assert(response.items.every((player) => names.includes(player.name)), "discovery does not rewrite displayed names");
+  }
+  for (const [q, index] of [["JOAO felix", 2], ["Joao-Felix", 2], ["GONZALEZ nicolas", 3], ["alexander'arnold", 4],
+    ["oneill", 5], ["O'NEILL", 5], ["odegaard", 6], ["MULLER", 7], ["ÁLEX garcia", 9]] as const) {
+    const response = await service.players({ q });
+    assert.equal(response.pagination.total, 1, q);
+    assert.equal(response.items[0].id, currentPlayers[index].id, q);
+    assert.equal(response.items[0].name, names[index]);
+  }
+  assert.equal((await service.players({ q: "mbapep" })).pagination.total, 0, "discovery does not guess misspelled identities");
+  assert.equal((await service.players({ q: "   " })).pagination.total, 10, "blank input keeps the unfiltered catalogue");
+  assert.equal((await service.players({ q: "'...?!—" })).pagination.total, 0, "punctuation alone cannot select every player");
+});
+
+test("partial name tokens combine with current coverage filters and stable pagination", async () => {
+  await searchNames();
+  await writer.query("UPDATE sports.players SET position='MID' WHERE provider='sorare' AND provider_id=$1", [currentPlayers[1].id]);
+  for (const q of ["kyl mbap", "mbap kyl", "  mbap'   KYL  ", "mbap ' kyl", "kylian-mbappe"]) {
+    const response = await service.players({ q, leagueId: CURRENT_SOURCE.coverage[0].id, clubId: currentClubs[0].id,
+      position: "FWD", availability: "uncomputed", pageSize: 1 });
+    assert.equal(response.pagination.total, 1, q);
+    assert.equal(response.items[0].id, currentPlayers[0].id, q);
+  }
+  const first = await service.players({ q: "mbap", pageSize: 1 });
+  const second = await service.players({ q: "MBAPPÉ'", pageSize: 1, page: 2 });
+  assert.deepEqual(first.pagination, { page: 1, pageSize: 1, total: 2, pages: 2 });
+  assert.deepEqual(second.pagination, { page: 2, pageSize: 1, total: 2, pages: 2 });
+  assert.deepEqual(new Set([...first.items, ...second.items].map((player) => player.id)), new Set(currentPlayers.slice(0, 2).map((player) => player.id)));
+  assert.equal((await service.players({ q: "mbap", position: "MID" })).items[0].id, currentPlayers[1].id);
+  assert.equal((await service.players({ q: "mbap", leagueId: CURRENT_SOURCE.coverage[1].id })).pagination.total, 0);
+  assert.equal((await service.players({ q: "mbap", clubId: currentClubs[1].id })).pagination.total, 0);
+  assert.equal((await service.players({ q: "mbap", availability: "available" })).pagination.total, 0);
+  assert.deepEqual((await service.players({ q: "mbap", pageSize: 1, page: 3 })).items, []);
+});
+
+test("normalised search retains literal wildcards, parameter safety and bounded input", async () => {
+  await searchNames();
+  for (const q of ["%", "_", "\\", "%_\\", "literal%_\\ player"]) {
+    const response = await service.players({ q });
+    assert.equal(response.pagination.total, 1, q);
+    assert.equal(response.items[0].id, currentPlayers[8].id, q);
+  }
+  for (const q of ["mbap%", "mbap_", "%_' OR 1=1 --", "x'); DROP TABLE sports.players; --"]) {
+    assert.equal((await service.players({ q })).pagination.total, 0, q);
+  }
+  assert.equal((await service.players({ q: "kyl".padEnd(80) })).items[0].id, currentPlayers[0].id);
+  await assert.rejects(service.players({ q: "x".repeat(81) }), { status: 400, code: "invalid_search" });
+  await assert.rejects(service.players({ q: "mbap\u0000pe" }), { status: 400, code: "invalid_search" });
+  assert.equal((await service.players()).pagination.total, 10);
+  assert.equal((await administrator.query("SELECT count(*)::integer AS count FROM sports.provider_requests")).rows[0].count, 0);
+});
+
 test("source forecast preparation preserves observations and missing outputs without changing legacy wrappers", async () => {
   await writer.query("UPDATE sports.fixtures SET statistics_status='partial' WHERE provider='sorare' AND status='final'");
   const client = await reader.connect();

@@ -80,9 +80,10 @@ upgrades explicitly with `npm run db:migrate` while preserving existing volumes;
 never edit an already-applied migration. Rerun provisioning only for deliberate
 role setup or password rotation.
 
-Existing installations must apply all migrations through `011_suspended_fixtures.sql`
-before starting the current app and worker. This retains historical records while
-retiring the former active leagues. Preserve volumes and applied migration files.
+Existing installations must apply all migrations through `012_appearance_enrichment.sql`
+before starting the current app and worker. These upgrades retain historical records,
+retire the former active leagues and add source-traceable match-stat supplements.
+Preserve volumes and applied migration files.
 
 The [database guide](docs/database.md) documents the ER diagram, relational
 constraints, role grants, migration behavior, and an isolated PostgreSQL test

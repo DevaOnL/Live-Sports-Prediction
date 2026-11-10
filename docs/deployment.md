@@ -134,10 +134,11 @@ See [ingestion recovery](ingestion.md#storage-and-recovery) for exact semantics.
 
 Take a coordinated backup before the source upgrade. Stop the app, worker, preview
 instances and host CLI writers; preserve database volumes and runtime secrets.
-Apply `npm run db:migrate` through `011_suspended_fixtures.sql`. Migration 010
+Apply `npm run db:migrate` through `012_appearance_enrichment.sql`. Migration 010
 disables former active coverage and adds source-aware reporting without deleting
 historical observations, forecasts or archives; 011 adds the explicit suspended
-fixture status. Keep already-applied migrations unchanged.
+fixture status. Migration 012 adds source-traceable appearance supplements used
+by the current app and worker. Keep already-applied migrations unchanged.
 
 Configure the ignored `SORARE_API_KEY`, then run `npm run ingest -- sync` and
 `npm run ingest -- once` to begin current imports. The long-running worker drains
