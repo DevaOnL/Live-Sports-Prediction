@@ -58,6 +58,15 @@
 !/docs/demo.md
 !/docs/api.md
 !/docs/evaluation.md
+!/docs/architecture.md
+!/docs/deployment.md
+!/docs/requirements.md
+!/docs/screenshots/
+/docs/screenshots/*
+!/docs/screenshots/overview.png
+!/docs/screenshots/player.png
+!/docs/screenshots/comparison.png
+!/docs/screenshots/administration.png
 !/README.md
 !/package.json
 !/package-lock.json

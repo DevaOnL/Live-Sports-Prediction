@@ -7,11 +7,21 @@ quantities.
 
 ## Run and inspect
 
-Apply all pending migrations explicitly, then recover existing roster evidence:
+First provision the databases and apply pending migrations using the
+[database guide](database.md#provisioning-and-migrations). On an existing import,
+recover interrupted work and project the latest archived roster evidence:
 
 ```bash
 npm run db:migrate
 npm run ingest -- reconcile
+```
+
+Migration uses the controlled migrator credentials. Offline reconciliation uses
+the SQL writer and MongoDB runtime identities, preserving original roster
+observation times; it does not fetch missing evidence from the provider. Once
+those prerequisites are ready, the forecast commands need only the SQL writer:
+
+```bash
 npm run forecast -- refresh all
 npm run forecast -- status
 npm run forecast -- show PLAYER_ID
@@ -61,7 +71,11 @@ unchanged but still refreshes context and the next target.
 Current clubs require separate roster observations. Historical appearances do
 not establish a current club or continuous tenure. The latest complete roster
 can invalidate an earlier association by omitting the player; incomplete or
-conflicting newest evidence blocks target selection. Roster observation times
+conflicting newest evidence in a relevant season blocks target selection.
+A season is relevant only when this player has pre-cutoff appearance or
+roster-inclusion evidence there. An unrelated league's missing/empty roster
+cannot contradict a confirmed club. Appearance evidence establishes relevance,
+not current membership. Roster observation times
 are never backdated. Conflicting observations at the same time remain ambiguous;
 random database identifiers do not choose a winning club. Explicit appearance and roster club checkpoints scope
 possible missing matches, with a confirmed new club closing former-club risk
@@ -76,6 +90,20 @@ Missing ratings can leave per-90 outputs available. Unknown position permits
 rating/form but no position-specific projections. Every unavailable output has
 machine-readable reasons, including affected fields and fixtures where known.
 Source gaps are retained even when a fixture reports complete statistics.
+
+| Reason | Interpretation / next step |
+| --- | --- |
+| `incomplete_history` | Unknown participation, membership, ordering or a relevant missing appearance could alter the five; inspect the named source gaps and import genuine correcting evidence |
+| `insufficient_history` | Fewer than five confirmed eligible covered appearances; a short appearance or DNP cannot fill the window |
+| `missing_metric` | One of the fixed five lacks a required field; only dependent outputs are blocked |
+| `missing_roster_observation`, `incomplete_roster_observation`, `ambiguous_current_club`, `unknown_current_club` | Current club is unconfirmed at this cutoff; a later roster cannot repair an earlier historical cutoff |
+| `missing_standings_context`, `incomplete_standings_context` | Schedule or earlier results cannot establish reliable weighting; inspect context reasons |
+| `no_future_fixture` | No covered scheduled future target for the confirmed club; historical form can still be available |
+
+Refreshing re-evaluates existing canonical evidence. It cannot manufacture missing
+appearances, metrics or earlier roster observations. Historical evaluation and
+the separate forward-measurement protocol are documented in
+[evaluation.md](evaluation.md).
 
 ## Context and formulas
 
@@ -109,7 +137,9 @@ The website shows `forecastRating` on a 0–10 scale and the separate
 `adjustedFormIndex` on a 0–100 scale. The legacy API field
 `displayedForecastRating` remains `10 × forecastRating` on a 0–100 scale; the
 website does not display that field. Form can remain available when no next
-fixture is known.
+fixture is known. The fixed normalizer is `24 = 10 × 1.2 × 2`; with the two
+approved leagues' coefficient of 1.5, the form index can reach at most 75 on that
+0–100 scale. It is neither a percentile nor a probability or accuracy percentage.
 Select the earliest scheduled future fixture for the known current club within
 enabled coverage. Live, final, cancelled, postponed and unknown fixtures are
 excluded. Once kickoff passes, the old fixture is no longer a future target.

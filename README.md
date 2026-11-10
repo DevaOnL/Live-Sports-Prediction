@@ -16,13 +16,18 @@ Photographs are illustrative; asset sources and licenses accompany the files.
 ## Requirements
 
 - Node.js 24 and npm 11
-- Docker with Docker Compose
+- Docker Engine compatible with PostgreSQL 17 and MongoDB 8, with Docker Compose
+- Git; a Linux shell for the command examples
 
 ## Run locally
 
 ```bash
+git clone https://github.com/DevaOnL/Live-Sports-Prediction.git
+cd Live-Sports-Prediction
 npm ci
+umask 077
 cp .env.example .env
+chmod 600 .env
 ```
 
 Replace all placeholder database passwords in `.env` with independent random
@@ -32,6 +37,11 @@ Keep that secret stable across restarts. Keep `.env` local and ignored by Git.
 `AUTH_BASE_URL` is the exact browser origin, initially `http://localhost:3000`;
 HTTPS is required for non-loopback origins. Leave `INGESTION_ENABLED=false` until
 ingestion is configured. Login and stored-data reads need no football API key.
+
+Use free host ports 3000, 5432 and 27017 for the default configuration. The
+[deployment guide](docs/deployment.md) explains separate installations, HTTPS,
+upgrades and matched database backups. Preserve the same Compose project name
+when restarting an existing installation so it keeps using its volumes.
 
 ```bash
 docker compose config --quiet
@@ -120,7 +130,8 @@ npm run mongo:provision
 ```
 
 Set `INGESTION_ENABLED=true` locally, then run an initial import and queued detail
-work. These commands use the restricted runtime identities:
+work. Explicit `sync` and `once` commands can contact the provider even when that
+worker flag is false. These commands use the restricted runtime identities:
 
 ```bash
 npm run ingest -- sync
@@ -234,3 +245,32 @@ constraints; MongoDB stores immutable source archives and separate import metada
 Docker Compose provides a reproducible local environment with persistent database
 volumes. Inter is
 self-hosted through the application bundle.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Implemented data flow, credential boundaries and technology choices |
+| [Database](docs/database.md) | ER diagram, relational schema, constraints, grants and migrations |
+| [Ingestion](docs/ingestion.md) | Approved real-data coverage, mapping, request budget and recovery |
+| [Forecasting](docs/forecasting.md) | Exact-five selection, formulas, units and unavailable states |
+| [API and authentication](docs/api.md) | Account administration, sessions, viewer reads and administrator commands |
+| [Evaluation](docs/evaluation.md) | Frozen historical coverage and private forward measurement |
+| [Deployment](docs/deployment.md) | Local/HTTPS operation, upgrades, coordinated backups and restore |
+| [Database demonstrations](docs/demo.md) | Executable SQL and MongoDB examples with isolated synthetic data |
+| [Requirement traceability](docs/requirements.md) | Assignment deliverables, executable evidence and limitations |
+
+## Interface examples
+
+Captured on 2026-11-10 from the implemented application using isolated synthetic
+data and example accounts. These show interface behavior, not live coverage or
+measured accuracy. Photography is illustrative; the player artwork is generic.
+
+![Overview with synthetic coverage and model availability](docs/screenshots/overview.png)
+
+![Synthetic player with separate form and forecast evidence](docs/screenshots/player.png)
+
+[Comparison](docs/screenshots/comparison.png) ·
+[Administrator operations](docs/screenshots/administration.png).
+The [screen guide](docs/requirements.md#screen-evidence) describes the journeys
+and their test prerequisites. A fresh installation is empty until data is imported.

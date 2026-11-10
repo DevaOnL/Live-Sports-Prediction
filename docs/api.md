@@ -67,6 +67,8 @@ Only `POST /api/auth/sign-in/email`, `GET /api/auth/get-session` and
 `POST /api/auth/sign-out` are exposed from the auth library. Login accepts
 `{email,password,rememberMe?}`; logout accepts `{}`. Auth responses omit session
 tokens, IP addresses and user agents. Session cookies carry authentication.
+`GET /api/auth/get-session` returns JSON `null` with status 200 when there is no
+session; `GET /api/me` instead requires authentication and returns 401.
 Public `/api/health` reports process liveness and configured feature flags; it
 performs no database readiness check. Database containers authenticate their own
 health checks. All other APIs require a valid session.
@@ -77,10 +79,14 @@ library's user/session shape with sensitive fields removed. Session-sensitive
 responses use `Cache-Control: no-store`. Mutations require the exact canonical
 Origin and Host, `Content-Type: application/json` and an object no larger than
 16 KiB. Unknown fields, query keys and repeated scalar query keys are rejected.
+Reads also require the canonical Host; if an Origin header is supplied, it must
+match the canonical origin. Product reads use `{data: ...}` even when a field
+inside that result is unavailable or null.
 Use cookies from login and include `Origin: AUTH_BASE_URL` in CLI HTTP mutations.
 Unauthenticated requests return 401; viewer admin attempts return 403; validation
 returns 400/413/415; missing records/routes return 404; conflicts return 409;
-throttling returns 429; unexpected service failures return 503.
+unsupported methods return 405; throttling returns 429; unexpected service
+failures return 503. Administrator routes with unsupported methods return 404.
 
 ## Viewer reads
 
@@ -95,13 +101,18 @@ throttling returns 429; unexpected service failures return 503.
 | `GET /api/players/PLAYER_ID/forecast` | Saved immutable revision and latest evaluation envelope |
 | `GET /api/compare?playerId=ID&playerId=ID` | Current canonical comparison at one cutoff/source snapshot |
 
-IDs are positive provider identifiers. Catalogue pages default to 1, with a
-maximum page size of 50; search text is at most 80 characters. Positions are
+Football IDs are positive provider identifiers represented as strings, including
+in JSON bodies. SQL revision/job identifiers and command request identifiers are
+UUIDs. Catalogue pages default to page 1 with 20 items, with a maximum page size
+of 50; search text is at most 80 characters. Positions are
 `GK`, `DEF`, `MID`, `FWD`, `UNKNOWN`; availability is `available`, `partial`,
 `unavailable` or `uncomputed`. Search is literal parameterized text. Coverage stays
 restricted to enabled regular-season Championship/Ligue 2, 2026/27. Current club
 requires complete, unambiguous latest roster evidence; old appearances do not
 establish current membership.
+Missing/incomplete roster blockers apply only to seasons with this player's
+pre-cutoff appearance or roster-inclusion evidence. An unrelated league's missing
+roster does not invalidate a confirmed club; explicit conflicting claims still do.
 
 Catalogue availability filters and overview counts describe the **last stored
 evaluation**, not an instant recalculation. Summaries label it `stored-evaluation`
@@ -111,6 +122,23 @@ source watermark describes the current canonical read snapshot. Imports and cloc
 changes refresh forecasts asynchronously; equal source ordinals alone do not prove
 freshness because a target can expire with time. Keep these dates and availability
 reasons visible when consuming the API.
+
+Stored forecast endpoints return `forecast: null` for a known player whose model
+has not been evaluated. Within a saved or transient result, each output has
+`{status,value,reasons}`; unavailable outputs use `value: null`. Numeric zero is
+an available value when the evidence supports it.
+
+| Result field | Units / interpretation |
+| --- | --- |
+| `forecastRating` | Continuous next-match rating, 0–10 |
+| `displayedForecastRating` | Legacy `10 × forecastRating`, 0–100; the website uses `forecastRating` |
+| `adjustedFormIndex` | Weighted historical form on a fixed 0–100 scale; separate from the next-match rating |
+| `projected90.METRIC` | Decimal events per 90 reported minutes under a 90-minute playing-time assumption |
+| `observedAppearances[].metrics` | Observed integer match counts, before per-90 conversion |
+
+The [model guide](forecasting.md#context-and-formulas) defines the formulas and
+explains the form scale. Model status can be `partial` with form alone available;
+inspect each output before treating it as a future projection.
 
 Each recent observed appearance includes its current `revisionId` (nullable when
 no revision exists) and `membershipKnown`. These fields describe the current
@@ -144,7 +172,8 @@ The canonical input/provenance remains available to explain the five-match windo
 | `PATCH /api/admin/appearances` | `{requestId,playerId,fixtureId,expectedRevisionId,reason,changes}` |
 
 `requestId` is a UUID generated for the intended command. Retry the same body with
-the same UUID to retrieve its original outcome; reuse with a different command is
+the same UUID as the same administrator to retrieve its original outcome; reuse
+by another administrator or with a different command is
 a 409 conflict. Actor audit and command effects commit together. Queue submissions
 return 202 and mean accepted, not completed. Inspect jobs for completion/retry.
 The worker executes source synchronization and statistics fetches using its own
@@ -157,13 +186,24 @@ completed job. Committed import pages expose counts, dates, safe resource
 identifiers and up to 50 allowlisted issue previews per batch, with `issueTotal`
 and an explicit truncation flag. They expose no raw provider payloads or keys.
 The application rolling-hour request budget is separate from provider-side limits.
+Administrator list endpoints default to page 1 with 25 items. They accept at most
+100 items per page and page numbers through 10,000. Job statuses are `ready`,
+`running`, `succeeded`, `failed`; kinds are `source.sync`, `fixture.statistics`,
+`standings.rebuild`, `forecast.refresh`. Statistics requests require a covered
+fixture already stored as live or final; they cannot request an arbitrary fixture.
 
 Corrections require a finalized, known-played appearance with known membership in
 approved coverage and its current `expectedRevisionId`. Only `minutes`, `rating`,
 `goals`, `assists`, `shotsOnTarget`, `keyPasses`, `tackles`, `interceptions`, `saves`
 and `goalsConceded` may be changed. Missing values remain null; counts/minutes are
 nonnegative integers, rating is 0–10 with at most two decimal places. Corrections
-cannot manufacture participation, membership or finality. They append distinctly
+require a nonempty `changes` object and a reason of 3–1,000 characters without
+control characters. Omitted metric fields retain their existing values; send
+explicit `null` only to mark a field missing. `expectedRevisionId` must be the
+current non-null appearance revision UUID from the player read, not a forecast
+revision. A successful correction returns 200 with the new revision and metrics.
+After a 409 revision conflict, reload before submitting a new intended correction.
+Corrections cannot manufacture participation, membership or finality. They append distinctly
 manual SQL source/revision evidence, retain reason/before/after/actor audit and
 emit a canonical refresh event. Authoritative provider archives remain immutable.
 Provider observations retrieved after the correction may supersede its canonical

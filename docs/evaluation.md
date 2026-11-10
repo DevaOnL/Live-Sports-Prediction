@@ -35,6 +35,9 @@ Future results and target appearances are hidden from model history. Corrected
 schedule metadata and historical outcomes were retrieved later, so this is a
 retrospective evaluation, not a replay of what the provider published at the time.
 Roster evidence still requires its actual observation timestamp before the freeze.
+The executable protocol and paired scorer are in
+[`scoring.ts`](../src/server/evaluation/scoring.ts); the reader-only historical
+snapshot loader is [`database.ts`](../src/server/evaluation/database.ts).
 
 ## Paired outputs and baselines
 
@@ -122,6 +125,10 @@ transaction. It makes no provider calls, needs no MongoDB or writer credentials,
 and never updates live forecast heads, revisions, jobs or source records. A later
 run can differ as canonical evidence changes; the dated result above describes
 its recorded source snapshot.
+The command recomputes the fixed retrospective experiment from canonical records;
+today's stored forecast heads do not supply its predictions. Use `evaluate` for
+historical cutoffs; operational forecast refreshes use current time and write
+saved heads.
 
 `npm run test:unit` includes synthetic paired-scoring checks for formulas, units,
 missing/zero values, all positions and chronological guards. Against an owned
@@ -140,6 +147,8 @@ README. Those checks exercise keyboard login, visible focus contrast, expanded
 filters/evidence/admin tables, asynchronous feedback and 44px targets at 390, 768
 and 1440 pixels. The browser blocks external requests. These checks supplement
 manual review; they do not establish exhaustive assistive-technology conformance.
+The combined ingestion recipe includes all these suites inside its guarded
+subshell; its temporary databases are removed when that subshell exits.
 
 ## Live availability is separate
 
@@ -178,6 +187,13 @@ npm run measure --silent -- capture ./forecast-capture.json
 npm run measure --silent -- score ./forecast-capture.json > forward-results.json
 ```
 
+Create and retain the capture before the issue cutoffs; score that file after genuine outcomes
+have been imported. Scoring earlier is allowed and reports the pending state.
+Neither command imports data or queues work. They use the same restricted reader
+configuration as the historical evaluator. The protocol implementation is
+[`prospective.ts`](../src/server/evaluation/prospective.ts), with private file
+handling in [`measure.ts`](../scripts/measure.ts).
+
 Both generated files are ignored at the repository root. The capture contains
 individual model inputs and must stay private: the CLI creates an owned 0600 file
 exclusively and refuses to overwrite it or follow a symlink. Its checksum detects
@@ -188,6 +204,10 @@ fails and removes only the newly created file; the receipt records
 `durablyConfirmedAt`. A digest-bound confirmation trailer is appended to the
 private file; scoring rejects pending or truncated files without that valid
 confirmation. Keep the original file for later scoring.
+Scoring also requires that file to remain an owned regular file with exactly
+0600 permissions; it rejects symlinks and files larger than 256 MiB. Do not edit,
+reformat, concatenate or publish the file. Preserve its contents and private
+permissions if backing it up; later captures use a new filename.
 
 The scorer reads actual outcomes later without recalculating captured predictions
 or baselines. It includes every observed eligible target appearance in the frozen
