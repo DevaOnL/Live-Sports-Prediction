@@ -4,10 +4,13 @@ The server exposes authenticated football reads and administrator operations.
 The website provides sign-in, an overview, player discovery and detail, comparison,
 administrator operations, and account/logout screens. The root page links to
 player discovery and comparison, with a compact method summary. API results preserve unavailable values and explanations.
+These endpoints support the website's own product flows. Provider data remains
+subject to its source terms, including [Highlightly's data usage rights](https://highlightly.net/terms/);
+the application does not offer that data as a reusable feed or downloadable dataset.
 
 ## Configure local access
 
-Apply pending migrations explicitly, through `011_suspended_fixtures.sql`. Keep
+Apply pending migrations explicitly, through `012_appearance_enrichment.sql`. Keep
 existing volumes. Set these ignored `.env` variables before recreating the app:
 
 ```dotenv
@@ -167,11 +170,21 @@ The [model guide](forecasting.md#context-and-formulas) defines the formulas and
 explains the form scale. Model status can be `partial` with form alone available;
 inspect each output before treating it as a future projection.
 
-Each recent observed appearance includes its current `revisionId` (nullable when
+Each recent observed appearance includes its current primary `revisionId` (nullable when
 no revision exists) and `membershipKnown`. These fields describe the current
 observation, separately from the immutable forecast input. The administrator
 correction form obtains its optimistic revision token from this read endpoint;
 it reloads after a 409 rather than silently overwriting a concurrent change.
+
+An appearance's `fieldSources` identifies each value supplied by Highlightly,
+with its provider, normalized/source revision IDs and actual observation time.
+Only missing primary fields can be supplemented; primary appearance or fixture
+corrections invalidate the old supplement. Forecast provenance records the same
+lineage under `appearanceEnrichments`. Private payloads, identity-matching evidence
+and credentials stay outside these responses. Current-source freshness keeps
+`latestRetrievedAt` for Sorare and reports active supplementary data separately
+as `supplementLatestRetrievedAt`, so a recent supplement cannot mask stale
+primary evidence.
 
 Comparison accepts 2–4 unique players. Its default requires matching positions;
 set `allowCrossPosition=true` to compare different positions with an explicit

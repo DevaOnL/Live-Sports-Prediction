@@ -4,6 +4,7 @@ import { runtimeSource, sourceCoverage } from "./sources";
 import { IngestionPipeline } from "./pipeline";
 import { SorarePipeline } from "./sorare";
 import { ForecastStore } from "../forecast/store";
+import { EnrichmentPipeline } from "./enrichment";
 
 export async function createRuntime(needsProvider = true) {
   const profile = runtimeSource();
@@ -20,6 +21,8 @@ export async function createRuntime(needsProvider = true) {
       : new IngestionPipeline(pool, db, needsProvider ? required("APIFOOTBALL_API_KEY") : "offline-reconciliation");
     const queue = new JobQueue(pool, undefined, true, profile);
     const forecasts = new ForecastStore(pool, profile);
+    const enrichment = needsProvider && profile.provider === "sorare" && process.env.HIGHLIGHTLY_API_KEY
+      ? new EnrichmentPipeline(pool, db, process.env.HIGHLIGHTLY_API_KEY) : null;
     const handle = async (job: IngestionJob) => {
       if (job.kind === "fixture.statistics") await pipeline.statistics(job.payload.leagueId, job.payload.fixtureId);
       else if (job.kind === "standings.rebuild") await pipeline.store.rebuild(sourceCoverage(profile, job.payload.leagueId));
@@ -29,7 +32,7 @@ export async function createRuntime(needsProvider = true) {
       } else await forecasts.refreshAll();
     };
     return {
-      pool, mongo, db, pipeline, queue, forecasts, handle, profile,
+      pool, mongo, db, pipeline, queue, forecasts, handle, profile, enrichment,
       async ping() {
         await pool.query("SELECT 1");
         await db.collection("import_metadata").findOne({}, { projection: { _id: 1 } });

@@ -51,6 +51,7 @@ services:
       MONGO_WORKER_USER: ${MONGO_WORKER_USER:-lsp_ingestion}
       MONGO_WORKER_PASSWORD: ${MONGO_WORKER_PASSWORD:-}
       SORARE_API_KEY: ${SORARE_API_KEY:-}
+      HIGHLIGHTLY_API_KEY: ${HIGHLIGHTLY_API_KEY:-}
     expose:
       - "4001"
     healthcheck:

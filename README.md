@@ -247,9 +247,14 @@ position-specific statistics. Counts represent decimal estimates under a
 
 Active coverage is restricted to Premier League (`premier-league-gb-eng`) and
 La Liga (`laliga-es`), 2026/27, through the free registered Sorare developer API.
-Both use the top-five-league coefficient of 2. A conventional 0–10 player rating
-and key passes are not supplied by this source; those outputs remain unavailable.
-Other count forecasts depend on finalized, complete evidence for the selected five.
+Both use the top-five-league coefficient of 2. Sorare does not supply conventional
+player ratings or key passes. Optional free [Highlightly](https://highlightly.net/football-api/)
+supplementation adds reported match ratings, key passes, total tackles and
+interceptions after verifying fixture and player identity. Configure the worker's
+`HIGHLIGHTLY_API_KEY` and run `npm run enrich -- 2` for a bounded batch; the enabled
+worker also backfills automatically. Its 100-request daily plan means initial
+coverage grows over several days. Outputs still require the same exact five
+eligible appearances; unresolved identities and missing fields stay unavailable.
 Sorare fantasy scores are never relabeled as conventional ratings. Free API
 availability can change; missing and provisional data remain explicit.
 

@@ -21,5 +21,12 @@ export function PanelState({ loading, error, onRetry, empty, children }: { loadi
 }
 const labels: Record<string, string> = { available: "Available", partial: "Partly available", unavailable: "Unavailable", uncomputed: "Not evaluated", ready: "Ready", running: "Running", succeeded: "Completed", failed: "Failed", incomplete_history: "Incomplete history", insufficient_history: "Not enough history" };
 export function StatusBadge({ status }: { status: string }) { return <span className={`badge badge-${status.replace(/[^a-z_]/g, "")}`}>{labels[status] ?? status.replaceAll("_", " ")}</span>; }
-export function SourceNote({ source }: { source: SourceFreshness }) { return <details className="source-note"><summary>Data &amp; freshness</summary><div><span>View snapshot: {formatDate(source.cutoffAt)}</span><span>Latest normalized provider observation: {formatDate(source.latestRetrievedAt)}</span><span>Source revision {source.sourceOrdinal}. Saved evaluations can lag behind new data or fixture changes.</span></div></details>; }
+export function SourceNote({ source }: { source: SourceFreshness }) {
+  return <details className="source-note"><summary>Data &amp; freshness</summary><div>
+    <span>View snapshot: {formatDate(source.cutoffAt)}</span>
+    <span>Latest normalized provider observation: {formatDate(source.latestRetrievedAt)}</span>
+    {source.supplementLatestRetrievedAt && <span>Highlightly supplement: {formatDate(source.supplementLatestRetrievedAt)}</span>}
+    <span>Source revision {source.sourceOrdinal}. Saved evaluations can lag behind new data or fixture changes.</span>
+  </div></details>;
+}
 export function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (value: number) => void }) { return <nav className="pagination" aria-label="Pagination"><button className="button button-secondary button-small" onClick={() => onPage(page - 1)} disabled={page <= 1}>Previous page</button><span>Page {page} of {Math.max(1, pages)}</span><button className="button button-secondary button-small" onClick={() => onPage(page + 1)} disabled={page >= pages}>Next page</button></nav>; }

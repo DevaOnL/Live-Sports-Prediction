@@ -14,6 +14,7 @@ import { selectObservedWindow } from "../src/server/forecast/engine";
 import { archiveId } from "../src/server/ingestion/archive";
 import { CURRENT_SOURCE, LEGACY_SOURCE, sourceEntityKey, type SourceProfile } from "../src/server/ingestion/sources";
 import { IngestionStore } from "../src/server/ingestion/store";
+import { EnrichmentStore } from "../src/server/ingestion/enrichment-store";
 import { JobQueue } from "../src/server/ingestion/jobs";
 import type { ArchivedResponse, Batch, Club, Fixture, Player } from "../src/server/ingestion/types";
 
@@ -165,6 +166,70 @@ test("source forecast preparation preserves observations and missing outputs wit
   const comparison = await service.compare(currentPlayers.slice(0, 2).map((player) => player.id));
   assert(comparison.players.every(({ player }) => player.currentClub?.leagueId === CURRENT_SOURCE.coverage[0].id));
   assert(comparison.players.every(({ result }) => result.forecastRating.status === "unavailable" && result.projected90.goals?.status === "available"));
+});
+
+test("supplemented fields agree across profile, forecast and comparison while primary corrections invalidate them", async () => {
+  const playerId = currentPlayers[9].id;
+  const initial = await service.player(playerId);
+  const anchors = (await reader.query<{
+    fixture_id: string; fixture_revision_id: string; appearance_id: string; primary_revision_id: string;
+  }>(`SELECT f.id AS fixture_id,f.normalized_revision_id AS fixture_revision_id,
+      a.id AS appearance_id,a.normalized_revision_id AS primary_revision_id
+    FROM sports.appearances a JOIN sports.fixtures f ON f.id=a.fixture_id JOIN sports.players p ON p.id=a.player_id
+    WHERE p.provider='sorare' AND p.provider_id=$1 AND f.status='final' ORDER BY f.kickoff_at`, [playerId])).rows;
+  assert.equal(anchors.length, 5);
+  const observedAt = "2026-11-10T12:00:00.000Z";
+  const enrichment = new EnrichmentStore(writer);
+  for (const [index, anchor] of anchors.entries()) {
+    const externalFixtureId = String(800_000 + index);
+    const batch = { fixtureId: anchor.fixture_id, fixtureRevisionId: anchor.fixture_revision_id, externalFixtureId,
+      observations: [{ appearanceId: anchor.appearance_id, primaryRevisionId: anchor.primary_revision_id, externalPlayerId: "900001",
+        evidence: { synthetic: true, privateSynthetic: "matching-evidence-stays-private" },
+        metrics: { rating: 7.5, keyPasses: 2, tackles: 4, interceptions: 1 } }] };
+    const text = JSON.stringify(batch);
+    const response = { action: "get_statistics" as const, resourceKey: `highlightly:box-score:${externalFixtureId}`,
+      params: { provider: "highlightly", match_id: externalFixtureId, league_id: CURRENT_SOURCE.coverage[0].id },
+      text, contentSha256: createHash("sha256").update(text).digest("hex"), retrievedAt: observedAt };
+    await enrichment.import({ ...response, id: archiveId(response) }, batch);
+  }
+  const detail = await service.player(playerId);
+  assert.equal(detail.source.latestRetrievedAt, initial.source.latestRetrievedAt, "supplement freshness cannot refresh the primary source");
+  assert.equal(detail.source.supplementLatestRetrievedAt, observedAt);
+  for (const appearance of detail.observedAppearances) {
+    assert.equal(appearance.rating, 7.5);
+    assert.equal(appearance.metrics.keyPasses, 2);
+    assert.equal(appearance.metrics.tackles, 0, "explicit primary zero takes precedence");
+    assert.equal(appearance.metrics.interceptions, 0);
+    assert.equal(appearance.fieldSources.rating.provider, "highlightly");
+    assert.equal(appearance.fieldSources.keyPasses.observedAt, observedAt);
+    assert.equal(appearance.fieldSources.tackles, undefined);
+    assert.equal(appearance.revisionId, initial.observedAppearances.find((row) => row.fixtureId === appearance.fixtureId)!.revisionId);
+  }
+  const forecasts = new ForecastStore(writer, CURRENT_SOURCE);
+  await forecasts.refreshMany([playerId], "2026-11-10T12:01:00.000Z");
+  const saved = (await service.forecast(playerId)).forecast!;
+  assert.equal(saved.result.forecastRating.status, "available");
+  assert.equal(saved.result.selected.length, 5);
+  assert.deepEqual(new Set(saved.result.selected.map((row) => row.fixtureId)), new Set(initial.observedAppearances.map((row) => row.fixtureId)));
+  const lineage = saved.provenance.appearanceEnrichments;
+  assert(Array.isArray(lineage));
+  assert.equal(lineage.length, 5);
+  const comparison = await service.compare([playerId, currentPlayers[8].id]);
+  assert.equal(comparison.players[0].result.forecastRating.status, "available");
+  assert.equal(comparison.players[1].result.forecastRating.status, "unavailable");
+  assert.deepEqual(comparison.players[0].provenance.appearanceEnrichments, lineage);
+  assert.equal(JSON.stringify({ detail, saved, comparison }).includes("matching-evidence-stays-private"), false);
+  const changed = detail.observedAppearances[0];
+  await admin.correctAppearance("synthetic-admin", { requestId: randomUUID(), playerId, fixtureId: changed.fixtureId,
+    expectedRevisionId: changed.revisionId!, reason: "Synthetic source correction invalidates prior supplemental anchoring", changes: { goals: 8 } });
+  const corrected = (await service.player(playerId)).observedAppearances.find((row) => row.fixtureId === changed.fixtureId)!;
+  assert.equal(corrected.rating, null);
+  assert.equal(corrected.metrics.keyPasses, null);
+  assert.deepEqual(corrected.fieldSources, {});
+  await forecasts.refreshMany([playerId], "2026-11-10T12:02:00.000Z");
+  assert.equal((await service.forecast(playerId)).forecast!.result.forecastRating.status, "unavailable");
+  assert.deepEqual((await administrator.query("SELECT result_json FROM sports.forecast_revisions WHERE id=$1", [saved.id])).rows[0].result_json,
+    saved.result, "the earlier enriched explanation remains immutable");
 });
 
 test("a fresh suspended observation clears only nonfinal gaps and preserves five-match count forecasts", async () => {

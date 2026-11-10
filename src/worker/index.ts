@@ -21,6 +21,8 @@ async function main() {
   let persistenceUp = true;
   let forecastsUp = true;
   let lastForecastProgress = Date.now();
+  let supplementState = runtime?.enrichment ? "awaiting-sync" : "disabled";
+  let nextSupplement = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.setHeader("Cache-Control", "no-store");
@@ -37,6 +39,7 @@ async function main() {
       service: "worker", status: healthy ? "alive" : "unavailable", scope: enabled ? "ingestion" : "process-only",
       jobsEnabled: enabled, databaseConnections: databases, lastSync, sourceState,
       predictionsEnabled: enabled,
+      supplementState,
       forecastPolling: enabled ? forecastsUp && Date.now() - lastForecastProgress < 300_000 ? "alive" : "unavailable" : "disabled",
     }));
   });
@@ -74,7 +77,23 @@ async function main() {
       await pause(5_000, undefined, { signal: abort.signal }).catch(() => undefined);
     }
   };
-  const running = Promise.all([loop(), runtime ? pollForecasts(runtime.queue, runtime.handle, {
+  const supplementLoop = async () => {
+    if (!runtime?.enrichment) return;
+    while (!stopping) {
+      if (Date.now() >= nextSupplement) {
+        try {
+          const progress = await runtime.enrichment.run(2);
+          supplementState = progress.pending ? "backfilling" : progress.unmapped ? "partial" : "synced";
+          nextSupplement = Date.now() + (progress.pending ? 60_000 : 3_600_000);
+        } catch (error) {
+          supplementState = error instanceof RateLimitError ? "budget-deferred" : "source-unavailable";
+          nextSupplement = error instanceof RateLimitError ? Math.max(Date.now() + 1000, error.retryAt.getTime()) : Date.now() + 900_000;
+        }
+      }
+      await pause(5_000, undefined, { signal: abort.signal }).catch(() => undefined);
+    }
+  };
+  const running = Promise.all([loop(), supplementLoop(), runtime ? pollForecasts(runtime.queue, runtime.handle, {
     signal: abort.signal,
     onProgress() { forecastsUp = true; lastForecastProgress = Date.now(); },
     onError() { forecastsUp = false; console.error("Forecast persistence unavailable; retrying safely."); },

@@ -25,7 +25,25 @@ export function EvidenceProvenance({ provenance }: { provenance: Record<string, 
     if (!item || typeof item !== "object" || !("observedAt" in item) || typeof item.observedAt !== "string") return [];
     return [item.observedAt];
   }).sort() : [];
-  return <dl className="data-list"><div><dt>Appearance revisions</dt><dd>{appearances}</dd></div><div><dt>Fixture revisions</dt><dd>{fixtures}</dd></div><div><dt>Latest roster evidence</dt><dd>{formatDate(rosterTimes.at(-1))}</dd></div></dl>;
+  const supplementLabels = { rating: "Ratings", keyPasses: metricLabel.keyPasses, tackles: metricLabel.tackles, interceptions: metricLabel.interceptions };
+  const supplementCounts = new Map<string, number>();
+  if (Array.isArray(provenance.appearanceEnrichments)) for (const entry of provenance.appearanceEnrichments) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)
+      || typeof entry.fields !== "object" || entry.fields === null || Array.isArray(entry.fields)) continue;
+    for (const field of Object.keys(supplementLabels)) {
+      const source: unknown = entry.fields[field];
+      if (typeof source === "object" && source !== null && "provider" in source && source.provider === "highlightly") {
+        supplementCounts.set(field, (supplementCounts.get(field) ?? 0) + 1);
+      }
+    }
+  }
+  const supplements = Object.entries(supplementLabels).flatMap(([field, label]) => {
+    const count = supplementCounts.get(field) ?? 0;
+    return count ? [`${label}: ${count}`] : [];
+  });
+  return <dl className="data-list"><div><dt>Appearance revisions</dt><dd>{appearances}</dd></div><div><dt>Fixture revisions</dt><dd>{fixtures}</dd></div><div><dt>Latest roster evidence</dt><dd>{formatDate(rosterTimes.at(-1))}</dd></div>
+    {supplements.length > 0 && <div><dt>Highlightly supplements</dt><dd>{supplements.join(" · ")}</dd></div>}
+  </dl>;
 }
 
 function OutputCard({ label, metric, unit, output }: { label: string; metric: string; unit: string; output: Output }) {

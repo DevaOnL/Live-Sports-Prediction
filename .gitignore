@@ -21,6 +21,7 @@
 !/scripts/evaluate.ts
 !/scripts/measure.ts
 !/scripts/replay.ts
+!/scripts/enrich.ts
 !/tests/
 /tests/*
 !/tests/database.test.ts
@@ -34,6 +35,9 @@
 !/tests/sorare.database.test.ts
 !/tests/sorare-read.database.test.ts
 !/tests/source-reporting.database.test.ts
+!/tests/highlightly.test.ts
+!/tests/enrichment.database.test.ts
+!/tests/enrichment-pipeline.database.test.ts
 !/tests/forecast.database.test.ts
 !/tests/forecast-jobs.database.test.ts
 !/tests/jobs.test.ts
