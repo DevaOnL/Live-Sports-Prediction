@@ -42,7 +42,7 @@ jobs:
   database:
     # MongoDB 8 requires a compatible host kernel for its integration service.
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -121,6 +121,8 @@ jobs:
         run: npm run test:ingestion
       - name: Verify forecast revisions and refresh processing
         run: npm run test:forecast
+      - name: Verify frozen retrospective evaluation
+        run: npm run test:evaluation
       - name: Verify reporting routines and trigger permissions
         run: npm run test:reporting
       - name: Run isolated database demonstrations
@@ -135,3 +137,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify browser journeys against isolated data
         run: npm run test:ui
+      - name: Verify worker crash and stalled-source recovery
+        run: npm run test:worker
+      - name: Verify keyboard and responsive accessibility
+        run: npm run test:accessibility

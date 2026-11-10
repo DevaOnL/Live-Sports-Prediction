@@ -18,6 +18,7 @@
 !/scripts/forecast.ts
 !/scripts/demo.ts
 !/scripts/users.ts
+!/scripts/evaluate.ts
 !/tests/
 /tests/*
 !/tests/database.test.ts
@@ -37,9 +38,14 @@
 !/tests/http.test.ts
 !/tests/forecast-presentation.test.ts
 !/tests/interface.browser.test.ts
+!/tests/evaluation.test.ts
+!/tests/evaluation.database.test.ts
+!/tests/worker.integration.test.ts
+!/tests/accessibility.browser.test.ts
 !/tests/support/
 /tests/support/*
 !/tests/support/web.ts
+!/tests/support/worker-provider.ts
 !/tests/ingestion.database.test.ts
 !/docs/
 /docs/*
@@ -48,6 +54,7 @@
 !/docs/forecasting.md
 !/docs/demo.md
 !/docs/api.md
+!/docs/evaluation.md
 !/README.md
 !/package.json
 !/package-lock.json

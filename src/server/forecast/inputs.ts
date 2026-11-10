@@ -44,6 +44,16 @@ function match(fixture: StoredFixture): Match {
 
 /** One consistent batch of canonical evidence; callers serialize against ingestion. */
 export async function prepareInputs(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[]): Promise<Map<string, PreparedInput>> {
+  return prepare(client, cutoffAt, providerPlayerIds);
+}
+
+/** Retrospectively corrected schedule with outcomes after the frozen date hidden. */
+export async function prepareHistoricalInputs(client: PoolClient, cutoffAt: string, date: string, providerPlayerIds: readonly string[]): Promise<Map<string, PreparedInput>> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !COVERAGE.some((league) => cutoffUtc(date, league.timezone) === cutoffAt)) throw new RangeError("Invalid historical cutoff");
+  return prepare(client, cutoffAt, providerPlayerIds, date);
+}
+
+async function prepare(client: PoolClient, cutoffAt: string, providerPlayerIds?: readonly string[], historicalDate?: string): Promise<Map<string, PreparedInput>> {
   const cutoff = Date.parse(cutoffAt);
   if (!Number.isFinite(cutoff)) throw new RangeError("Invalid forecast cutoff");
   cutoffAt = new Date(cutoff).toISOString();
@@ -96,13 +106,20 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
       [seasonIds, cutoffAt, players.rows.map((player) => player.id)]);
   const ordinal = await client.query<{ ordinal: string }>("SELECT coalesce(max(ordinal),0)::text AS ordinal FROM sports.normalized_revisions");
   for (const row of registrations.rows) seasons.get(row.season_id)!.clubs.push({ id: row.provider_id, name: row.name });
-  const fixtures: StoredFixture[] = fixtureRows.rows.map((row) => ({
-    sqlId: row.id, id: row.provider_id, seasonId: row.season_id, leagueId: seasons.get(row.season_id)!.coverage.id,
-    season: seasons.get(row.season_id)!.coverage.season, home: { id: row.home_id, name: row.home_name },
-    away: { id: row.away_id, name: row.away_name }, kickoffAt: row.kickoff_at ? iso(row.kickoff_at) : null,
-    status: row.status, statisticsStatus: row.statistics_status, homeScore: row.home_score, awayScore: row.away_score,
-    detailed: ["partial", "complete"].includes(row.statistics_status), appearances: [], revisionId: row.normalized_revision_id,
-  }));
+  const fixtures: StoredFixture[] = fixtureRows.rows.map((row) => {
+    const season = seasons.get(row.season_id)!;
+    const kickoffAt = row.kickoff_at ? iso(row.kickoff_at) : null;
+    const hidden = Boolean(historicalDate && kickoffAt && (Date.parse(kickoffAt) >= cutoff || localDate(kickoffAt, season.coverage.timezone) >= historicalDate));
+    return {
+      sqlId: row.id, id: row.provider_id, seasonId: row.season_id, leagueId: season.coverage.id,
+      season: season.coverage.season, home: { id: row.home_id, name: row.home_name },
+      away: { id: row.away_id, name: row.away_name }, kickoffAt,
+      status: hidden && ["final", "live"].includes(row.status) ? "scheduled" : row.status,
+      statisticsStatus: hidden ? "missing" : row.statistics_status,
+      homeScore: hidden ? null : row.home_score, awayScore: hidden ? null : row.away_score,
+      detailed: !hidden && ["partial", "complete"].includes(row.statistics_status), appearances: [], revisionId: row.normalized_revision_id,
+    };
+  });
   const fixtureById = new Map(fixtures.map((fixture) => [fixture.sqlId, fixture]));
   const fixturesBySeason = new Map([...seasons.keys()].map((id) => [id, fixtures.filter((fixture) => fixture.seasonId === id)]));
   const appearances = new Map<string, StoredAppearance[]>();
@@ -129,15 +146,15 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
   const contextCache = new Map<string, { table: ReturnType<typeof reconstructStandings>; key: string; cutoffAt: string }>();
   const contextFor = (fixture: StoredFixture, clubId: string | null, current: boolean): Context => {
     const season = seasons.get(fixture.seasonId)!;
-    const date = current ? localDate(cutoffAt, season.coverage.timezone) : fixture.kickoffAt ? localDate(fixture.kickoffAt, season.coverage.timezone) : null;
+    const date = current ? historicalDate ?? localDate(cutoffAt, season.coverage.timezone) : fixture.kickoffAt ? localDate(fixture.kickoffAt, season.coverage.timezone) : null;
     if (!date) return { complete: false, clubs: season.coverage.expectedClubs, own: null, opponent: null, key: "unknown-kickoff", cutoffAt, reasons: [{ code: "unknown_kickoff", fixtureId: fixture.id }] };
     const nextDate = new Date(Date.parse(`${date}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10);
     const cacheId = `${fixture.seasonId}:${current ? "current" : date}`;
     let context = contextCache.get(cacheId);
     if (!context) {
       const schedule = fixturesBySeason.get(fixture.seasonId)!;
-      const contextCutoff = current ? cutoffAt : cutoffUtc(date, season.coverage.timezone);
-      const table = reconstructStandings(season.coverage, season.clubs, schedule, current ? nextDate : date, current ? { asOf: cutoffAt } : {});
+      const contextCutoff = current && !historicalDate ? cutoffAt : cutoffUtc(date, season.coverage.timezone);
+      const table = reconstructStandings(season.coverage, season.clubs, schedule, current && !historicalDate ? nextDate : date, current && !historicalDate ? { asOf: cutoffAt } : {});
       // Calendar ticks and database UUIDs do not identify new football evidence.
       const headers = schedule.map((item) => ({
         id: item.id, home: item.home.id, away: item.away.id, kickoffAt: item.kickoffAt,
@@ -164,7 +181,11 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
   const sourceOrdinal = ordinal.rows[0].ordinal;
   const result = new Map<string, PreparedInput>();
   for (const player of players.rows) {
-    const stored = appearances.get(player.id) ?? [];
+    const stored = (appearances.get(player.id) ?? []).filter((appearance) => {
+      if (!historicalDate) return true;
+      const fixture = fixtureById.get(appearance.fixture_id)!;
+      return !fixture.kickoffAt || (Date.parse(fixture.kickoffAt) < cutoff && localDate(fixture.kickoffAt, seasons.get(fixture.seasonId)!.coverage.timezone) < historicalDate);
+    });
     const byFixture = new Map(stored.map((appearance) => [appearance.fixture_id, appearance]));
     const history: HistoryAppearance[] = stored.map((appearance) => {
       const fixture = fixtureById.get(appearance.fixture_id)!;
@@ -243,7 +264,7 @@ export async function prepareInputs(client: PoolClient, cutoffAt: string, provid
     }
     for (const fixture of fixtures) {
       if (byFixture.has(fixture.sqlId) || fixture.status === "cancelled" || fixture.status === "postponed" || fixture.status === "live") continue;
-      if (fixture.kickoffAt && Date.parse(fixture.kickoffAt) >= cutoff) continue;
+      if (fixture.kickoffAt && (Date.parse(fixture.kickoffAt) >= cutoff || (historicalDate && localDate(fixture.kickoffAt, seasons.get(fixture.seasonId)!.coverage.timezone) >= historicalDate))) continue;
       const time = fixture.kickoffAt ? Date.parse(fixture.kickoffAt) : null;
       const checkpoint = time === null ? null : checkpoints.findLast((item) => item.at <= time);
       const scope = checkpoint?.club;
