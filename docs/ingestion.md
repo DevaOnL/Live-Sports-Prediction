@@ -241,7 +241,12 @@ cannot be combined.
 
 Each box score must match the league, season, home/away clubs, exact kickoff and
 final result. A player must match one unambiguous name or initial abbreviation
-within that club, plus exact minutes, goals, assists and shots on target. No
+within that club, plus exact goals, assists and shots on target. Both sources must
+report valid positive minutes for the known-played primary appearance. Differing
+positive minutes do not reject an otherwise corroborated match: Sorare's minutes
+always determine eligibility, the exact five and model rate denominators. Accepted
+evidence records both reported minutes, the Sorare choice and their signed
+difference (Highlightly minus Sorare), including large disagreements. No
 edit-distance matching or name-only joins are used. Unsupported or ambiguous
 identities remain unused. All accepted fields retain their separate source,
 retrieval time and revision evidence; raw captures and matching evidence stay
@@ -270,6 +275,10 @@ events. Recovery is source-scoped. Effective reads are shared by profiles,
 forecast inputs, scouting and source-aware SQL reporting; the primary observation
 time stays separate from supplementary freshness. Original observations and old
 forecast revisions are preserved.
+Cached reprocessing uses the versioned `primary-minutes-v3` mapping and appends
+only newly resolved identities at their original source revision and observation
+time. Existing captures, primary rows, earlier mapping receipts and accepted
+supplements remain unchanged; repeating the same mapping is idempotent.
 
 [Highlightly's terms](https://highlightly.net/terms/), section 6.1, allow storing
 and displaying data in this application. They prohibit supplying it as a dataset,

@@ -269,7 +269,7 @@ test("cached remapping appends newly resolved identities with the original sourc
   assert.equal(Date.parse((await effective()).enrichment_provenance.rating.observedAt), Date.parse(response.retrievedAt));
   const receipt = (await pool.query(`SELECT * FROM sports.normalized_revisions
     WHERE entity_type='appearance_enrichment_mapping'`)).rows[0];
-  assert.equal(receipt.entity_key, `${response.id}:name-entities-v2`);
+  assert.equal(receipt.entity_key, `${response.id}:primary-minutes-v3`);
   assert.equal(receipt.source_revision_id, imported.sourceRevisionId);
   const audit = (await pool.query("SELECT * FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0];
   assert.equal(audit.normalized_revision_id, receipt.id);
@@ -284,7 +284,7 @@ test("cached remapping appends newly resolved identities with the original sourc
   assert.deepEqual((await pool.query("SELECT * FROM sports.normalized_revisions WHERE entity_type='appearance_enrichment_mapping'")).rows, [receipt]);
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0].count, 1);
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.outbox WHERE deduplication_key=$1",
-    [`enrichment-reprocess:${response.id}:name-entities-v2`])).rows[0].count, 1);
+    [`enrichment-reprocess:${response.id}:primary-minutes-v3`])).rows[0].count, 1);
   assert.equal((await enrichment.import(response, captured)).appearances, 0, "ordinary import keeps its original immutable receipt");
 });
 

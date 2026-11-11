@@ -112,8 +112,15 @@ include `sourceUrl`, built only from the stored genuine Sorare player slug; a
 slug is separate from the player's identifier. SQL revision/job identifiers and
 command request identifiers are bare UUIDs. Catalogue pages default to page 1
 with 20 items, with a maximum page size of 50; search text is at most 80 characters. Positions are
-`GK`, `DEF`, `MID`, `FWD`, `UNKNOWN`; availability is `available`, `partial`,
-`unavailable` or `uncomputed`. Search ignores case, accents and punctuation:
+`GK`, `DEF`, `MID`, `FWD`, `UNKNOWN`. The `availability` filter accepts
+`ready` (stored `available` or `partial`) and `hidden` (stored `unavailable` or
+`uncomputed`), as well as each of those four individual statuses. Filtering
+happens before counting and pagination. Omitting the filter still returns all
+statuses for API compatibility; the website requests `ready` by default and
+provides **Show hidden**, **Hidden**, and **All** controls. Missing result cards
+and comparison cells are hidden by default without changing API values, the
+exact five-match evidence, or numeric zero. Revealing missing results shows
+neutral labels and their recorded explanations. Search ignores case, accents and punctuation:
 `mbappe` and `mbappe'` both match `Mbappé`. Space-separated partial terms must all
 occur in the name, in any order. `%`, `_` and backslash remain literal characters,
 not search operators; input containing only ignored punctuation returns no

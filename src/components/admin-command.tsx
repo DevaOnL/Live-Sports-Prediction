@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Children, useRef, useState, type ReactNode } from "react";
 import { api, ApiFailure } from "@/lib/api";
+import { presentationText } from "@/lib/presentation";
 
 type CapturedCommand = { path: string; method: "POST" | "PATCH"; body: Record<string, unknown> };
 
@@ -42,7 +43,7 @@ export function CommandFeedback({ pending, uncertain, error, children }: {
     {pending && <p>Submitting…</p>}
     {error !== undefined && <p className="error-message">{uncertain
       ? "Outcome unknown. Retry below: the same request UUID and submitted values are retained to prevent duplicates."
-      : error instanceof Error ? error.message : "The request could not be completed."}</p>}
+      : error instanceof Error ? presentationText(error.message) : "The request could not be completed."}</p>}
     {error instanceof ApiFailure && error.status === 401 && <Link className="text-link" href="/login">Sign in again</Link>}
     {error instanceof ApiFailure && error.status === 403 && <p>Administrator access required.</p>}
     {children}

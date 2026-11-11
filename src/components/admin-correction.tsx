@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiFailure } from "@/lib/api";
 import type { PlayerData } from "@/lib/contracts";
 import type { AppearanceMetrics, CorrectedAppearance } from "@/server/api/admin";
-import { formatDate } from "@/lib/presentation";
+import { formatDate, presentationText } from "@/lib/presentation";
 import { CommandFeedback, useAdminCommand } from "./admin-command";
 
 const metricFields = [
@@ -97,11 +97,11 @@ export function AdminCorrection({ playerId: initialPlayerId = "", fixtureId: ini
           <label className="field" htmlFor="correction-fixture"><span className="field-label">Fixture ID</span><input id="correction-fixture" className="field-input" value={fixtureId} disabled={command.locked} onChange={(event) => { invalidate(); setFixtureId(event.target.value); }} /></label>
         </div>
         <div className="action-row"><button className="button button-secondary" type="button" onClick={load} disabled={loading || command.locked}>{loading ? "Loading appearance…" : loaded || conflict ? "Reload appearance" : "Load appearance"}</button></div>
-        {loadError !== undefined && <p className="error-message" role="alert">{loadError instanceof Error ? loadError.message : "The appearance could not be loaded."}</p>}
+        {loadError !== undefined && <p className="error-message" role="alert">{loadError instanceof Error ? presentationText(loadError.message) : "The appearance could not be loaded."}</p>}
         {loaded && <>
           <div><h3>{loaded.playerName}</h3><p>{loaded.row.homeClub.name} · {loaded.row.awayClub.name} · {formatDate(loaded.row.kickoffAt)}</p>
-            <p className="form-note">{correctable ? "Final · Played · Membership verified" : "Correction unavailable. A final, played appearance, verified membership and current revision are required."}</p></div>
-          <label className="field" htmlFor="correction-revision"><span className="field-label">Expected revision</span><input id="correction-revision" className="field-input code-value" value={loaded.row.revisionId ?? "Unavailable"} readOnly /></label>
+            <p className="form-note">{correctable ? "Final · Played · Membership verified" : "Correction cannot be applied. A final, played appearance, verified membership and current revision are required."}</p></div>
+          <label className="field" htmlFor="correction-revision"><span className="field-label">Expected revision</span><input id="correction-revision" className="field-input code-value" value={loaded.row.revisionId ?? "Not recorded"} readOnly /></label>
           <p className="form-note" id="correction-null-note">Choose fields to change. Edited blank = missing (null); 0 = known zero. Unchecked fields stay unchanged.</p>
           <div className="correction-grid">{metricFields.map(([field, label]) => <div className="field" key={field}>
             <label className="checkbox-label"><input type="checkbox" checked={edited[field] ?? false} disabled={command.locked || !correctable} onChange={(event) => setEdited((current) => ({ ...current, [field]: event.target.checked }))} />Edit {label.toLowerCase()}</label>

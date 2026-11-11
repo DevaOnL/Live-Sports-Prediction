@@ -8,8 +8,9 @@ import { promisify } from "node:util";
 import { MongoClient, type Db } from "mongodb";
 import pg from "pg";
 import { ReadService } from "../src/server/api/read";
-import { selectObservedWindow } from "../src/server/forecast/engine";
+import { evaluateForecast, selectObservedWindow } from "../src/server/forecast/engine";
 import { prepareObservedInputs } from "../src/server/forecast/inputs";
+import type { Context } from "../src/server/forecast/types";
 import { ArchiveStore, archiveId } from "../src/server/ingestion/archive";
 import { EnrichmentPipeline } from "../src/server/ingestion/enrichment";
 import { HIGHLIGHTLY_LEAGUES, highlightlyResponse, type HighlightlyCapture } from "../src/server/ingestion/highlightly-client";
@@ -192,14 +193,15 @@ async function importedSchedules(): Promise<Map<string, ArchivedResponse>> {
   return result;
 }
 
-async function importedUnmappedApostropheBox() {
+async function importedUnmappedApostropheBox(minutes = 90, externalMinutes = minutes) {
   const scope: Scope = { ...scopes[0], player: { ...scopes[0].player, name: "Luke O'Nien" } };
-  await importPrimary(scope);
+  await importPrimary(scope, minutes);
   const fixture = await context(scope);
   const schedules = await importedSchedules();
   const capture = box(scope);
   const rows = JSON.parse(capture.text);
   rows[0].players[0].name = "L. O&apos;Nien";
+  rows[0].players[0].minutesPlayed = externalMinutes;
   capture.text = JSON.stringify(rows);
   capture.retrievedAt = new Date(Date.now() - 3_600_000).toISOString();
   const archive = await archives.save(highlightlyResponse("get_statistics", scope.coverage.id, { format: "highlightly-box-v1",
@@ -401,6 +403,85 @@ test("cached name-entity reprocessing fills an originally unmapped appearance wi
   assert.deepEqual(boxCalls, []);
   assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.provider_requests")).rows[0].count, 0);
 });
+
+for (const [minutes, externalMinutes] of [[84, 85], [90, 45], [60, 59], [59, 90]]) {
+  test(`cached minute precedence appends ${minutes}/${externalMinutes} evidence after the earlier mapping without changing eligibility or source time`, async () => {
+    const { scope, fixture, archive } = await importedUnmappedApostropheBox(minutes, externalMinutes);
+    const extra: Batch = { coverage: scope.coverage, clubs: scope.clubs, players: [scope.player], standings: [], issues: [],
+      fixtures: Array.from({ length: 5 }, (_, index) => ({ id: `Game:${uuid(30_000 + index)}`,
+        leagueId: scope.coverage.id, season: scope.coverage.season, home: scope.clubs[0], away: scope.clubs[index + 2],
+        kickoffAt: `2026-10-${20 + index}T15:00:00.000Z`, status: "final", statisticsStatus: "partial",
+        homeScore: 1, awayScore: 0, detailed: true,
+        appearances: [{ player: scope.player, clubId: scope.clubs[0].id, participation: "played", minutes: 90, rating: null,
+          goals: 1, assists: 0, shotsOnTarget: 2, keyPasses: 4, tackles: null, interceptions: 0, saves: null, goalsConceded: 0 }] })) };
+    const text = JSON.stringify(extra);
+    const response = { action: "get_statistics" as const, resourceKey: "sorare:synthetic:minute-boundary-history",
+      params: { provider: "sorare", league_id: scope.coverage.id }, text, retrievedAt: new Date().toISOString(),
+      contentSha256: createHash("sha256").update(text).digest("hex") };
+    await primary.import({ ...response, id: archiveId(response) }, extra);
+    const originalReceipt = (await writer.query("SELECT * FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows[0];
+    // An accepted v2 pass found no exact-minute match. It must remain immutable
+    // while v3 can append the now-corroborated identity using that same capture.
+    const oldDetail = { version: "name-entities-v2", archiveId: archive.id, fixtureId: fixture.id,
+      fixtureRevisionId: fixture.revisionId, observedAt: archive.retrievedAt, appearances: 0, activated: 0 };
+    const oldMapping = (await writer.query(`INSERT INTO sports.normalized_revisions
+      (source_revision_id,entity_type,entity_key,content_sha256)
+      VALUES($1,'appearance_enrichment_mapping',$2,$3) RETURNING *`, [originalReceipt.source_revision_id,
+      `${archive.id}:name-entities-v2`, createHash("sha256").update(JSON.stringify(oldDetail)).digest("hex")])).rows[0];
+    const oldAudit = (await writer.query(`INSERT INTO sports.audit_log
+      (normalized_revision_id,actor_type,action,entity_type,entity_key,detail)
+      VALUES($1,'worker','enrichment.reprocess','fixture',$2,$3) RETURNING *`,
+    [oldMapping.id, fixture.id, JSON.stringify(oldDetail)])).rows[0];
+    const source = (await reader.query("SELECT * FROM sports.source_revisions WHERE id=$1", [originalReceipt.source_revision_id])).rows[0];
+    const primaryRows = (await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows;
+    const originalMetadata = await mongo.collection("import_metadata").findOne({ _id: archive.id } as never);
+    const prepared = async () => {
+      const client = await reader.connect();
+      try {
+        return (await prepareObservedInputs(client, new Date().toISOString(), CURRENT_SOURCE)).get(scope.player.id)!.input;
+      } finally { client.release(); }
+    };
+    const selected = async () => selectObservedWindow(await prepared()).selected.map((row) => ({ fixtureId: row.fixtureId, minutes: row.minutes }));
+    const before = await selected();
+    assert.equal(before.length, 5);
+    assert.equal(before.some((row) => row.fixtureId === scope.nativeFixtureId), minutes >= 60);
+    assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 1, skipped: 0, duplicates: 0 });
+    const enrichment = (await writer.query("SELECT * FROM sports.appearance_enrichments WHERE fixture_id=$1", [fixture.id])).rows[0];
+    assert.equal(enrichment.source_revision_id, source.id);
+    assert.equal(enrichment.retrieved_at.toISOString(), archive.retrievedAt);
+    assert.equal(enrichment.evidence_json.primaryMinutes, minutes);
+    assert.equal(enrichment.evidence_json.externalMinutes, externalMinutes);
+    assert.equal(enrichment.evidence_json.minutesSource, "sorare");
+    assert.equal(enrichment.evidence_json.minutesDiscrepancy, externalMinutes - minutes);
+    assert.equal((await reader.query("SELECT minutes,rating FROM sports.effective_appearances WHERE fixture_id=$1", [fixture.id])).rows[0].minutes, minutes);
+    assert.equal((await new ReadService(reader, CURRENT_SOURCE).player(scope.player.id)).observedAppearances[0].rating, 7.5);
+    assert.deepEqual(await selected(), before);
+    const input = await prepared();
+    // Neutral synthetic context isolates the rate denominator from standings
+    // and roster availability, while using the real effective appearance read.
+    const neutral: Context = { complete: true, clubs: 20, own: { rank: 10, tiedCount: 1, uncertain: false },
+      opponent: { rank: 10, tiedCount: 1, uncertain: false }, key: "synthetic-neutral", cutoffAt: input.cutoffAt, reasons: [] };
+    const forecast = evaluateForecast({ ...input, appearances: input.appearances.map((row) => ({ ...row, context: neutral })),
+      currentClub: { clubId: input.appearances[0].clubId!, leagueId: scope.coverage.id, season: scope.coverage.season }, rosterReasons: [],
+      targets: [{ ...input.appearances[0], fixtureId: "synthetic-next", kickoffAt: "2027-01-20T15:00:00.000Z", status: "scheduled", context: neutral }] });
+    assert.equal(forecast.historyStatus, "ready");
+    assert.equal(forecast.projected90.keyPasses?.status, "available");
+    assert.equal(forecast.projected90.keyPasses?.value, minutes >= 60 ? 90 * 18 / (4 * 90 + minutes) : 4);
+    assert.deepEqual((await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows, primaryRows);
+    assert.deepEqual((await reader.query("SELECT * FROM sports.source_revisions WHERE id=$1", [source.id])).rows, [source]);
+    assert.deepEqual((await writer.query("SELECT * FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows, [originalReceipt]);
+    assert.deepEqual((await reader.query("SELECT * FROM sports.normalized_revisions WHERE id=$1", [oldMapping.id])).rows, [oldMapping]);
+    assert.deepEqual((await writer.query("SELECT * FROM sports.audit_log WHERE id=$1", [oldAudit.id])).rows, [oldAudit]);
+    assert.equal((await reader.query(`SELECT count(*)::int AS count FROM sports.normalized_revisions
+      WHERE entity_type='appearance_enrichment_mapping' AND entity_key=$1`, [`${archive.id}:primary-minutes-v3`])).rows[0].count, 1);
+    assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 0, skipped: 0, duplicates: 1 });
+    assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments")).rows[0].count, 1);
+    assert.deepEqual(await mongo.collection("import_metadata").findOne({ _id: archive.id } as never), originalMetadata);
+    assert.equal((await archives.get(archive.id))?.text, archive.text);
+    assert.deepEqual(scheduleCalls, []); assert.deepEqual(boxCalls, []);
+    assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.provider_requests")).rows[0].count, 0);
+  });
+}
 
 test("cached reprocessing skips changed primary fingerprints without relabelling historical captures", async () => {
   const { scope, archive } = await importedUnmappedApostropheBox();

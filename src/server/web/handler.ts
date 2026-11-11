@@ -42,7 +42,7 @@ async function authentication(request: Request, path: string, runtime: WebRuntim
     if (retry && /^\d{1,5}$/.test(retry)) headers.set("Retry-After", retry);
     if (!result.ok) {
       if (result.status === 429) return failure(429, "RATE_LIMITED", "Too many attempts. Try again shortly.", headers);
-      if (result.status >= 500 || result.status < 400) return failure(503, "SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable.", headers);
+      if (result.status >= 500 || result.status < 400) return failure(503, "SERVICE_UNAVAILABLE", "Could not sign in. Try again shortly.", headers);
       return failure(result.status, "AUTHENTICATION_FAILED", "Authentication could not be completed.", headers);
     }
     const data = await result.json();
@@ -58,7 +58,7 @@ async function authentication(request: Request, path: string, runtime: WebRuntim
     const status = error && typeof error === "object" && "statusCode" in error ? Number(error.statusCode) : 503;
     if (status === 429) return failure(429, "RATE_LIMITED", "Too many attempts. Try again shortly.");
     if (status >= 400 && status < 500) return failure(status, "AUTHENTICATION_FAILED", "Authentication could not be completed.");
-    return failure(503, "SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable.");
+    return failure(503, "SERVICE_UNAVAILABLE", "Could not sign in. Try again shortly.");
   }
 }
 
@@ -147,6 +147,6 @@ export async function handleApi(request: Request, segments: string[]): Promise<R
     if (isPublicApiError(error)) {
       return failure(error.status, error.code, error.message);
     }
-    return failure(503, "SERVICE_UNAVAILABLE", "The service is temporarily unavailable. Try again shortly.");
+    return failure(503, "SERVICE_UNAVAILABLE", "Could not load the service. Try again shortly.");
   }
 }

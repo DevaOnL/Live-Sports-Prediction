@@ -1,6 +1,9 @@
+"use client";
+
 import { formatDate, formatNumber, metricLabel, positionLabel } from "@/lib/presentation";
 import type { BestStatistic, BestStatisticReason } from "@/server/scouting/highlights";
 import { MetricIcon } from "./football-art";
+import { useDataVisibility } from "./data-visibility";
 
 const explanations: Record<BestStatisticReason, string> = {
   unknown_position: "The player's position is unconfirmed.",
@@ -17,11 +20,12 @@ const explanations: Record<BestStatisticReason, string> = {
 };
 
 export function BestStatisticView({ statistic, leagueName }: { statistic: BestStatistic; leagueName?: string }) {
-  if (statistic.status === "unavailable") return <section className="best-statistic best-statistic-unavailable" aria-label="Best statistic">
+  const { showHidden } = useDataVisibility();
+  if (statistic.status === "unavailable") return showHidden ? <section className="best-statistic best-statistic-hidden" aria-label="Best statistic">
     <p className="best-statistic-label">Best statistic</p>
-    <p className="best-statistic-empty">Unavailable</p>
-    <details className="provenance-details"><summary>Why unavailable?</summary><p>{explanations[statistic.reason]}</p></details>
-  </section>;
+    <p className="best-statistic-empty">Not recorded</p>
+    <details className="provenance-details"><summary>Recorded details</summary><p>{explanations[statistic.reason]}</p></details>
+  </section> : null;
 
   return <section className="best-statistic" aria-label="Best statistic">
     <div className="best-statistic-heading"><p className="best-statistic-label">Best statistic</p>{statistic.standout && <span className="badge best-statistic-badge">Top 20%</span>}</div>

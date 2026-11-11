@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { comparisonNotices, forecastNotices, selectedEvidence, tierLabel } from "../src/lib/forecast-presentation";
-import type { ForecastInput, ForecastResult } from "../src/server/forecast/types";
+import { comparisonNotices, forecastNotices, hasForecastOutputs, hasOutput, hasRecordedValue, selectedEvidence, tierLabel } from "../src/lib/forecast-presentation";
+import type { ForecastInput, ForecastResult, Output } from "../src/server/forecast/types";
 
 test("selected display evidence follows model selection and joins its own input rather than recent observation order", () => {
   const input = { appearances: [{ fixtureId: "older", metrics: { goals: 0 } }, { fixtureId: "newer", metrics: { goals: null } }] } as ForecastInput;
@@ -38,4 +38,18 @@ test("comparison notices distinguish an aged shared snapshot and passed target f
   assert.equal(aged.length, 2);
   assert(aged[1].includes("snapshot is over 15 minutes old"));
   assert.equal(comparisonNotices({ ...comparison, players: [{ result: { target: null } }] }, "2026-11-09T12:16:00Z").length, 1);
+});
+
+
+test("result visibility preserves numeric zero and only counts recorded output values", () => {
+  for (const value of [0, 7.1, -1]) assert.equal(hasRecordedValue(value), true);
+  for (const value of [null, undefined, NaN, Infinity]) assert.equal(hasRecordedValue(value), false);
+  const missing: Output = { status: "unavailable", value: null, reasons: [] };
+  const zero: Output = { status: "available", value: 0, reasons: [] };
+  assert.equal(hasOutput(zero), true);
+  assert.equal(hasOutput(missing), false);
+  assert.equal(hasOutput(undefined), false);
+  const result = { forecastRating: missing, adjustedFormIndex: missing, projected90: { goals: missing } } as unknown as ForecastResult;
+  assert.equal(hasForecastOutputs(result), false);
+  assert.equal(hasForecastOutputs({ ...result, projected90: { goals: zero } }), true);
 });
