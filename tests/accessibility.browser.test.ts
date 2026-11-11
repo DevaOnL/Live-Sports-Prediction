@@ -168,7 +168,15 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     await focusControl(page.getByRole("link", { name: "Live Sports Prediction home", exact: true }));
     await activate(navigation.getByRole("link", { name: "Players", exact: true }), page);
     await page.getByRole("heading", { name: "Find your next player.", exact: true }).waitFor();
+    const reveal = page.getByRole("button", { name: "Show hidden", exact: true });
+    assert.equal(await reveal.getAttribute("aria-pressed"), "false");
+    await activate(reveal, page);
+    const hide = page.getByRole("button", { name: "Hide hidden", exact: true });
+    assert.equal(await hide.getAttribute("aria-pressed"), "true");
+    await activate(hide, page);
+    assert.equal(await reveal.getAttribute("aria-pressed"), "false");
     await disclose(page.locator("summary").filter({ hasText: /^Filter players/ }), page);
+    assert.equal(await page.getByLabel("Model results", { exact: true }).inputValue(), "ready");
     await focusControl(page.getByLabel("Search players", { exact: true }));
     await page.keyboard.insertText("Synthetic demo goalkeepers");
     await focusControl(page.getByLabel("Position", { exact: true }));
@@ -213,7 +221,8 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     } finally { release(); }
     const failure = page.locator('.state-panel[role="alert"]');
     await failure.getByRole("heading", { name: "We could not load this view.", exact: true }).waitFor();
-    assert((await failure.textContent())?.includes("temporarily unavailable"));
+    assert.match(await failure.innerText(), /try again|could not load/i);
+    assert.doesNotMatch(await failure.innerText(), /unavailable|uncomputed/i);
     await page.unroute("**/api/overview");
     await activate(failure.getByRole("button", { name: "Try again", exact: true }), page);
     await page.getByRole("region", { name: "Coverage summary", exact: true }).waitFor();

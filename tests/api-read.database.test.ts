@@ -150,6 +150,29 @@ test("reader catalogue joins enabled coverage, paginates and retains genuine ava
   assert(page.items.every((player) => player.bestStatistic.status === "unavailable" && player.bestStatistic.reason === "insufficient_cohort"));
 });
 
+test("grouped catalogue filters partition statuses before search, counts and pagination", async () => {
+  // Include a genuine missing evaluation alongside an uncomputed player.
+  await writer.query(`UPDATE sports.appearances SET minutes=59
+    WHERE player_id=(SELECT id FROM sports.players WHERE provider_id='8001')
+    AND fixture_id=(SELECT id FROM sports.fixtures WHERE provider_id='900001')`);
+  await new ForecastStore(writer).refresh("8001");
+  const ready = await service.players({ availability: "ready", pageSize: 1, page: 2 });
+  assert.deepEqual(ready.pagination, { page: 2, pageSize: 1, total: 3, pages: 3 });
+  assert.equal(ready.items[0].id, "8004");
+  assert.equal(ready.items[0].forecast.status, "partial");
+  const hidden = await service.players({ availability: "hidden", pageSize: 1, page: 2 });
+  assert.deepEqual(hidden.pagination, { page: 2, pageSize: 1, total: 2, pages: 2 });
+  assert.equal(hidden.items[0].id, "8003");
+  assert.equal(hidden.items[0].forecast.status, "uncomputed");
+  assert.equal((await service.players({ availability: "hidden", q: "player 1", clubId: "3072", leagueId: "153", position: "GK" })).items[0].id, "8001");
+  assert.equal((await service.players({ availability: "ready", q: "player 1" })).pagination.total, 0);
+  assert.equal((await service.players({ availability: "unavailable" })).items[0].id, "8001");
+  assert.equal((await service.players()).pagination.total, ready.pagination.total + hidden.pagination.total);
+  // Direct/shared profile requests are not subject to catalogue visibility.
+  assert.equal((await service.player("8001")).player.id, "8001");
+  assert.equal((await service.player("8003")).player.id, "8003");
+});
+
 test("detail separates bounded observed values, immutable forecast and latest evaluation without raw archives", async () => {
   const detail = await service.player("8004");
   assert.equal(detail.observedLimit, 50);

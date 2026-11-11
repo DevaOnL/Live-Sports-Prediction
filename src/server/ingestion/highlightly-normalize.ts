@@ -120,7 +120,7 @@ export function normalizeHighlightly(archive: ArchivedResponse, fixture: Enrichm
       if (!stats) continue;
       const names = [player.name, player.fullName].filter((value): value is string => typeof value === "string" && value.length > 0);
       const candidates = fixture.appearances.filter((a) => a.clubId === club.id && a.participation === "played"
-        && a.minutes === player.minutesPlayed && names.some((n) => samePlayerName(a.name, n))
+        && a.minutes !== null && count(a.minutes) !== null && a.minutes > 0 && names.some((n) => samePlayerName(a.name, n))
         && a.goals !== null && a.goals === count(stats.goalsScored)
         && a.assists !== null && a.assists === count(stats.assists)
         && a.shotsOnTarget !== null && a.shotsOnTarget === count(stats.shotsOnTarget));
@@ -129,8 +129,10 @@ export function normalizeHighlightly(archive: ArchivedResponse, fixture: Enrichm
       const raw = typeof player.matchRating === "number" ? player.matchRating : typeof player.matchRating === "string" && /^\d+(?:\.\d{1,2})?$/.test(player.matchRating) ? Number(player.matchRating) : null;
       const rating = raw !== null && Number.isFinite(raw) && raw >= 0 && raw <= 10 && Math.round(raw * 100) / 100 === raw ? raw : null;
       observations.push({ appearanceId: appearance.id, primaryRevisionId: appearance.primaryRevisionId, externalPlayerId: String(player.id),
-        evidence: { method: "unique_name_club_minutes_goals_assists_shots", primaryName: appearance.name, externalNames: names,
-          minutes: appearance.minutes, goals: appearance.goals, assists: appearance.assists, shotsOnTarget: appearance.shotsOnTarget,
+        evidence: { method: "unique_name_club_goals_assists_shots_primary_minutes", primaryName: appearance.name, externalNames: names,
+          minutes: appearance.minutes, primaryMinutes: appearance.minutes, externalMinutes: player.minutesPlayed,
+          minutesSource: "sorare", minutesDiscrepancy: Number(player.minutesPlayed) - Number(appearance.minutes),
+          goals: appearance.goals, assists: appearance.assists, shotsOnTarget: appearance.shotsOnTarget,
           externalClubId: String(box.team.id), scheduleArchiveId: bundle.scheduleArchiveId },
         metrics: { rating, keyPasses: count(stats.passesKey), tackles: count(stats.tacklesTotal), interceptions: count(stats.interceptionsTotal) } });
     }

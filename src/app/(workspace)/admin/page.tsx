@@ -8,7 +8,7 @@ export default async function Administration({ searchParams }: { searchParams: P
   let identity;
   try { identity = await getPageIdentity(); }
   catch {
-    return <section className="state-panel" role="alert"><h1>Operations are temporarily unavailable.</h1><p>Your session could not be checked. Try again shortly.</p><Link className="button button-secondary" href="/admin">Try again</Link></section>;
+    return <section className="state-panel" role="alert"><h1>Operations could not load.</h1><p>Your session could not be checked. Try again shortly.</p><Link className="button button-secondary" href="/admin">Try again</Link></section>;
   }
   if (!identity) redirect("/login");
   if (identity.role !== "admin") return <section className="state-panel" role="alert"><h1>Administrator access required.</h1><p>Your current account can explore players and forecasts. Operational controls require an administrator account.</p><Link className="button" href="/overview">Back to overview</Link></section>;

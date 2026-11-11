@@ -135,6 +135,29 @@ test("current native-ID reads and full-cohort highlights exclude retained legacy
   await assert.rejects(legacy.player(currentPlayers[0].id), { status: 400 });
 });
 
+test("current catalogue Ready and Hidden groups retain coherent totals and full scouting cohorts", async () => {
+  assert.equal((await service.players({ availability: "ready" })).pagination.total, 0);
+  assert.equal((await service.players({ availability: "hidden" })).pagination.total, 10);
+  await new ForecastStore(writer, CURRENT_SOURCE).refreshMany(currentPlayers.slice(0, 3).map((player) => player.id));
+  const ready = await service.players({ availability: "ready", page: 2, pageSize: 1 });
+  assert.deepEqual(ready.pagination, { page: 2, pageSize: 1, total: 3, pages: 3 });
+  assert.equal(ready.items[0].forecast.status, "partial");
+  assert.equal(ready.items[0].bestStatistic.status, "available");
+  if (ready.items[0].bestStatistic.status === "available") assert.equal(ready.items[0].bestStatistic.cohortSize, 10);
+  assert.equal((await service.players({ availability: "hidden" })).pagination.total, 7);
+  await writer.query(`UPDATE sports.appearances SET minutes=59 WHERE player_id=
+    (SELECT id FROM sports.players WHERE provider='sorare' AND provider_id=$1)`, [currentPlayers[0].id]);
+  await new ForecastStore(writer, CURRENT_SOURCE).refresh(currentPlayers[0].id);
+  const hidden = await service.players({ availability: "hidden", q: "forward 1", leagueId: CURRENT_SOURCE.coverage[0].id,
+    clubId: currentClubs[0].id, position: "FWD", pageSize: 1 });
+  assert.equal(hidden.pagination.total, 2); // Forward 1 and Forward 10.
+  assert.equal((await service.players({ availability: "ready" })).pagination.total, 2);
+  assert.equal((await service.players({ availability: "hidden" })).pagination.total, 8);
+  assert.equal((await service.players({ availability: "unavailable" })).items[0].id, currentPlayers[0].id);
+  assert.equal((await service.player(currentPlayers[0].id)).player.id, currentPlayers[0].id);
+  assert.equal((await service.players()).pagination.total, 10);
+});
+
 async function searchNames() {
   const names = ["Kylian Mbappé", "Wilfried Mbappé", "João Félix", "Nicolás González", "Trent Alexander-Arnold",
     "Conor O’Neill", "Martin Ødegaard", "Lukas Müller", "Literal%_\\ Player", "Álex García"];

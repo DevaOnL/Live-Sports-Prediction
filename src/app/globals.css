@@ -166,7 +166,8 @@ summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .best-statistic .provenance-details { margin-top: 0; }
 .best-statistic .provenance-details p { font-size: 11px; }
 .best-statistic summary { font-size: 10px; }
-.best-statistic-unavailable { background: #eee8dc; }
+.best-statistic-hidden { background: #eee8dc; }
+.metric-empty, .comparison-empty { font-weight: 700; font-size: 18px; margin: 12px 0; }
 .best-statistic-empty { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .profile-copy > .best-statistic { margin-top: 20px; max-width: 560px; }
 .player-card-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; border-top: 1px solid; margin-top: 10px; padding-top: 10px; }

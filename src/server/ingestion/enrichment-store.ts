@@ -17,7 +17,7 @@ export type EnrichmentImportResult = ImportResult & { sourceRevisionId: string; 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const externalId = /^[1-9][0-9]{0,17}$/;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const mappingVersion = "name-entities-v2";
+const mappingVersion = "primary-minutes-v3";
 
 /** Supplement facts are append-only; current primary revisions remain authoritative. */
 export class EnrichmentStore {

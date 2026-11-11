@@ -13,24 +13,53 @@ const fixture: EnrichmentFixture = {
   appearances: [{ id: "appearance", primaryRevisionId: "primary", playerId: "player", name: "Alex Example", clubId: "home",
     participation: "played", minutes: 90, goals: 1, assists: 0, shotsOnTarget: 2 }],
 };
-function capture(change: Record<string, unknown> = {}, stats: Record<string, unknown> = {}) {
+function capture(change: Record<string, unknown> = {}, stats: Record<string, unknown> = {}, primary = fixture) {
   const external = { id: 1, date: fixture.kickoffAt, league: { id: 33973, season: 2026 }, homeTeam: { id: 2, name: "Test United" },
     awayTeam: { id: 3, name: "Other" }, state: { description: "Finished", score: { current: "1 - 0" } } };
   const text = JSON.stringify([{ team: { id: 2 }, players: [{ id: 4, name: "A. Example", minutesPlayed: 90, matchRating: "7.20",
     statistics: { goalsScored: 1, assists: 0, shotsOnTarget: 2, passesKey: 0, tacklesTotal: 3, interceptionsTotal: 0, ...stats }, ...change }] },
   { team: { id: 3 }, players: [] }]);
   const response = highlightlyResponse("get_statistics", fixture.leagueId, { format: "highlightly-box-v1", fixture: external,
-    scheduleArchiveId: "a".repeat(64), primaryFingerprint: primaryFingerprint(fixture), capture: { path: "/box-score/1", retrievedAt: "2026-11-10T12:00:00.000Z", text } });
+    scheduleArchiveId: "a".repeat(64), primaryFingerprint: primaryFingerprint(primary), capture: { path: "/box-score/1", retrievedAt: "2026-11-10T12:00:00.000Z", text } });
   return { ...response, id: archiveId(response) };
 }
 
-test("supplement mapping corroborates club, exact minutes and three observed counts", () => {
+test("supplement mapping corroborates club and three observed counts while retaining primary minutes", () => {
   const batch = normalizeHighlightly(capture(), fixture);
   assert.equal(batch.observations.length, 1);
   assert.deepEqual(batch.observations[0].metrics, { rating: 7.2, keyPasses: 0, tackles: 3, interceptions: 0 });
-  assert.equal(normalizeHighlightly(capture({ minutesPlayed: 89 }), fixture).observations.length, 0);
+  assert.equal(batch.observations[0].evidence.minutesDiscrepancy, 0);
   assert.equal(normalizeHighlightly(capture({}, { goalsScored: 0 }), fixture).observations.length, 0);
   assert.equal(normalizeHighlightly(capture({ name: "Adam Example" }), fixture).observations.length, 0);
+});
+test("small and large minute discrepancies retain both reports and always choose Sorare, including the eligibility boundary", () => {
+  for (const [primaryMinutes, externalMinutes] of [[84, 85], [90, 45], [60, 59], [59, 90], [94, 90]]) {
+    const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], minutes: primaryMinutes }] };
+    const row = normalizeHighlightly(capture({ minutesPlayed: externalMinutes }, {}, primary), primary).observations[0];
+    assert(row);
+    assert.deepEqual({ minutes: row.evidence.minutes, primary: row.evidence.primaryMinutes, external: row.evidence.externalMinutes,
+      source: row.evidence.minutesSource, discrepancy: row.evidence.minutesDiscrepancy },
+    { minutes: primaryMinutes, primary: primaryMinutes, external: externalMinutes, source: "sorare", discrepancy: externalMinutes - primaryMinutes });
+    assert.equal(primary.appearances[0].minutes, primaryMinutes);
+    assert.equal(row.metrics.rating, 7.2);
+  }
+});
+test("minute precedence never admits invalid minutes, unknown participation, missing counts or different identities", () => {
+  for (const minutes of [null, 0, -1, 1.5, 2_147_483_648, Number.NaN]) {
+    const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], minutes }] };
+    assert.equal(normalizeHighlightly(capture({ minutesPlayed: 85 }, {}, primary), primary).observations.length, 0);
+    if (minutes === 0) assert.equal(normalizeHighlightly(capture({ minutesPlayed: minutes }), fixture).observations.length, 0);
+    else assert.throws(() => normalizeHighlightly(capture({ minutesPlayed: minutes }), fixture), /player identity/);
+  }
+  for (const participation of ["unknown", "dnp"]) {
+    const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], participation }] };
+    assert.equal(normalizeHighlightly(capture({ minutesPlayed: 85 }, {}, primary), primary).observations.length, 0);
+  }
+  for (const stats of [{ goalsScored: null }, { assists: false }, { shotsOnTarget: -1 }, { goalsScored: 0 }]) {
+    assert.equal(normalizeHighlightly(capture({ minutesPlayed: 85 }, stats), fixture).observations.length, 0);
+  }
+  assert.equal(normalizeHighlightly(capture({ name: "Adam Example", minutesPlayed: 85 }), fixture).observations.length, 0);
+  assert.equal(normalizeHighlightly(capture({ name: "Alex Exampl", minutesPlayed: 85 }), fixture).observations.length, 0);
 });
 test("missing, malformed and boolean counts never become measured zero", () => {
   const row = normalizeHighlightly(capture({ matchRating: "" }, { passesKey: false, tacklesTotal: -1, interceptionsTotal: 1.5 }), fixture).observations[0];
@@ -49,6 +78,13 @@ test("source correction, ambiguous names and duplicate external identities fail 
   const duplicate = capture(); const value = JSON.parse(duplicate.text); const boxes = JSON.parse(value.capture.text);
   boxes[1].players.push(boxes[0].players[0]); value.capture.text = JSON.stringify(boxes); duplicate.text = JSON.stringify(value);
   assert.throws(() => normalizeHighlightly(duplicate, fixture), /player identity/);
+  const aliases = capture({ minutesPlayed: 85 }); const mapped = JSON.parse(aliases.text); const rows = JSON.parse(mapped.capture.text);
+  rows[0].players.push({ ...rows[0].players[0], id: 5, name: "Alex Example", minutesPlayed: 45 });
+  mapped.capture.text = JSON.stringify(rows); aliases.text = JSON.stringify(mapped);
+  assert.equal(normalizeHighlightly(aliases, fixture).observations.length, 0, "different external IDs cannot claim the same primary appearance");
+  const differentMinutes = { ...fixture, appearances: [...fixture.appearances, { ...fixture.appearances[0], id: "second", minutes: 85 }] };
+  assert.equal(normalizeHighlightly(capture({ minutesPlayed: 85 }, {}, differentMinutes), differentMinutes).observations.length, 0,
+    "minutes cannot disambiguate two otherwise matching primary identities");
 });
 test("name normalization permits accent/initial equivalence but rejects different full first names", () => {
   assert(samePlayerName("Álex Example", "A. Example"));
@@ -72,7 +108,7 @@ test("HTML apostrophes preserve strict identity and observed-count corroboration
   const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Luke O'Nien" }] };
   const raw = capture({ name: "L. O&apos;Nien" });
   assert.equal(normalizeHighlightly(raw, primary).observations.length, 1);
-  assert.equal(normalizeHighlightly(capture({ name: "L. O&apos;Nien", minutesPlayed: 89 }), primary).observations.length, 0);
+  assert.equal(normalizeHighlightly(capture({ name: "L. O&apos;Nien", minutesPlayed: 89 }), primary).observations.length, 1);
   assert.equal(normalizeHighlightly(capture({ name: "L. O&apos;Nien" }, { assists: 1 }), primary).observations.length, 0);
 });
 test("verified club aliases retain exact fixture time, score, league and opponent checks", () => {

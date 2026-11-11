@@ -1,4 +1,16 @@
-import type { ForecastInput, ForecastResult, Rank } from "../server/forecast/types";
+import type { ForecastInput, ForecastResult, Output, Rank } from "../server/forecast/types";
+
+export function hasRecordedValue(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function hasOutput(output: Output | undefined): boolean {
+  return output?.status === "available" && hasRecordedValue(output.value);
+}
+
+export function hasForecastOutputs(result: ForecastResult): boolean {
+  return [result.forecastRating, result.adjustedFormIndex, ...Object.values(result.projected90)].some(hasOutput);
+}
 
 export function selectedEvidence(input: ForecastInput, result: ForecastResult) {
   return result.selected.map((selected) => ({ selected,

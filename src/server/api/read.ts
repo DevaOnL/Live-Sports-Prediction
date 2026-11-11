@@ -20,7 +20,7 @@ export type SourceFreshness = {
 };
 export type PlayerFilters = {
   q?: string; leagueId?: string; clubId?: string; position?: Position;
-  availability?: "available" | "partial" | "unavailable" | "uncomputed";
+  availability?: "ready" | "hidden" | "available" | "partial" | "unavailable" | "uncomputed";
   page?: number; pageSize?: number;
 };
 export type PlayerSummary = {
@@ -297,7 +297,7 @@ export class ReadService {
     league(filters.leagueId, this.profile);
     if (filters.clubId !== undefined) identifier(filters.clubId, this.profile, "Club");
     if (filters.position !== undefined && !positions.includes(filters.position)) invalid("invalid_position", "Unsupported player position.");
-    if (filters.availability !== undefined && !["available", "partial", "unavailable", "uncomputed"].includes(filters.availability)) invalid("invalid_availability", "Unsupported forecast availability.");
+    if (filters.availability !== undefined && !["ready", "hidden", "available", "partial", "unavailable", "uncomputed"].includes(filters.availability)) invalid("invalid_availability", "Unsupported forecast filter.");
     if (filters.q !== undefined && (typeof filters.q !== "string" || filters.q.length > 80 || /[\u0000-\u001f\u007f]/.test(filters.q))) invalid("invalid_search", "Search must contain at most 80 characters.");
     const page = filters.page === undefined ? 1 : filters.page;
     const pageSize = filters.pageSize === undefined ? 20 : filters.pageSize;
@@ -321,7 +321,9 @@ export class ReadService {
       const condition = `($2::text[] IS NULL OR (EXISTS (SELECT 1 FROM search_terms) AND NOT EXISTS (
         SELECT 1 FROM search_terms WHERE ${playerSearchKey("name")} NOT LIKE '%'||${literalToken}||'%' ESCAPE '\\'
       ))) AND ($3::text IS NULL OR league_id=$3)
-        AND ($4::text IS NULL OR club_id=$4) AND ($5::text IS NULL OR position=$5) AND ($6::text IS NULL OR availability=$6)`;
+        AND ($4::text IS NULL OR club_id=$4) AND ($5::text IS NULL OR position=$5) AND ($6::text IS NULL OR availability=$6
+          OR ($6='ready' AND availability IN ('available','partial'))
+          OR ($6='hidden' AND availability IN ('unavailable','uncomputed')))`;
       const total = (await client.query<{ total: number }>(`WITH ${this.catalogue}, ${searchTerms} SELECT count(*)::integer AS total FROM summaries WHERE ${condition}`, values)).rows[0].total;
       const rows = (await client.query<SummaryRow>(`WITH ${this.catalogue}, ${searchTerms} SELECT * FROM summaries WHERE ${condition}
         ORDER BY name,provider_id COLLATE "C" LIMIT $7 OFFSET $8`, [...values, pageSize, (page - 1) * pageSize])).rows;

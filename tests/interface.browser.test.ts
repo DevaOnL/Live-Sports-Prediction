@@ -185,12 +185,45 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await page.getByLabel("Competition", { exact: true }).selectOption("153");
   await page.getByLabel("Club", { exact: true }).selectOption("3072");
   await page.getByLabel("Position", { exact: true }).selectOption("GK");
-  await page.getByLabel("Model availability", { exact: true }).selectOption("available");
+  await page.getByLabel("Model results", { exact: true }).selectOption("ready");
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await page.getByRole("heading", { name: names[0], exact: true }).waitFor();
   assert.equal(await page.getByRole("heading", { name: /^Synthetic demo / }).count(), 1);
   assert.equal(new URL(page.url()).searchParams.get("position"), "GK");
   await noOverflow(page);
+}));
+
+test("catalogue defaults to ready results and exposes hidden records only through an explicit filter or toggle", { timeout: 60_000 }, async () => withPage(async (page) => {
+  await login(page);
+  const playersResponse = () => page.waitForResponse((response) => new URL(response.url()).pathname === "/api/players" && response.status() === 200);
+  const first = playersResponse();
+  await page.goto(`${web.origin}/players`);
+  const ready = await first;
+  assert.equal(new URL(ready.url()).searchParams.get("availability"), "ready");
+  assert((await ready.json()).data.items.every((item: { forecast: { status: string } }) => ["available", "partial"].includes(item.forecast.status)));
+  const reveal = page.getByRole("button", { name: "Show hidden", exact: true });
+  assert.equal(await reveal.getAttribute("aria-pressed"), "false");
+  await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
+  const filter = page.getByLabel("Model results", { exact: true });
+  assert.equal(await filter.inputValue(), "ready");
+  assert.deepEqual(await filter.locator("option").allTextContents(), ["Ready", "Hidden", "All"]);
+  await filter.selectOption("hidden");
+  const hiddenResponse = playersResponse();
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  const hidden = await hiddenResponse;
+  assert.equal(new URL(hidden.url()).searchParams.get("availability"), "hidden");
+  assert((await hidden.json()).data.items.every((item: { forecast: { status: string } }) => ["unavailable", "uncomputed"].includes(item.forecast.status)));
+  assert.equal(await page.getByRole("button", { name: "Hide hidden", exact: true }).getAttribute("aria-pressed"), "true");
+  await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
+  await filter.selectOption("all");
+  const allResponse = playersResponse();
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  assert.equal(new URL((await allResponse).url()).searchParams.has("availability"), false);
+  const reset = playersResponse();
+  await page.getByRole("button", { name: "Hide hidden", exact: true }).click();
+  assert.equal(new URL((await reset).url()).searchParams.get("availability"), "ready");
+  assert.equal(await reveal.getAttribute("aria-pressed"), "false");
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /unavailable|uncomputed/i);
 }));
 
 test("scouting highlights expose observed strengths on cards and profiles with honest ranks and missing-data states", { timeout: 60_000 }, async () => withPage(async (page) => {
@@ -238,10 +271,14 @@ test("scouting highlights expose observed strengths on cards and profiles with h
   await eliteStatistic.getByText(/above at least 85%/).waitFor();
   await eliteStatistic.getByText(/As of .*UTC/).waitFor();
   const unavailable = missing.getByRole("region", { name: "Best statistic", exact: true });
-  await unavailable.getByText("Unavailable", { exact: true }).waitFor();
+  assert.equal(await unavailable.count(), 0, "missing scouting highlights are hidden by default");
+  await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+  await unavailable.getByText("Not recorded", { exact: true }).waitFor();
   assert.equal(await unavailable.locator(".best-statistic-value").count(), 0, "missing observations cannot render a zero statistic");
-  await unavailable.getByText("Why unavailable?", { exact: true }).click();
+  await unavailable.getByText("Recorded details", { exact: true }).click();
   await unavailable.getByText("The relevant statistics are incomplete across the five appearances.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Hide hidden", exact: true }).click();
+  assert.equal(await unavailable.count(), 0);
   await noOverflow(page);
   await elite.getByRole("link", { name: "View player", exact: false }).click();
   await page.waitForURL(`${web.origin}/players/8001`);
@@ -255,10 +292,12 @@ test("scouting highlights expose observed strengths on cards and profiles with h
   await page.goto(`${web.origin}/players/8004`);
   await page.getByRole("heading", { name: names[3], exact: true }).waitFor();
   const missingProfileStatistic = page.locator(".profile-hero").getByRole("region", { name: "Best statistic", exact: true });
-  await missingProfileStatistic.getByText("Unavailable", { exact: true }).waitFor();
+  assert.equal(await missingProfileStatistic.count(), 0);
+  await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+  await missingProfileStatistic.getByText("Not recorded", { exact: true }).waitFor();
   assert.equal(await missingProfileStatistic.locator(".best-statistic-value").count(), 0);
   assert.equal(await missingProfileStatistic.getByText("Top 20%", { exact: true }).count(), 0);
-  await missingProfileStatistic.getByText("Why unavailable?", { exact: true }).click();
+  await missingProfileStatistic.getByText("Recorded details", { exact: true }).click();
   await missingProfileStatistic.getByText("The relevant statistics are incomplete across the five appearances.", { exact: true }).waitFor();
   await noOverflow(page);
 }));
@@ -402,7 +441,10 @@ test("player detail separates five selected matches, reported observations, unit
   await page.goto(`${web.origin}/players/8004`);
   await page.getByRole("heading", { name: names[3], exact: true }).waitFor();
   const goals = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Goals", exact: true }) }).first();
-  assert((await goals.innerText()).includes("—"), "missing goals must stay unavailable rather than become zero");
+  assert.equal(await goals.count(), 0, "missing goals are omitted by default");
+  await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+  await goals.getByText("Not recorded", { exact: true }).waitFor();
+  assert.equal(await goals.locator(".metric-value").count(), 0, "missing goals cannot become zero");
 }));
 
 test("comparison preserves two-to-four selections in URLs and requires explicit cross-position opt-in", { timeout: 90_000 }, async () => withPage(async (page) => {
@@ -466,23 +508,34 @@ test("comparison exposes partial observed ratings without hiding available ratin
       assert.equal(data.players[0].result.projected90.tackles?.status, "available");
       assert.equal(data.players[1].result.forecastRating.status, "available");
       await page.goto(`${web.origin}/compare?${query}`);
-      const table = page.getByRole("table", { name: "Observed match ratings, aligned player forecasts and adjusted form indexes, with explicit units and availability", exact: true });
+      const table = page.getByRole("table", { name: "Recorded match ratings, aligned player forecasts and adjusted form indexes with explicit units", exact: true });
       await table.waitFor();
       const partial = table.getByRole("group", { name: `Observed match ratings for ${names[1]}`, exact: true });
       await partial.getByText("4 of 5 match ratings", { exact: true }).waitFor();
-      assert.equal(await partial.getByRole("listitem").count(), 5);
-      assert.equal(await partial.locator(".match-rating-missing").count(), 1);
-      assert.match(await partial.locator(".match-rating-missing").innerText(), /3 Aug.*—/s);
+      assert.equal(await partial.getByRole("listitem").count(), 4);
+      assert.equal(await partial.locator(".match-rating-missing").count(), 0);
       assert((await partial.locator(".match-rating").allTextContents()).some((value) => value.includes("0 out of 10")), "an observed zero rating is present, not missing");
       await table.getByRole("group", { name: `Observed match ratings for ${names[2]}`, exact: true }).getByText("5 of 5 match ratings", { exact: true }).waitFor();
       for (const [name, expected] of [["Forecast rating", data.players[1].result.forecastRating.value], ["Adjusted form index", data.players[1].result.adjustedFormIndex.value]] as const) {
         const cells = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: new RegExp(`^${name}`) }) }).getByRole("cell");
-        assert.equal(await cells.nth(0).locator(".comparison-value").innerText(), "—");
+        assert.equal((await cells.nth(0).innerText()).trim(), "", "missing comparison values leave an empty cell");
         assert.equal(await cells.nth(1).locator(".comparison-value").innerText(), formatNumber(expected));
       }
       const counts = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: /^Tackles/ }) }).getByRole("cell");
       assert.equal(await counts.nth(0).locator(".comparison-value").innerText(), formatNumber(data.players[0].result.projected90.tackles?.value));
-      await page.getByText("Rating and form need all five match ratings. Count forecasts use their own available statistics.", { exact: true }).waitFor();
+      assert.equal(await page.getByText(/^Rating and form need all five match ratings/).count(), 0);
+      await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+      assert.equal(await partial.getByRole("listitem").count(), 5);
+      assert.equal(await partial.locator(".match-rating-missing").count(), 1);
+      assert.match(await partial.locator(".match-rating-missing").innerText(), /3 Aug.*Not recorded/s);
+      for (const name of ["Forecast rating", "Adjusted form index"]) {
+        const cells = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: new RegExp(`^${name}`) }) }).getByRole("cell");
+        assert.equal(await cells.nth(0).locator(".comparison-empty").innerText(), "Not recorded");
+      }
+      await page.getByText("Rating and form need all five match ratings. Count forecasts use their own recorded statistics.", { exact: true }).waitFor();
+      assert.doesNotMatch(await page.getByRole("main").innerText(), /unavailable|uncomputed/i);
+      await page.getByRole("button", { name: "Hide hidden", exact: true }).click();
+      assert.equal(await partial.getByRole("listitem").count(), 4);
       assert.equal(await page.getByRole("complementary", { name: "Comparison selection", exact: true }).count(), 0);
       for (const width of [390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(page); }
       await page.goto(`${web.origin}/players`);
@@ -523,7 +576,8 @@ test("loading, recoverable service errors, missing records and expired sessions 
   await page.getByText("No players imported yet. An administrator can request an import.", { exact: true }).waitFor();
   await page.unroute("**/api/overview");
   await page.goto(`${web.origin}/players/999999`);
-  await page.getByRole("heading", { name: "This record is unavailable.", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "This record could not be found.", exact: true }).waitFor();
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /unavailable|uncomputed/i);
   await page.goto(`${web.origin}/overview`);
   await page.getByRole("region", { name: "Coverage summary", exact: true }).waitFor();
   await web.administrator.query('UPDATE auth.session SET "createdAt"=clock_timestamp()-interval \'2 hours\',"expiresAt"=clock_timestamp()-interval \'1 hour\' WHERE "userId"=$1', [web.viewerId]);

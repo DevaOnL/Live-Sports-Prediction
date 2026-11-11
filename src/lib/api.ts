@@ -9,7 +9,7 @@ export async function api<T>(path: string, options: { signal?: AbortSignal; meth
   });
   const value = await result.json().catch(() => null);
   if (!result.ok) throw new ApiFailure(result.status, value?.error?.code ?? "SERVICE_UNAVAILABLE",
-    result.status >= 500 ? "The service is temporarily unavailable. Please try again." : value?.error?.message ?? "The request could not be completed.");
+    result.status >= 500 ? "The service could not be reached. Please try again." : value?.error?.message ?? "The request could not be completed.");
   if (!value || !("data" in value)) throw new ApiFailure(503, "INVALID_RESPONSE", "The service returned an incomplete response. Please try again.");
   return value.data as T;
 }

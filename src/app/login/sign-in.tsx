@@ -22,14 +22,14 @@ export function LoginForm() {
       });
       if (!result.ok) {
         setError(result.status === 429 ? "Too many attempts. Please wait a minute before trying again."
-          : result.status >= 500 ? "Sign-in is temporarily unavailable. Please try again shortly."
+          : result.status >= 500 ? "Sign-in could not be completed. Please try again shortly."
           : "We could not sign you in. Check your email and password.");
         return;
       }
       form.reset();
       router.replace(returnPath(new URLSearchParams(window.location.search).get("next")));
       router.refresh();
-    } catch { setError("Sign-in is temporarily unavailable. Please try again shortly."); }
+    } catch { setError("Sign-in could not be completed. Please try again shortly."); }
     finally { setPending(false); }
   }
   return (
