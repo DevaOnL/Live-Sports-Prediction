@@ -167,7 +167,7 @@ async function effectiveCounts() {
 }
 
 async function quiet() {
-  await until("initial source synchronization and durable queue completion", async () => {
+  await until("source synchronization and durable queue completion", async () => {
     const health = await fetch(`${worker!.origin}/health`).then((response) => response.json());
     const active = await web.writer.query("SELECT 1 FROM sports.jobs WHERE status IN ('ready','running') LIMIT 1");
     const pending = await web.writer.query(`SELECT 1 FROM sports.outbox WHERE published_at IS NULL
@@ -272,18 +272,46 @@ test("actual worker imports, refreshes locally during source stalls, renews leas
     const row = await job(interrupted);
     return row?.status === "running" && worker!.messages.some((message) => message.type === "request" && message.action === "get_statistics" && message.held);
   });
-  await stopWorker("SIGKILL");
+  // The process has independent source and forecast loops. Block both before
+  // termination so recovery cannot accidentally depend on which loop was busy.
+  let abandonedJobs!: Job[];
+  await web.administrator.query("SELECT pg_advisory_lock(hashtextextended('lsp:ingestion',0))");
+  try {
+    const requestId = randomUUID();
+    await web.writer.query("CALL sports.request_forecast_refresh($1)", [requestId]);
+    const interruptedForecast = await until("independent forecast claimed alongside the held source job", async () => {
+      const row = (await web.writer.query<Job>(`SELECT id,status,attempts,locked_until,locked_by FROM sports.jobs
+        WHERE kind='forecast.refresh' AND status='running'
+          AND EXISTS (SELECT 1 FROM sports.outbox WHERE deduplication_key=$1 AND published_at IS NOT NULL)`,
+      [`forecast.manual:${requestId}`])).rows[0];
+      return row ?? false;
+    });
+    const source = await job(interrupted);
+    assert(source.locked_by);
+    const owner = source.locked_by.split(":")[0];
+    assert.match(owner, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    abandonedJobs = (await web.writer.query<Job>("SELECT id,status,attempts,locked_until,locked_by FROM sports.jobs WHERE status='running' ORDER BY id")).rows;
+    assert.deepEqual(new Set(abandonedJobs.map((row) => row.id)), new Set([source.id, interruptedForecast.id]));
+    assert(abandonedJobs.every((row) => row.locked_by?.startsWith(`${owner}:`)), "both captured leases belong to the one worker process being terminated");
+    await stopWorker("SIGKILL");
+  } finally { await web.administrator.query("SELECT pg_advisory_unlock(hashtextextended('lsp:ingestion',0))"); }
   const abandoned = await job(interrupted);
   assert.equal(abandoned.status, "running");
   assert.equal(abandoned.attempts, 1);
-  // Only this known job in the identity-guarded disposable cluster is expired.
-  await web.writer.query("UPDATE sports.jobs SET locked_until=clock_timestamp()-interval '1 second' WHERE id=$1 AND status='running'", [abandoned.id]);
+  // Simulate elapsed leases only for the exact captured IDs and claim tokens of
+  // the terminated child in this identity-guarded disposable cluster.
+  for (const captured of abandonedJobs) {
+    const expired = await web.writer.query(`UPDATE sports.jobs SET locked_until=clock_timestamp()-interval '1 second'
+      WHERE id=$1 AND status='running' AND locked_by=$2`, [captured.id, captured.locked_by]);
+    assert.equal(expired.rowCount, 1);
+  }
   const committed = (await web.writer.query("SELECT archive_id FROM sports.ingestion_batches ORDER BY committed_at DESC LIMIT 1")).rows[0];
   await db.collection("import_metadata").updateOne({ _id: committed.archive_id }, { $set: { state: "pending" }, $unset: { result: "" } });
   await startWorker(synthetic);
   await until("expired lease re-claim and process restart recovery", async () => {
-    const row = await job(interrupted);
-    return row.status === "succeeded" && row.attempts === 2;
+    const rows = (await web.writer.query<Job>("SELECT id,status,attempts,locked_until,locked_by FROM sports.jobs WHERE id=ANY($1::uuid[])", [abandonedJobs.map((row) => row.id)])).rows;
+    return rows.length === abandonedJobs.length && rows.every((row) => row.status === "succeeded"
+      && row.attempts === abandonedJobs.find((captured) => captured.id === row.id)!.attempts + 1);
   }, 35_000);
   await quiet();
   const marker = await db.collection("import_metadata").findOne({ _id: committed.archive_id });
