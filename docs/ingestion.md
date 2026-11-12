@@ -240,7 +240,7 @@ SQL-clock pacing and 100-request daily cap. The normal worker keeps its five-cal
 reserve; neither flag resets counters or changes the provider plan. The two flags
 cannot be combined.
 
-Ingestion processes wait up to two seconds before trying the next resolved
+Ingestion processes wait up to five seconds before trying the next resolved
 address during dual-stack fallback. This accommodates slower IPv4 paths when IPv6 is unreachable;
 DNS, certificate validation and the 30-second HTTP deadline remain enabled.
 Provider errors are classified separately from internal processing errors. HTTP 200 error
