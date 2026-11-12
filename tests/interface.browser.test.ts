@@ -193,7 +193,7 @@ test("catalogue filters, empty results and paging use real query-backed player r
   await noOverflow(page);
 }));
 
-test("catalogue defaults to ready results and exposes hidden records only through an explicit filter or toggle", { timeout: 60_000 }, async () => withPage(async (page) => {
+test("catalogue defaults to players with results and exposes hidden records only through an explicit filter or toggle", { timeout: 60_000 }, async () => withPage(async (page) => {
   await login(page);
   const playersResponse = () => page.waitForResponse((response) => new URL(response.url()).pathname === "/api/players" && response.status() === 200);
   const first = playersResponse();
@@ -202,12 +202,16 @@ test("catalogue defaults to ready results and exposes hidden records only throug
   assert.equal(new URL(ready.url()).searchParams.get("availability"), "ready");
   const readyData = (await ready.json()).data;
   assert(readyData.items.every((item: { forecast: { status: string } }) => ["available", "partial"].includes(item.forecast.status)));
+  await page.getByText(`${readyData.pagination.total.toLocaleString("en-GB")} players in view`, { exact: true }).waitFor();
   const reveal = page.getByRole("button", { name: "Show hidden", exact: true });
   assert.equal(await reveal.getAttribute("aria-pressed"), "false");
   await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
   const filter = page.getByLabel("Model results", { exact: true });
   assert.equal(await filter.inputValue(), "ready");
-  assert.deepEqual(await filter.locator("option").allTextContents(), ["Ready", "Hidden", "All"]);
+  assert.deepEqual(await filter.locator("option").allTextContents(), ["With results", "Hidden", "All"]);
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i, "available player records do not need readiness labels");
+  assert.equal(await page.locator(".player-card").getByText("Complete results", { exact: true }).count(), 0,
+    "successful cards retain player content without a replacement success badge");
   const revealedResponse = playersResponse();
   await reveal.click();
   const revealed = await revealedResponse;
@@ -219,7 +223,7 @@ test("catalogue defaults to ready results and exposes hidden records only throug
   await page.getByRole("button", { name: "Hide hidden", exact: true }).click();
   assert.equal(new URL((await concealedResponse).url()).searchParams.get("availability"), "ready");
   await page.getByText(`${readyData.pagination.total.toLocaleString("en-GB")} players in view`, { exact: true }).waitFor();
-  assert.equal(await filter.inputValue(), "ready", "the filter must return to Ready with the visible results");
+  assert.equal(await filter.inputValue(), "ready", "the filter must return to With results with the visible results");
   await filter.selectOption("hidden");
   const hiddenResponse = playersResponse();
   await page.getByRole("button", { name: "Apply filters", exact: true }).click();
@@ -250,8 +254,12 @@ test("overview status links retain exact catalogue filters through unchanged sub
     await page.goto(`${web.origin}/overview`);
     await page.getByRole("region", { name: "Coverage summary", exact: true }).waitFor();
     if (hidden) await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+    const statusLink = page.locator(`.availability-card[href="/players?availability=${status}"]`);
+    if (!hidden) await statusLink.getByText(label, { exact: true }).waitFor();
+    assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+      "overview counts describe the results without a readiness label");
     const firstResponse = playersResponse();
-    await page.locator(`.availability-card[href="/players?availability=${status}"]`).click();
+    await statusLink.click();
     const first = await firstResponse;
     assert.equal(new URL(first.url()).searchParams.get("availability"), status);
     const original = (await first.json()).data;
@@ -259,7 +267,7 @@ test("overview status links retain exact catalogue filters through unchanged sub
     await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
     const filter = page.getByLabel("Model results", { exact: true });
     assert.equal(await filter.inputValue(), status, "the selected option must describe the exact requested status");
-    assert.deepEqual(await filter.locator("option").allTextContents(), ["Ready", "Hidden", "All", label]);
+    assert.deepEqual(await filter.locator("option").allTextContents(), ["With results", "Hidden", "All", label]);
     assert.equal(await page.getByRole("button", { name: hidden ? "Hide hidden" : "Show hidden", exact: true }).getAttribute("aria-pressed"), String(hidden));
     const submittedResponse = playersResponse();
     await page.getByRole("button", { name: "Apply filters", exact: true }).click();
@@ -502,6 +510,10 @@ test("player detail separates five selected matches, reported observations, unit
   await page.getByText("The saved target kickoff has passed. These saved projections need a new evaluation before use for a future match.", { exact: true }).waitFor();
   await page.getByText("Revision and source evidence", { exact: true }).click();
   await page.getByText("Canonical input hash", { exact: true }).waitFor();
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+    "selected matches, saved outputs and their evidence do not repeat readiness labels");
+  assert.equal(await page.locator(".metric-card").getByText("Complete results", { exact: true }).count(), 0,
+    "numeric outputs do not carry replacement success badges");
   await noOverflow(page);
   await page.goto(`${web.origin}/players/8004`);
   await page.getByRole("heading", { name: names[3], exact: true }).waitFor();
@@ -534,6 +546,8 @@ test("comparison preserves two-to-four selections in URLs and requires explicit 
   await firstEvidence.locator("summary").filter({ hasText: /^Comparison and revision evidence$/ }).click();
   await firstEvidence.getByText("Canonical input hash", { exact: true }).waitFor();
   await firstEvidence.getByText("Shared cutoff", { exact: true }).waitFor();
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+    "comparison values and expanded five-match evidence do not repeat readiness labels");
   await page.goto(`${web.origin}/players?pageSize=4`);
   for (const name of names.slice(2)) await page.getByRole("button", { name: `Add ${name} to comparison`, exact: true }).click();
   await page.getByRole("link", { name: "Compare players", exact: true }).click();
@@ -588,6 +602,10 @@ test("comparison exposes partial observed ratings without hiding available ratin
       }
       const counts = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: /^Tackles/ }) }).getByRole("cell");
       assert.equal(await counts.nth(0).locator(".comparison-value").innerText(), formatNumber(data.players[0].result.projected90.tackles?.value));
+      await page.getByRole("article", { name: `Evidence for ${names[1]}`, exact: true }).locator(":scope > .profile-meta").getByText("Some results", { exact: true }).waitFor();
+      assert.equal(await table.getByText("Complete results", { exact: true }).count(), 0,
+        "available comparison values retain their units without success badges");
+      assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i);
       assert.equal(await page.getByText(/^Rating and form need all five match ratings/).count(), 0);
       await page.getByRole("button", { name: "Show hidden", exact: true }).click();
       assert.equal(await partial.getByRole("listitem").count(), 5);
@@ -599,6 +617,8 @@ test("comparison exposes partial observed ratings without hiding available ratin
       }
       await page.getByText("Rating and form need all five match ratings. Count forecasts use their own recorded statistics.", { exact: true }).waitFor();
       assert.doesNotMatch(await page.getByRole("main").innerText(), /unavailable|uncomputed/i);
+      assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+        "revealing missing data preserves its explanation without adding successful-history badges");
       await page.getByRole("button", { name: "Hide hidden", exact: true }).click();
       assert.equal(await partial.getByRole("listitem").count(), 4);
       assert.equal(await page.getByRole("complementary", { name: "Comparison selection", exact: true }).count(), 0);
@@ -683,8 +703,23 @@ test("administrator queue retries preserve request identity, correction conflict
   const retried = page.waitForResponse((response) => response.url() === `${web.origin}/api/admin/jobs/${jobId}/retry` && response.request().method() === "POST");
   await page.getByRole("button", { name: `Retry job ${jobId}`, exact: true }).click();
   assert.equal((await retried).status(), 202);
-  await page.getByRole("row").filter({ hasText: jobId }).getByText("Ready", { exact: true }).waitFor();
+  const queuedRow = page.getByRole("table", { name: /^Worker queue/ }).getByRole("row").filter({ hasText: jobId });
+  await queuedRow.getByText("Queued", { exact: true }).waitFor();
+  assert.equal(await queuedRow.getByRole("button", { name: `Retry job ${jobId}`, exact: true }).count(), 0,
+    "accepted retry returns to the queue without presenting completion or another retry");
   assert.equal((await web.administrator.query("SELECT status FROM sports.jobs WHERE id=$1", [jobId])).rows[0].status, "ready");
+  await page.getByText("Queued or running", { exact: true }).waitFor();
+  const jobStatus = page.getByLabel(/^Job status/);
+  assert.equal(await jobStatus.locator('option[value="ready"]').innerText(), "Queued");
+  const queuedJobs = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/admin/jobs" && url.searchParams.get("status") === "ready" && response.status() === 200;
+  });
+  await jobStatus.selectOption("ready");
+  await queuedJobs;
+  await queuedRow.getByText("Queued", { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("status"), "ready", "the queued label preserves the existing queue filter contract");
+  assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i);
   await page.getByRole("button", { name: "Load appearance", exact: true }).click();
   const revision = page.getByLabel("Expected revision", { exact: true });
   await revision.waitFor();
@@ -711,9 +746,15 @@ test("administrator queue retries preserve request identity, correction conflict
   await page.getByRole("button", { name: "Committed imports", exact: true }).click();
   await page.getByText("Committed batches · Validation issues retain uncertainty", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Audit trail", exact: true }).click();
-  await page.getByRole("table", { name: /^Committed audit trail/ }).waitFor();
-  await page.getByText("View audit evidence", { exact: true }).first().click();
+  const audit = page.getByRole("table", { name: /^Committed audit trail/ });
+  await audit.waitFor();
+  const retryAudit = audit.getByRole("row").filter({ hasText: jobId });
+  await retryAudit.getByText("View audit evidence", { exact: true }).click();
+  await retryAudit.getByText("Failed", { exact: true }).waitFor();
+  await retryAudit.getByText("Queued", { exact: true }).waitFor();
+  await audit.getByRole("row").filter({ hasText: "appearance.correct" }).first().getByText("View audit evidence", { exact: true }).click();
   await page.getByText("Reason: Synthetic browser correction after revision reload", { exact: true }).waitFor();
+  assert.doesNotMatch(await audit.innerText(), /\bready\b/i, "retry audit evidence uses the same queued label as the job list");
   assert.equal((await web.administrator.query("SELECT count(*)::integer AS count FROM sports.provider_requests")).rows[0].count, 0);
 }));
 

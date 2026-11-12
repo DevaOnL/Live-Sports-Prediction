@@ -176,7 +176,9 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     await activate(hide, page);
     assert.equal(await reveal.getAttribute("aria-pressed"), "false");
     await disclose(page.locator("summary").filter({ hasText: /^Filter players/ }), page);
-    assert.equal(await page.getByLabel("Model results", { exact: true }).inputValue(), "ready");
+    const modelResults = page.getByLabel("Model results", { exact: true });
+    assert.equal(await modelResults.inputValue(), "ready");
+    assert.equal(await modelResults.locator("option:checked").innerText(), "With results");
     await focusControl(page.getByLabel("Search players", { exact: true }));
     await page.keyboard.insertText("Synthetic demo goalkeepers");
     await focusControl(page.getByLabel("Position", { exact: true }));
@@ -197,6 +199,8 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
     assert.equal(await page.getByRole("table", { name: "Recent observed appearances and reported match statistics" }).getByRole("row").count(), 8);
     await disclose(page.locator("summary").filter({ hasText: /^Revision and source evidence$/ }), page);
     await page.getByText("Canonical input hash", { exact: true }).waitFor();
+    assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+      "expanded player evidence retains the selected five without redundant readiness text");
     await semantics(page);
     await page.goto(`${web.origin}/compare?playerId=8001&playerId=8002&allowCrossPosition=true`);
     await page.getByRole("region", { name: "Aligned comparison results", exact: true }).waitFor();
@@ -207,6 +211,8 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
       await disclose(evidence.locator("summary").filter({ hasText: /^Comparison and revision evidence$/ }), page);
       await evidence.getByText("Shared cutoff", { exact: true }).waitFor();
     }
+    assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+      "comparison results and expanded evidence do not repeat readiness text at any supported width");
     await semantics(page);
     let release: () => void = () => undefined;
     const pending = new Promise<void>((resolve) => { release = resolve; });
@@ -306,8 +312,10 @@ test("keyboard administrators can expand operational tables, source gaps and aud
     const retried = page.getByRole("status").filter({ hasText: "Retry queued. Check job status for completion." });
     await retried.waitFor(); assert.equal(await retried.getAttribute("aria-live"), "polite");
     const jobs = page.getByRole("table", { name: /^Worker queue/ });
-    await jobs.getByRole("row").filter({ hasText: jobId }).getByText("Ready", { exact: true }).waitFor();
+    await jobs.getByRole("row").filter({ hasText: jobId }).getByText("Queued", { exact: true }).waitFor();
     assert.equal(await retried.isVisible(), true, "retry feedback survives the job-list refresh");
+    assert.equal(await page.getByLabel(/^Job status/).locator('option[value="ready"]').innerText(), "Queued");
+    await page.getByText("Queued or running", { exact: true }).waitFor();
     await jobs.locator("summary").filter({ hasText: /^Job details$/ }).first().waitFor();
     await disclose(jobs.locator("summary").filter({ hasText: /^Job details$/ }).first(), page);
     await jobs.getByText(/^Job ID /).first().waitFor();
@@ -318,10 +326,15 @@ test("keyboard administrators can expand operational tables, source gaps and aud
     await semantics(page);
     await activate(page.getByRole("button", { name: "Audit trail", exact: true }), page);
     const audit = page.getByRole("table", { name: /^Committed audit trail/ });
-    await disclose(audit.locator("summary").filter({ hasText: /^Record details$/ }).first(), page);
-    await audit.getByText(/^Audit ID /).first().waitFor();
-    await disclose(audit.locator("summary").filter({ hasText: /^View audit evidence$/ }).first(), page);
-    await audit.getByRole("heading", { name: "After", exact: true }).first().waitFor();
+    const retryAudit = audit.getByRole("row").filter({ hasText: "admin.job.retry" }).first();
+    await disclose(retryAudit.locator("summary").filter({ hasText: /^Record details$/ }), page);
+    await retryAudit.getByText(/^Audit ID /).waitFor();
+    await disclose(retryAudit.locator("summary").filter({ hasText: /^View audit evidence$/ }), page);
+    await retryAudit.getByRole("heading", { name: "After", exact: true }).waitFor();
+    await retryAudit.getByText("Failed", { exact: true }).waitFor();
+    await retryAudit.getByText("Queued", { exact: true }).waitFor();
+    assert.doesNotMatch(await page.getByRole("main").innerText(), /\bready\b/i,
+      "the queued state has the same readable label in operational controls and audit evidence");
     await semantics(page);
     assert.equal((await web.administrator.query("SELECT count(*)::integer AS count FROM sports.provider_requests")).rows[0].count, 0);
   });

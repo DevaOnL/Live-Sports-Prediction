@@ -5,7 +5,7 @@ import { hasForecastOutputs, hasOutput, hasRecordedValue, selectedEvidence, tier
 import { formatDate, formatNumber, metricLabel, reasonText } from "@/lib/presentation";
 import type { Context, ForecastInput, ForecastResult, Metric, Output, Reason } from "@/server/forecast/types";
 import { MetricIcon } from "./football-art";
-import { StatusBadge } from "./ui";
+import { isStatusBadgeVisible, StatusBadge } from "./ui";
 import { useDataVisibility } from "./data-visibility";
 
 type Props = { input: ForecastInput; result: ForecastResult; clubs: ClubsData["items"]; compact?: boolean };
@@ -101,7 +101,7 @@ export function ForecastView({ input, result, clubs, compact = false }: Props) {
   const metrics = Object.keys(result.projected90) as Metric[];
   const selected = selectedEvidence(input, result);
   return <div className="forecast-view stack">
-    {(hasForecastOutputs(result) || showHidden) && <div className="forecast-summary"><StatusBadge status={result.status} /><StatusBadge status={result.historyStatus} /></div>}
+    {(isStatusBadgeVisible(result.status, showHidden) || isStatusBadgeVisible(result.historyStatus, showHidden)) && <div className="forecast-summary"><StatusBadge status={result.status} /><StatusBadge status={result.historyStatus} /></div>}
     {!hasForecastOutputs(result) && !showHidden && <div className="notice">No model results to show.</div>}
     {(hasForecastOutputs(result) || showHidden) && <div className="metric-grid">
       <OutputCard label="Forecast rating" metric="rating" unit="/ 10" output={result.forecastRating} />

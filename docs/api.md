@@ -119,8 +119,10 @@ with 20 items, with a maximum page size of 50; search text is at most 80 charact
 `ready` (stored `available` or `partial`) and `hidden` (stored `unavailable` or
 `uncomputed`), as well as each of those four individual statuses. Filtering
 happens before counting and pagination. Omitting the filter still returns all
-statuses for API compatibility; the website requests `ready` by default and
-provides **Show hidden**, **Hidden**, and **All** controls. Missing result cards
+statuses for API compatibility; the website requests `ready` by default under
+the **With results** filter and provides **Show hidden**, **Hidden**, and **All**
+controls. Present statistics have no success badge; partial results and recorded
+gaps retain their meaningful indicators. Missing result cards
 and comparison cells are hidden by default without changing API values, the
 exact five-match evidence, or numeric zero. Revealing missing results shows
 neutral labels and their recorded explanations. Search ignores case, accents and punctuation:
@@ -246,7 +248,7 @@ identifiers and up to 50 allowlisted issue previews per batch, with `issueTotal`
 and an explicit truncation flag. They expose no raw provider payloads or keys.
 The application request budget is separate from provider-side limits.
 Administrator list endpoints default to page 1 with 25 items. They accept at most
-100 items per page and page numbers through 10,000. Job statuses are `ready`,
+100 items per page and page numbers through 10,000. Job statuses are `ready` (shown as **Queued**),
 `running`, `succeeded`, `failed`; kinds are `source.sync`, `fixture.statistics`,
 `standings.rebuild`, `forecast.refresh`. Statistics requests require a covered
 fixture already stored as live or final; they cannot request an arbitrary fixture.
