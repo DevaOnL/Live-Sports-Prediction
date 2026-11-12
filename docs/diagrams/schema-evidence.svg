@@ -1,0 +1,650 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="4059.35" height="4177" viewBox="0 0 4059.35 4177" role="img" aria-labelledby="schema-title schema-description">
+<title id="schema-title">Relational schema 3/5: Provenance, supplements and forecasts</title>
+<desc id="schema-description">Horizontal relational schema, sheet 3 of five. Provenance, supplements and forecasts. Full rows contain every stored attribute; solid underlines mark primary-key components. Each F-number is one whole ordered foreign key, joined by source and target component buses. Gray rows are referenced key subsets from the named schema sheet. Types, nullability, ordered tuples, checks and context rules are in relational-schema.md.</desc>
+<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#626b64"/></marker></defs>
+<rect width="100%" height="100%" fill="#fffdf8"/>
+<g font-family="DejaVu Sans, Arial, sans-serif" fill="#202620">
+<text x="34" y="50" font-size="30" font-weight="600">RELATIONAL SCHEMA · 3/5 · Provenance, supplements and forecasts</text>
+<text x="34" y="91" font-size="22">One named horizontal strip per relation. Underlined attributes form one combined primary key.</text>
+<text x="34" y="126" font-size="22">Each Fnn arrow represents one whole ordered FK tuple; joined ticks show every source and target component.</text>
+<text x="34" y="161" font-size="22">Gray strips repeat only referenced key attributes. Types, nullability and full constraints: relational-schema.md.</text>
+<g id="table_sports_source_revisions" data-table="sports.source_revisions" data-kind="relation">
+<text x="34" y="218" font-size="25" font-weight="600">sports.source_revisions</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="270" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="274" x2="102.2" y2="274" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="provider" data-pk="false">
+<rect x="146" y="235" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="215.4" y="270" text-anchor="middle" font-size="22">provider</text>
+</g>
+<g data-column="action" data-pk="false">
+<rect x="284.8" y="235" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="341.1" y="270" text-anchor="middle" font-size="22">action</text>
+</g>
+<g data-column="resource_key" data-pk="false">
+<rect x="397.4" y="235" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="493" y="270" text-anchor="middle" font-size="22">resource_key</text>
+</g>
+<g data-column="archive_ref" data-pk="false">
+<rect x="588.6" y="235" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="677.65" y="270" text-anchor="middle" font-size="22">archive_ref</text>
+</g>
+<g data-column="content_sha256" data-pk="false">
+<rect x="766.7" y="235" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="875.4" y="270" text-anchor="middle" font-size="22">content_sha256</text>
+</g>
+<g data-column="retrieved_at" data-pk="false">
+<rect x="984.1" y="235" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1079.7" y="270" text-anchor="middle" font-size="22">retrieved_at</text>
+</g>
+</g>
+<text x="34" y="323" font-size="20" fill="#505750">UNIQUE (archive_ref)</text>
+<text x="34" y="352" font-size="20" fill="#505750">UNIQUE (provider, action, resource_key, content_sha256, retrieved_at)</text>
+<line x1="34" y1="425" x2="1766" y2="425" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_normalized_revisions" data-table="sports.normalized_revisions" data-kind="relation">
+<text x="34" y="453" font-size="25" font-weight="600">sports.normalized_revisions</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="470" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="505" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="509" x2="102.2" y2="509" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="ordinal" data-pk="false">
+<rect x="146" y="470" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="208.85" y="505" text-anchor="middle" font-size="22">ordinal</text>
+</g>
+<g data-column="source_revision_id" data-pk="false">
+<rect x="271.7" y="470" width="269.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="406.6" y="505" text-anchor="middle" font-size="22">source_revision_id</text>
+</g>
+<g data-column="entity_type" data-pk="false">
+<rect x="541.5" y="470" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="630.55" y="505" text-anchor="middle" font-size="22">entity_type</text>
+</g>
+<g data-column="entity_key" data-pk="false">
+<rect x="719.6" y="470" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="802.1" y="505" text-anchor="middle" font-size="22">entity_key</text>
+</g>
+<g data-column="content_sha256" data-pk="false">
+<rect x="884.6" y="470" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="993.3" y="505" text-anchor="middle" font-size="22">content_sha256</text>
+</g>
+<g data-column="parent_id" data-pk="false">
+<rect x="1102" y="470" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1177.95" y="505" text-anchor="middle" font-size="22">parent_id</text>
+</g>
+<g data-column="created_at" data-pk="false">
+<rect x="1253.9" y="470" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1336.4" y="505" text-anchor="middle" font-size="22">created_at</text>
+</g>
+</g>
+<g id="schema_fk_F33" data-fk="normalized_revisions_parent_id_entity_type_entity_key_fkey" data-fk-id="F33" data-source="sports.normalized_revisions" data-columns="parent_id,entity_type,entity_key" data-target="sports.normalized_revisions" data-target-columns="id,entity_type,entity_key">
+<path d="M 1177.95 524 V 660" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1177.95 524 V 660" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1173.95" y1="528" x2="1181.95" y2="528" stroke="#727973" stroke-width="1.4"/>
+<path d="M 630.55 524 V 660" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 630.55 524 V 660" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="626.55" y1="528" x2="634.55" y2="528" stroke="#727973" stroke-width="1.4"/>
+<path d="M 802.1 524 V 660" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 802.1 524 V 660" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="798.1" y1="528" x2="806.1" y2="528" stroke="#727973" stroke-width="1.4"/>
+<path d="M 630.55 660 H 1861.2 V 638" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 630.55 660 H 1861.2 V 638" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1177.95" cy="660" r="2.2" fill="#626b64"/>
+<circle cx="630.55" cy="660" r="2.2" fill="#626b64"/>
+<circle cx="802.1" cy="660" r="2.2" fill="#626b64"/>
+<line x1="1702.9" y1="638" x2="2019.5" y2="638" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1702.9" y1="638" x2="1702.9" y2="619" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1698.9" y1="623" x2="1706.9" y2="623" stroke="#626b64" stroke-width="1.4"/>
+<line x1="1847.95" y1="638" x2="1847.95" y2="619" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1843.95" y1="623" x2="1851.95" y2="623" stroke="#626b64" stroke-width="1.4"/>
+<line x1="2019.5" y1="638" x2="2019.5" y2="619" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2015.5" y1="623" x2="2023.5" y2="623" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1446.9" y="642" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1454.9" y="664" font-size="20" font-weight="600">F33</text>
+<text x="1646.9" y="552" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1646.9" y="565" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1702.9" y="600" text-anchor="middle" font-size="22">id</text>
+<line x1="1690.7" y1="604" x2="1715.1" y2="604" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="entity_type">
+<rect x="1758.9" y="565" width="178.1" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1847.95" y="600" text-anchor="middle" font-size="22">entity_type</text>
+</g>
+<g data-reference-column="entity_key">
+<rect x="1937" y="565" width="165" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2019.5" y="600" text-anchor="middle" font-size="22">entity_key</text>
+</g>
+</g>
+<g id="schema_fk_F34" data-fk="normalized_revisions_source_revision_id_fkey" data-fk-id="F34" data-source="sports.normalized_revisions" data-columns="source_revision_id" data-target="sports.source_revisions" data-target-columns="id">
+<path d="M 406.6 524 V 814" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 406.6 524 V 814" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="402.6" y1="528" x2="410.6" y2="528" stroke="#727973" stroke-width="1.4"/>
+<path d="M 406.6 814 H 1702.9 V 792" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 406.6 814 H 1702.9 V 792" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="406.6" cy="814" r="2.2" fill="#626b64"/>
+<line x1="1702.9" y1="792" x2="1702.9" y2="792" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1702.9" y1="792" x2="1702.9" y2="773" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1698.9" y1="777" x2="1706.9" y2="777" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1446.9" y="796" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1454.9" y="818" font-size="20" font-weight="600">F34</text>
+<text x="1646.9" y="706" font-size="20" fill="#4f5750">sports.source_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1646.9" y="719" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1702.9" y="754" text-anchor="middle" font-size="22">id</text>
+<line x1="1690.7" y1="758" x2="1715.1" y2="758" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="857" font-size="20" fill="#505750">UNIQUE (id, entity_type, entity_key)</text>
+<text x="34" y="886" font-size="20" fill="#505750">UNIQUE (ordinal)</text>
+<text x="34" y="915" font-size="20" fill="#505750">UNIQUE (source_revision_id, entity_type, entity_key, content_sha256)</text>
+<line x1="34" y1="988" x2="2205.35" y2="988" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_ingestion_batches" data-table="sports.ingestion_batches" data-kind="relation">
+<text x="34" y="1016" font-size="25" font-weight="600">sports.ingestion_batches</text>
+<g data-column="archive_id" data-pk="true">
+<rect x="34" y="1033" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="116.5" y="1068" text-anchor="middle" font-size="22">archive_id</text>
+<line x1="55.5" y1="1072" x2="177.5" y2="1072" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="source_revision_id" data-pk="false">
+<rect x="199" y="1033" width="269.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="333.9" y="1068" text-anchor="middle" font-size="22">source_revision_id</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="468.8" y="1033" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="629.9" y="1068" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+<g data-column="fixture_count" data-pk="false">
+<rect x="791" y="1033" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="893.15" y="1068" text-anchor="middle" font-size="22">fixture_count</text>
+</g>
+<g data-column="appearance_count" data-pk="false">
+<rect x="995.3" y="1033" width="243.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1117.1" y="1068" text-anchor="middle" font-size="22">appearance_count</text>
+</g>
+<g data-column="issues_json" data-pk="false">
+<rect x="1238.9" y="1033" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1327.95" y="1068" text-anchor="middle" font-size="22">issues_json</text>
+</g>
+<g data-column="committed_at" data-pk="false">
+<rect x="1417" y="1033" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1512.6" y="1068" text-anchor="middle" font-size="22">committed_at</text>
+</g>
+</g>
+<g id="schema_fk_F30" data-fk="ingestion_batches_normalized_revision_id_fkey" data-fk-id="F30" data-source="sports.ingestion_batches" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 629.9 1087 V 1223" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 629.9 1087 V 1223" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="625.9" y1="1091" x2="633.9" y2="1091" stroke="#727973" stroke-width="1.4"/>
+<path d="M 629.9 1223 H 1892.2 V 1201" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 629.9 1223 H 1892.2 V 1201" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="629.9" cy="1223" r="2.2" fill="#626b64"/>
+<line x1="1892.2" y1="1201" x2="1892.2" y2="1201" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1892.2" y1="1201" x2="1892.2" y2="1182" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1888.2" y1="1186" x2="1896.2" y2="1186" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1636.2" y="1205" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1644.2" y="1227" font-size="20" font-weight="600">F30</text>
+<text x="1836.2" y="1115" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1836.2" y="1128" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1892.2" y="1163" text-anchor="middle" font-size="22">id</text>
+<line x1="1880" y1="1167" x2="1904.4" y2="1167" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F31" data-fk="ingestion_batches_source_revision_id_fkey" data-fk-id="F31" data-source="sports.ingestion_batches" data-columns="source_revision_id" data-target="sports.source_revisions" data-target-columns="id">
+<path d="M 333.9 1087 V 1377" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 333.9 1087 V 1377" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="329.9" y1="1091" x2="337.9" y2="1091" stroke="#727973" stroke-width="1.4"/>
+<path d="M 333.9 1377 H 1892.2 V 1355" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 333.9 1377 H 1892.2 V 1355" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="333.9" cy="1377" r="2.2" fill="#626b64"/>
+<line x1="1892.2" y1="1355" x2="1892.2" y2="1355" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1892.2" y1="1355" x2="1892.2" y2="1336" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1888.2" y1="1340" x2="1896.2" y2="1340" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1636.2" y="1359" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1644.2" y="1381" font-size="20" font-weight="600">F31</text>
+<text x="1836.2" y="1269" font-size="20" fill="#4f5750">sports.source_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1836.2" y="1282" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1892.2" y="1317" text-anchor="middle" font-size="22">id</text>
+<line x1="1880" y1="1321" x2="1904.4" y2="1321" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<line x1="34" y1="1464" x2="2394.65" y2="1464" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_appearance_enrichments" data-table="sports.appearance_enrichments" data-kind="relation">
+<text x="34" y="1492" font-size="25" font-weight="600">sports.appearance_enrichments</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="1509" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="1544" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="1548" x2="102.2" y2="1548" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="appearance_id" data-pk="false">
+<rect x="146" y="1509" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="248.15" y="1544" text-anchor="middle" font-size="22">appearance_id</text>
+</g>
+<g data-column="fixture_id" data-pk="false">
+<rect x="350.3" y="1509" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="432.8" y="1544" text-anchor="middle" font-size="22">fixture_id</text>
+</g>
+<g data-column="primary_revision_id" data-pk="false">
+<rect x="515.3" y="1509" width="282.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="656.75" y="1544" text-anchor="middle" font-size="22">primary_revision_id</text>
+</g>
+<g data-column="fixture_revision_id" data-pk="false">
+<rect x="798.2" y="1509" width="282.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="939.65" y="1544" text-anchor="middle" font-size="22">fixture_revision_id</text>
+</g>
+<g data-column="source_revision_id" data-pk="false">
+<rect x="1081.1" y="1509" width="269.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1216" y="1544" text-anchor="middle" font-size="22">source_revision_id</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="1350.9" y="1509" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1512" y="1544" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+<g data-column="external_fixture_id" data-pk="false">
+<rect x="1673.1" y="1509" width="282.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1814.55" y="1544" text-anchor="middle" font-size="22">external_fixture_id</text>
+</g>
+<g data-column="external_player_id" data-pk="false">
+<rect x="1956" y="1509" width="269.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2090.9" y="1544" text-anchor="middle" font-size="22">external_player_id</text>
+</g>
+<g data-column="retrieved_at" data-pk="false">
+<rect x="2225.8" y="1509" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2321.4" y="1544" text-anchor="middle" font-size="22">retrieved_at</text>
+</g>
+<g data-column="rating" data-pk="false">
+<rect x="2417" y="1509" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2473.3" y="1544" text-anchor="middle" font-size="22">rating</text>
+</g>
+<g data-column="key_passes" data-pk="false">
+<rect x="2529.6" y="1509" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2612.1" y="1544" text-anchor="middle" font-size="22">key_passes</text>
+</g>
+<g data-column="tackles" data-pk="false">
+<rect x="2694.6" y="1509" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2757.45" y="1544" text-anchor="middle" font-size="22">tackles</text>
+</g>
+<g data-column="interceptions" data-pk="false">
+<rect x="2820.3" y="1509" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2922.45" y="1544" text-anchor="middle" font-size="22">interceptions</text>
+</g>
+<g data-column="evidence_json" data-pk="false">
+<rect x="3024.6" y="1509" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="3126.75" y="1544" text-anchor="middle" font-size="22">evidence_json</text>
+</g>
+</g>
+<g id="schema_fk_F05" data-fk="appearance_enrichments_appearance_id_fkey" data-fk-id="F05" data-source="sports.appearance_enrichments" data-columns="appearance_id" data-target="sports.appearances" data-target-columns="id">
+<path d="M 248.15 1563 V 1699" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 248.15 1563 V 1699" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="244.15" y1="1567" x2="252.15" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 248.15 1699 H 3512.9 V 1677" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 248.15 1699 H 3512.9 V 1677" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="248.15" cy="1699" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="1677" x2="3512.9" y2="1677" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="1677" x2="3512.9" y2="1658" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="1662" x2="3516.9" y2="1662" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="1681" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="1703" font-size="20" font-weight="600">F05</text>
+<text x="3456.9" y="1591" font-size="20" fill="#4f5750">sports.appearances · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="1604" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="1639" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="1643" x2="3525.1" y2="1643" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F06" data-fk="appearance_enrichments_fixture_id_fkey" data-fk-id="F06" data-source="sports.appearance_enrichments" data-columns="fixture_id" data-target="sports.fixtures" data-target-columns="id">
+<path d="M 432.8 1563 V 1853" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 432.8 1563 V 1853" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="428.8" y1="1567" x2="436.8" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 432.8 1853 H 3512.9 V 1831" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 432.8 1853 H 3512.9 V 1831" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="432.8" cy="1853" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="1831" x2="3512.9" y2="1831" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="1831" x2="3512.9" y2="1812" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="1816" x2="3516.9" y2="1816" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="1835" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="1857" font-size="20" font-weight="600">F06</text>
+<text x="3456.9" y="1745" font-size="20" fill="#4f5750">sports.fixtures · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="1758" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="1793" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="1797" x2="3525.1" y2="1797" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F07" data-fk="appearance_enrichments_fixture_revision_id_fkey" data-fk-id="F07" data-source="sports.appearance_enrichments" data-columns="fixture_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 939.65 1563 V 2007" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 939.65 1563 V 2007" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="935.65" y1="1567" x2="943.65" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 939.65 2007 H 3512.9 V 1985" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 939.65 2007 H 3512.9 V 1985" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="939.65" cy="2007" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="1985" x2="3512.9" y2="1985" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="1985" x2="3512.9" y2="1966" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="1970" x2="3516.9" y2="1970" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="1989" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="2011" font-size="20" font-weight="600">F07</text>
+<text x="3456.9" y="1899" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="1912" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="1947" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="1951" x2="3525.1" y2="1951" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F08" data-fk="appearance_enrichments_normalized_revision_id_fkey" data-fk-id="F08" data-source="sports.appearance_enrichments" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 1512 1563 V 2161" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1512 1563 V 2161" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1508" y1="1567" x2="1516" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 1512 2161 H 3512.9 V 2139" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 1512 2161 H 3512.9 V 2139" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1512" cy="2161" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="2139" x2="3512.9" y2="2139" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="2139" x2="3512.9" y2="2120" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="2124" x2="3516.9" y2="2124" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="2143" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="2165" font-size="20" font-weight="600">F08</text>
+<text x="3456.9" y="2053" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="2066" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="2101" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="2105" x2="3525.1" y2="2105" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F09" data-fk="appearance_enrichments_primary_revision_id_fkey" data-fk-id="F09" data-source="sports.appearance_enrichments" data-columns="primary_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 656.75 1563 V 2315" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 656.75 1563 V 2315" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="652.75" y1="1567" x2="660.75" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 656.75 2315 H 3512.9 V 2293" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 656.75 2315 H 3512.9 V 2293" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="656.75" cy="2315" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="2293" x2="3512.9" y2="2293" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="2293" x2="3512.9" y2="2274" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="2278" x2="3516.9" y2="2278" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="2297" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="2319" font-size="20" font-weight="600">F09</text>
+<text x="3456.9" y="2207" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="2220" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="2255" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="2259" x2="3525.1" y2="2259" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F10" data-fk="appearance_enrichments_source_revision_id_fkey" data-fk-id="F10" data-source="sports.appearance_enrichments" data-columns="source_revision_id" data-target="sports.source_revisions" data-target-columns="id">
+<path d="M 1216 1563 V 2469" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1216 1563 V 2469" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1212" y1="1567" x2="1220" y2="1567" stroke="#727973" stroke-width="1.4"/>
+<path d="M 1216 2469 H 3512.9 V 2447" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 1216 2469 H 3512.9 V 2447" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1216" cy="2469" r="2.2" fill="#626b64"/>
+<line x1="3512.9" y1="2447" x2="3512.9" y2="2447" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3512.9" y1="2447" x2="3512.9" y2="2428" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3508.9" y1="2432" x2="3516.9" y2="2432" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3256.9" y="2451" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3264.9" y="2473" font-size="20" font-weight="600">F10</text>
+<text x="3456.9" y="2361" font-size="20" fill="#4f5750">sports.source_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="3456.9" y="2374" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3512.9" y="2409" text-anchor="middle" font-size="22">id</text>
+<line x1="3500.7" y1="2413" x2="3525.1" y2="2413" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="2512" font-size="20" fill="#505750">UNIQUE (id, appearance_id)</text>
+<text x="34" y="2541" font-size="20" fill="#505750">UNIQUE (normalized_revision_id)</text>
+<text x="34" y="2570" font-size="20" fill="#505750">UNIQUE (source_revision_id, appearance_id)</text>
+<line x1="34" y1="2643" x2="4015.35" y2="2643" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_appearance_enrichment_heads" data-table="sports.appearance_enrichment_heads" data-kind="relation">
+<text x="34" y="2671" font-size="25" font-weight="600">sports.appearance_enrichment_heads</text>
+<g data-column="appearance_id" data-pk="true">
+<rect x="34" y="2688" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="136.15" y="2723" text-anchor="middle" font-size="22">appearance_id</text>
+<line x1="56.85" y1="2727" x2="215.45" y2="2727" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="enrichment_id" data-pk="false">
+<rect x="238.3" y="2688" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="340.45" y="2723" text-anchor="middle" font-size="22">enrichment_id</text>
+</g>
+<g data-column="conflicted" data-pk="false">
+<rect x="442.6" y="2688" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="525.1" y="2723" text-anchor="middle" font-size="22">conflicted</text>
+</g>
+<g data-column="updated_at" data-pk="false">
+<rect x="607.6" y="2688" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="690.1" y="2723" text-anchor="middle" font-size="22">updated_at</text>
+</g>
+</g>
+<g id="schema_fk_F03" data-fk="appearance_enrichment_heads_appearance_id_fkey" data-fk-id="F03" data-source="sports.appearance_enrichment_heads" data-columns="appearance_id" data-target="sports.appearances" data-target-columns="id">
+<path d="M 132.15 2742 V 2878" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 132.15 2742 V 2878" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="128.15" y1="2746" x2="136.15" y2="2746" stroke="#727973" stroke-width="1.4"/>
+<path d="M 132.15 2878 H 1056.6 V 2856" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 132.15 2878 H 1056.6 V 2856" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="132.15" cy="2878" r="2.2" fill="#626b64"/>
+<line x1="1056.6" y1="2856" x2="1056.6" y2="2856" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1056.6" y1="2856" x2="1056.6" y2="2837" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1052.6" y1="2841" x2="1060.6" y2="2841" stroke="#626b64" stroke-width="1.4"/>
+<rect x="800.6" y="2860" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="808.6" y="2882" font-size="20" font-weight="600">F03</text>
+<text x="1000.6" y="2770" font-size="20" fill="#4f5750">sports.appearances · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="1000.6" y="2783" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1056.6" y="2818" text-anchor="middle" font-size="22">id</text>
+<line x1="1044.4" y1="2822" x2="1068.8" y2="2822" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F04" data-fk="appearance_enrichment_heads_enrichment_id_appearance_id_fkey" data-fk-id="F04" data-source="sports.appearance_enrichment_heads" data-columns="enrichment_id,appearance_id" data-target="sports.appearance_enrichments" data-target-columns="id,appearance_id">
+<path d="M 340.45 2742 V 3032" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 340.45 2742 V 3032" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="336.45" y1="2746" x2="344.45" y2="2746" stroke="#727973" stroke-width="1.4"/>
+<path d="M 140.15 2742 V 3032" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 140.15 2742 V 3032" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="136.15" y1="2746" x2="144.15" y2="2746" stroke="#727973" stroke-width="1.4"/>
+<path d="M 140.15 3032 H 1135.67 V 3010" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 140.15 3032 H 1135.67 V 3010" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="340.45" cy="3032" r="2.2" fill="#626b64"/>
+<circle cx="140.15" cy="3032" r="2.2" fill="#626b64"/>
+<line x1="1056.6" y1="3010" x2="1214.75" y2="3010" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1056.6" y1="3010" x2="1056.6" y2="2991" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1052.6" y1="2995" x2="1060.6" y2="2995" stroke="#626b64" stroke-width="1.4"/>
+<line x1="1214.75" y1="3010" x2="1214.75" y2="2991" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1210.75" y1="2995" x2="1218.75" y2="2995" stroke="#626b64" stroke-width="1.4"/>
+<rect x="800.6" y="3014" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="808.6" y="3036" font-size="20" font-weight="600">F04</text>
+<text x="1000.6" y="2924" font-size="20" fill="#4f5750">sports.appearance_enrichments · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1000.6" y="2937" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1056.6" y="2972" text-anchor="middle" font-size="22">id</text>
+<line x1="1044.4" y1="2976" x2="1068.8" y2="2976" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="appearance_id">
+<rect x="1112.6" y="2937" width="204.3" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1214.75" y="2972" text-anchor="middle" font-size="22">appearance_id</text>
+</g>
+</g>
+<line x1="34" y1="3119" x2="4015.35" y2="3119" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_forecast_revisions" data-table="sports.forecast_revisions" data-kind="relation">
+<text x="34" y="3147" font-size="25" font-weight="600">sports.forecast_revisions</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="3164" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="3199" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="3203" x2="102.2" y2="3203" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="ordinal" data-pk="false">
+<rect x="146" y="3164" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="208.85" y="3199" text-anchor="middle" font-size="22">ordinal</text>
+</g>
+<g data-column="player_id" data-pk="false">
+<rect x="271.7" y="3164" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="347.65" y="3199" text-anchor="middle" font-size="22">player_id</text>
+</g>
+<g data-column="parent_id" data-pk="false">
+<rect x="423.6" y="3164" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="499.55" y="3199" text-anchor="middle" font-size="22">parent_id</text>
+</g>
+<g data-column="model_version" data-pk="false">
+<rect x="575.5" y="3164" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="677.65" y="3199" text-anchor="middle" font-size="22">model_version</text>
+</g>
+<g data-column="input_hash" data-pk="false">
+<rect x="779.8" y="3164" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="862.3" y="3199" text-anchor="middle" font-size="22">input_hash</text>
+</g>
+<g data-column="source_ordinal" data-pk="false">
+<rect x="944.8" y="3164" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1053.5" y="3199" text-anchor="middle" font-size="22">source_ordinal</text>
+</g>
+<g data-column="cutoff_at" data-pk="false">
+<rect x="1162.2" y="3164" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1238.15" y="3199" text-anchor="middle" font-size="22">cutoff_at</text>
+</g>
+<g data-column="input_json" data-pk="false">
+<rect x="1314.1" y="3164" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1396.6" y="3199" text-anchor="middle" font-size="22">input_json</text>
+</g>
+<g data-column="provenance_json" data-pk="false">
+<rect x="1479.1" y="3164" width="230.5" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1594.35" y="3199" text-anchor="middle" font-size="22">provenance_json</text>
+</g>
+<g data-column="result_json" data-pk="false">
+<rect x="1709.6" y="3164" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1798.65" y="3199" text-anchor="middle" font-size="22">result_json</text>
+</g>
+<g data-column="created_at" data-pk="false">
+<rect x="1887.7" y="3164" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1970.2" y="3199" text-anchor="middle" font-size="22">created_at</text>
+</g>
+</g>
+<g id="schema_fk_F28" data-fk="forecast_revisions_parent_id_player_id_fkey" data-fk-id="F28" data-source="sports.forecast_revisions" data-columns="parent_id,player_id" data-target="sports.forecast_revisions" data-target-columns="id,player_id">
+<path d="M 499.55 3218 V 3354" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 499.55 3218 V 3354" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="495.55" y1="3222" x2="503.55" y2="3222" stroke="#727973" stroke-width="1.4"/>
+<path d="M 343.65 3218 V 3354" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 343.65 3218 V 3354" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="339.65" y1="3222" x2="347.65" y2="3222" stroke="#727973" stroke-width="1.4"/>
+<path d="M 343.65 3354 H 2402.67 V 3332" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 343.65 3354 H 2402.67 V 3332" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="499.55" cy="3354" r="2.2" fill="#626b64"/>
+<circle cx="343.65" cy="3354" r="2.2" fill="#626b64"/>
+<line x1="2336.7" y1="3332" x2="2468.65" y2="3332" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2336.7" y1="3332" x2="2336.7" y2="3313" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2332.7" y1="3317" x2="2340.7" y2="3317" stroke="#626b64" stroke-width="1.4"/>
+<line x1="2468.65" y1="3332" x2="2468.65" y2="3313" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2464.65" y1="3317" x2="2472.65" y2="3317" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2080.7" y="3336" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2088.7" y="3358" font-size="20" font-weight="600">F28</text>
+<text x="2280.7" y="3246" font-size="20" fill="#4f5750">sports.forecast_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="2280.7" y="3259" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2336.7" y="3294" text-anchor="middle" font-size="22">id</text>
+<line x1="2324.5" y1="3298" x2="2348.9" y2="3298" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="player_id">
+<rect x="2392.7" y="3259" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2468.65" y="3294" text-anchor="middle" font-size="22">player_id</text>
+</g>
+</g>
+<g id="schema_fk_F29" data-fk="forecast_revisions_player_id_fkey" data-fk-id="F29" data-source="sports.forecast_revisions" data-columns="player_id" data-target="sports.players" data-target-columns="id">
+<path d="M 351.65 3218 V 3508" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 351.65 3218 V 3508" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="347.65" y1="3222" x2="355.65" y2="3222" stroke="#727973" stroke-width="1.4"/>
+<path d="M 351.65 3508 H 2336.7 V 3486" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 351.65 3508 H 2336.7 V 3486" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="351.65" cy="3508" r="2.2" fill="#626b64"/>
+<line x1="2336.7" y1="3486" x2="2336.7" y2="3486" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2336.7" y1="3486" x2="2336.7" y2="3467" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2332.7" y1="3471" x2="2340.7" y2="3471" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2080.7" y="3490" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2088.7" y="3512" font-size="20" font-weight="600">F29</text>
+<text x="2280.7" y="3400" font-size="20" fill="#4f5750">sports.players · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="2280.7" y="3413" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2336.7" y="3448" text-anchor="middle" font-size="22">id</text>
+<line x1="2324.5" y1="3452" x2="2348.9" y2="3452" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="3551" font-size="20" fill="#505750">UNIQUE (id, player_id)</text>
+<text x="34" y="3580" font-size="20" fill="#505750">UNIQUE (ordinal)</text>
+<line x1="34" y1="3653" x2="4015.35" y2="3653" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_forecast_heads" data-table="sports.forecast_heads" data-kind="relation">
+<text x="34" y="3681" font-size="25" font-weight="600">sports.forecast_heads</text>
+<g data-column="player_id" data-pk="true">
+<rect x="34" y="3698" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="109.95" y="3733" text-anchor="middle" font-size="22">player_id</text>
+<line x1="55.05" y1="3737" x2="164.85" y2="3737" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="revision_id" data-pk="false">
+<rect x="185.9" y="3698" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="274.95" y="3733" text-anchor="middle" font-size="22">revision_id</text>
+</g>
+<g data-column="updated_at" data-pk="false">
+<rect x="364" y="3698" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="446.5" y="3733" text-anchor="middle" font-size="22">updated_at</text>
+</g>
+<g data-column="evaluation_cutoff_at" data-pk="false">
+<rect x="529" y="3698" width="296" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="677" y="3733" text-anchor="middle" font-size="22">evaluation_cutoff_at</text>
+</g>
+<g data-column="evaluation_source_ordinal" data-pk="false">
+<rect x="825" y="3698" width="361.5" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1005.75" y="3733" text-anchor="middle" font-size="22">evaluation_source_ordinal</text>
+</g>
+<g data-column="evaluation_provenance_json" data-pk="false">
+<rect x="1186.5" y="3698" width="374.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1373.8" y="3733" text-anchor="middle" font-size="22">evaluation_provenance_json</text>
+</g>
+<g data-column="checked_at" data-pk="false">
+<rect x="1561.1" y="3698" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1643.6" y="3733" text-anchor="middle" font-size="22">checked_at</text>
+</g>
+</g>
+<g id="schema_fk_F26" data-fk="forecast_heads_player_id_fkey" data-fk-id="F26" data-source="sports.forecast_heads" data-columns="player_id" data-target="sports.players" data-target-columns="id">
+<path d="M 105.95 3752 V 3888" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 105.95 3752 V 3888" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="101.95" y1="3756" x2="109.95" y2="3756" stroke="#727973" stroke-width="1.4"/>
+<path d="M 105.95 3888 H 2010.1 V 3866" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 105.95 3888 H 2010.1 V 3866" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="105.95" cy="3888" r="2.2" fill="#626b64"/>
+<line x1="2010.1" y1="3866" x2="2010.1" y2="3866" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2010.1" y1="3866" x2="2010.1" y2="3847" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2006.1" y1="3851" x2="2014.1" y2="3851" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1754.1" y="3870" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1762.1" y="3892" font-size="20" font-weight="600">F26</text>
+<text x="1954.1" y="3780" font-size="20" fill="#4f5750">sports.players · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="1954.1" y="3793" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2010.1" y="3828" text-anchor="middle" font-size="22">id</text>
+<line x1="1997.9" y1="3832" x2="2022.3" y2="3832" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F27" data-fk="forecast_heads_revision_id_player_id_fkey" data-fk-id="F27" data-source="sports.forecast_heads" data-columns="revision_id,player_id" data-target="sports.forecast_revisions" data-target-columns="id,player_id">
+<path d="M 274.95 3752 V 4042" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 274.95 3752 V 4042" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="270.95" y1="3756" x2="278.95" y2="3756" stroke="#727973" stroke-width="1.4"/>
+<path d="M 113.95 3752 V 4042" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 113.95 3752 V 4042" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="109.95" y1="3756" x2="117.95" y2="3756" stroke="#727973" stroke-width="1.4"/>
+<path d="M 113.95 4042 H 2076.07 V 4020" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 113.95 4042 H 2076.07 V 4020" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="274.95" cy="4042" r="2.2" fill="#626b64"/>
+<circle cx="113.95" cy="4042" r="2.2" fill="#626b64"/>
+<line x1="2010.1" y1="4020" x2="2142.05" y2="4020" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2010.1" y1="4020" x2="2010.1" y2="4001" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2006.1" y1="4005" x2="2014.1" y2="4005" stroke="#626b64" stroke-width="1.4"/>
+<line x1="2142.05" y1="4020" x2="2142.05" y2="4001" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2138.05" y1="4005" x2="2146.05" y2="4005" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1754.1" y="4024" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1762.1" y="4046" font-size="20" font-weight="600">F27</text>
+<text x="1954.1" y="3934" font-size="20" fill="#4f5750">sports.forecast_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1954.1" y="3947" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2010.1" y="3982" text-anchor="middle" font-size="22">id</text>
+<line x1="1997.9" y1="3986" x2="2022.3" y2="3986" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="player_id">
+<rect x="2066.1" y="3947" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2142.05" y="3982" text-anchor="middle" font-size="22">player_id</text>
+</g>
+</g>
+<line x1="34" y1="4129" x2="4015.35" y2="4129" stroke="#d8dcd5" stroke-width="1"/>
+</g></svg>
