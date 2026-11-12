@@ -77,6 +77,28 @@ export class EnrichmentStore {
     });
   }
 
+  /** A failed or interrupted box attempt remains deferred across worker restarts. */
+  async boxCooldowns(targets: { leagueId: string; externalFixtureId: string }[]): Promise<Map<string, string>> {
+    if (!targets.length) return new Map();
+    if (targets.some((target) => !CURRENT_SOURCE.coverage.some((coverage) => coverage.id === target.leagueId)
+      || !externalId.test(target.externalFixtureId))) throw new Error("Invalid supplementary cooldown scope");
+    const rows = (await this.pool.query<{ league_id: string; external_id: string; retry_at: Date }>(`WITH
+      instant AS MATERIALIZED (SELECT clock_timestamp() AS now),
+      targets AS (SELECT * FROM unnest($1::text[],$2::text[]) AS t(league_id,external_id))
+      SELECT t.league_id,t.external_id,a.attempted_at + interval '15 minutes' AS retry_at
+      FROM targets t CROSS JOIN instant
+      CROSS JOIN LATERAL (SELECT max(attempted_at) AS attempted_at FROM sports.provider_requests
+        WHERE action='get_statistics' AND resource_key='highlightly:/box-score/' || t.external_id
+          AND attempted_at > instant.now - interval '15 minutes') a
+      WHERE a.attempted_at IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM sports.source_revisions s JOIN sports.ingestion_batches b ON b.source_revision_id=s.id
+        WHERE s.provider='highlightly' AND s.action='get_statistics'
+          AND s.resource_key='highlightly:statistics:' || t.league_id || ':' || t.external_id
+          AND s.retrieved_at >= a.attempted_at)`,
+    [targets.map((target) => target.leagueId), targets.map((target) => target.externalFixtureId)])).rows;
+    return new Map(rows.map((row) => [`${row.league_id}:${row.external_id}`, row.retry_at.toISOString()]));
+  }
+
   /** Commit a source-only receipt after a complete schedule was archived and validated. */
   async recordSchedule(archive: ArchivedResponse): Promise<EnrichmentImportResult> {
     validateArchive(archive);

@@ -4,7 +4,8 @@ import type { Db } from "mongodb";
 import type { Pool } from "pg";
 import { EnrichmentPipeline } from "../src/server/ingestion/enrichment";
 import { archiveId } from "../src/server/ingestion/archive";
-import { HighlightlyClient, highlightlyResponse } from "../src/server/ingestion/highlightly-client";
+import { HighlightlyClient, HighlightlyError, highlightlyResponse } from "../src/server/ingestion/highlightly-client";
+import { ProviderError } from "../src/server/ingestion/provider";
 import { clubName, normalizeHighlightly, primaryFingerprint, sameFixture, samePlayerName, type EnrichmentFixture } from "../src/server/ingestion/highlightly-normalize";
 
 const fixture: EnrichmentFixture = {
@@ -142,6 +143,120 @@ test("HTTP client reserves every attempt, forbids redirects and keeps keys out o
   assert.equal(attempts, 1);
   const echo = new HighlightlyClient({ async reserveRequest() {}, async observeQuota() {} }, "private-test-credential", async () => new Response(JSON.stringify({ value: "private-test-credential" })));
   await assert.rejects(echo.get("get_statistics", "/box-score/1"), (error: unknown) => error instanceof Error && !error.message.includes("private-test-credential"));
+});
+
+const supplementBudget = { async reserveRequest() {}, async observeQuota() {} };
+function responseClient(body: unknown, status = 200, headers: HeadersInit = {}) {
+  return new HighlightlyClient(supplementBudget, "private-test-credential", async () => new Response(JSON.stringify(body), { status, headers }));
+}
+test("only explicit unavailable box resources are isolated from global HTTP failures", async () => {
+  for (const sample of [
+    { status: 404, body: {}, path: "/box-score/1", scope: "resource", reason: "missing_box" },
+    { status: 404, body: {}, path: "/matches?leagueId=33973", scope: "provider", reason: "rejected" },
+    { status: 400, body: { message: "Invalid matchId" }, path: "/box-score/1", scope: "resource", reason: "invalid_resource" },
+    { status: 400, body: { error: "Box score not found" }, path: "/box-score/1", scope: "resource", reason: "invalid_resource" },
+    { status: 400, body: { message: "Malformed request" }, path: "/box-score/1", scope: "provider", reason: "rejected" },
+    { status: 400, body: { error: "Invalid API key" }, path: "/box-score/1", scope: "provider", reason: "authentication" },
+    { status: 401, body: { message: "Invalid matchId" }, path: "/box-score/1", scope: "provider", reason: "authentication" },
+    { status: 403, body: {}, path: "/box-score/1", scope: "provider", reason: "authentication" },
+    { status: 429, body: {}, path: "/box-score/1", scope: "provider", reason: "rate_limit" },
+    { status: 500, body: { message: "Box score not found" }, path: "/box-score/1", scope: "provider", reason: "unavailable" },
+  ]) {
+    await assert.rejects(responseClient(sample.body, sample.status).get("get_statistics", sample.path), (error: unknown) => {
+      assert(error instanceof HighlightlyError);
+      assert(error instanceof ProviderError);
+      assert.equal(error.scope, sample.scope); assert.equal(error.reason, sample.reason); assert.equal(error.status, sample.status);
+      assert.equal(error.retryable, sample.status === 429 || sample.status >= 500);
+      return true;
+    });
+  }
+});
+test("HTTP 200 error envelopes cannot become source captures or leak upstream details", async () => {
+  for (const sample of [
+    { body: { error: "Too many requests", statusCode: 429 }, scope: "provider", reason: "rate_limit", code: "provider_rate_limit" },
+    { body: { message: "You have exceeded the DAILY quota for Requests on your current plan" }, scope: "provider", reason: "rate_limit", code: "provider_rate_limit" },
+    { body: { status: "403", error: "Forbidden" }, scope: "provider", reason: "authentication", code: "http_rejected" },
+    { body: { errors: [{ message: "Service unavailable" }] }, scope: "provider", reason: "unavailable", code: "provider_unavailable" },
+    { body: { error: "Box score not found" }, scope: "resource", reason: "invalid_resource", code: "provider_rejected" },
+    { body: [{ error: "Invalid matchId" }], scope: "resource", reason: "invalid_resource", code: "provider_rejected" },
+    { body: { error: "Unrecognized upstream failure marker-sensitive" }, scope: "provider", reason: "rejected", code: "provider_rejected" },
+  ]) {
+    await assert.rejects(responseClient(sample.body).get("get_statistics", "/box-score/1"), (error: unknown) => {
+      assert(error instanceof HighlightlyError);
+      assert.equal(error.scope, sample.scope); assert.equal(error.reason, sample.reason); assert.equal(error.code, sample.code);
+      assert.equal(error.status, 200);
+      assert(!JSON.stringify(error).includes("marker-sensitive"));
+      assert(!error.message.includes("marker-sensitive"));
+      return true;
+    });
+  }
+  // An absent optional metric and a schema-permitted empty box are data, not an
+  // error envelope. Strict fixture/player validation remains the normalizer's job.
+  assert.equal((await responseClient([]).get("get_statistics", "/box-score/1")).text, "[]");
+  const schedule = { data: [], errors: [], message: "No matches", pagination: { totalCount: 0 } };
+  assert.deepEqual(JSON.parse((await responseClient(schedule).get("get_events", "/matches?leagueId=33973")).text), schedule);
+});
+test("rate-limit retry timing respects Retry-After and reset seconds with bounded fallback", async () => {
+  const samples: { headers: HeadersInit; delay: number }[] = [
+    { headers: { "retry-after": "3" }, delay: 3000 },
+    { headers: { "retry-after": "3", "x-ratelimit-requests-reset": "30" }, delay: 3000 },
+    { headers: { "x-ratelimit-requests-reset": "120" }, delay: 120_000 },
+    { headers: { "retry-after": "0" }, delay: 1000 },
+    { headers: { "retry-after": "-1", "x-ratelimit-requests-reset": "invalid" }, delay: 3_600_000 },
+    { headers: { "retry-after": "1.5" }, delay: 3_600_000 },
+    { headers: { "x-ratelimit-requests-reset": "1800000000" }, delay: 86_400_000 },
+  ];
+  for (const sample of samples) {
+    const before = Date.now();
+    await assert.rejects(responseClient({}, 429, sample.headers).get("get_statistics", "/box-score/1"), (error: unknown) => {
+      assert(error instanceof HighlightlyError); assert(error.retryAt);
+      assert(error.retryAt.getTime() >= before + sample.delay);
+      assert(error.retryAt.getTime() <= Date.now() + sample.delay);
+      return true;
+    });
+  }
+  await assert.rejects(responseClient({ error: "Too many requests" }, 200, { "retry-after": "90" }).get("get_statistics", "/box-score/1"), (error: unknown) => {
+    assert(error instanceof HighlightlyError); assert(error.retryAt);
+    assert(Math.abs(error.retryAt.getTime() - Date.now() - 90_000) < 1000);
+    return true;
+  });
+});
+test("service failures honor HTTP-date Retry-After without treating a daily reset as a service outage", async () => {
+  const requested = new Date(Date.now() + 120_000).toUTCString();
+  await assert.rejects(responseClient({}, 503, { "retry-after": requested, "x-ratelimit-requests-reset": "600" }).get("get_statistics", "/box-score/1"), (error: unknown) => {
+    assert(error instanceof HighlightlyError); assert(error.retryAt);
+    assert.equal(error.retryAt.getTime(), Date.parse(requested)); return true;
+  });
+  await assert.rejects(responseClient({}, 503, { "x-ratelimit-requests-reset": "600" }).get("get_statistics", "/box-score/1"), (error: unknown) => {
+    assert(error instanceof HighlightlyError); assert.equal(error.retryAt, undefined); return true;
+  });
+});
+test("quota persistence failures retain their identity and stop before accepting a capture", async () => {
+  const persistence = new Error("Synthetic quota persistence failure");
+  let calls = 0, cancelled = false;
+  const client = new HighlightlyClient({ async reserveRequest() {}, async observeQuota() { throw persistence; } }, "private-test-credential", async () => {
+    calls++;
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { headers: { "x-ratelimit-requests-remaining": "88" } });
+  });
+  await assert.rejects(client.get("get_statistics", "/box-score/1"), (error: unknown) => error === persistence);
+  assert.equal(calls, 1); assert.equal(cancelled, true);
+  const beforeRequest = new HighlightlyClient({ async reserveRequest() { throw persistence; }, async observeQuota() {} }, "private-test-credential", async () => {
+    assert.fail("a failed durable reservation must stop HTTP");
+  });
+  await assert.rejects(beforeRequest.get("get_statistics", "/box-score/1"), (error: unknown) => error === persistence);
+});
+test("transport failures and malformed successful bodies expose only safe global diagnostics", async () => {
+  const client = new HighlightlyClient(supplementBudget, "private-test-credential", async () => { throw new Error("Synthetic secret-bearing socket details"); });
+  await assert.rejects(client.get("get_statistics", "/box-score/1"), (error: unknown) => {
+    assert(error instanceof HighlightlyError); assert.equal(error.scope, "provider"); assert.equal(error.reason, "transport");
+    assert.equal(error.retryable, true); assert(!error.message.includes("socket")); return true;
+  });
+  for (const body of ["broken-json", "null", "42", '{"unexpected":"object"}']) {
+    const malformed = new HighlightlyClient(supplementBudget, "private-test-credential", async () => new Response(body));
+    await assert.rejects(malformed.get("get_statistics", "/box-score/1"), (error: unknown) => {
+      assert(error instanceof HighlightlyError); assert.equal(error.scope, "provider"); assert.equal(error.reason, "invalid_response"); return true;
+    });
+  }
 });
 test("a failed advisory-lock query releases its pooled connection", async () => {
   let released = 0;

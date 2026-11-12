@@ -13,7 +13,7 @@ import { prepareObservedInputs } from "../src/server/forecast/inputs";
 import type { Context } from "../src/server/forecast/types";
 import { ArchiveStore, archiveId } from "../src/server/ingestion/archive";
 import { EnrichmentPipeline } from "../src/server/ingestion/enrichment";
-import { HIGHLIGHTLY_LEAGUES, highlightlyResponse, type HighlightlyCapture } from "../src/server/ingestion/highlightly-client";
+import { HIGHLIGHTLY_LEAGUES, HighlightlyError, highlightlyResponse, type HighlightlyCapture } from "../src/server/ingestion/highlightly-client";
 import { normalizeHighlightly, primaryFingerprint, type EnrichmentFixture } from "../src/server/ingestion/highlightly-normalize";
 import { CURRENT_SOURCE } from "../src/server/ingestion/sources";
 import { IngestionStore, RateLimitError } from "../src/server/ingestion/store";
@@ -238,6 +238,113 @@ test("pipeline archives and supplements both leagues without replacing primary f
   assert.deepEqual(await pipeline.run(2), { fixtures: 0, appearances: 0, pending: 0, unmapped: 0 });
   assert.equal(scheduleCalls.length, 2);
   assert.equal(boxCalls.length, 2);
+});
+
+async function recordBoxAttempt(path: string) {
+  // Synthetic responses have no network delay; keep the reservation strictly
+  // before their millisecond observation time, as a real response would be.
+  await writer.query(`INSERT INTO sports.provider_requests(action,resource_key,attempted_at)
+    VALUES('get_statistics',$1,clock_timestamp()-interval '1 second')`, [`highlightly:${path}`]);
+}
+
+function missingFirstBox() {
+  pipeline.provider.get = async (action, path) => {
+    assert.equal(action, "get_statistics"); boxCalls.push(path);
+    await recordBoxAttempt(path);
+    const scope = scopes.find((item) => path === `/box-score/${item.externalFixtureId}`)!;
+    assert(scope);
+    if (scope.index === 1) throw new HighlightlyError("http_rejected", false, "resource", "missing_box", 404);
+    return box(scope);
+  };
+}
+
+test("an explicitly missing box defers its fixture while the bounded batch imports the next league", async () => {
+  missingFirstBox();
+  const result = await pipeline.run(2);
+  assert.deepEqual({ ...result, retryAt: undefined }, {
+    fixtures: 1, appearances: 1, pending: 1, unmapped: 0, deferred: 1, reason: "missing_box", retryAt: undefined,
+  });
+  assert(Number.isFinite(Date.parse(result.retryAt!)));
+  assert.deepEqual(boxCalls, [`/box-score/${scopes[1].externalFixtureId}`, `/box-score/${scopes[0].externalFixtureId}`]);
+  assert.equal((await mongo.collection("raw_archives").countDocuments({ action: "get_statistics" })), 1);
+  assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.provider_requests")).rows[0].count, 2);
+  const cooldowns = await pipeline.store.boxCooldowns(scopes.map((scope) => ({
+    leagueId: scope.coverage.id, externalFixtureId: String(scope.externalFixtureId),
+  })));
+  assert.deepEqual([...cooldowns.keys()], [`${scopes[1].coverage.id}:${scopes[1].externalFixtureId}`]);
+  assert.equal(cooldowns.get(`${scopes[1].coverage.id}:${scopes[1].externalFixtureId}`), result.retryAt);
+  // A successful accepted source receipt cancels the reservation's cooldown,
+  // including when new primary evidence requires an immediate fresh anchor.
+  await importPrimary(scopes[0], 80);
+  const anchored = await pipeline.run(2);
+  assert.equal(anchored.fixtures, 1); assert.equal(anchored.deferred, 1);
+  assert.equal(boxCalls.at(-1), `/box-score/${scopes[0].externalFixtureId}`);
+  assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [(await context(scopes[0])).id])).rows[0].rating, "7.50");
+});
+
+test("missing-box cooldown survives a new runner, allows other work, and expires on the database clock", async () => {
+  missingFirstBox();
+  const first = await pipeline.run(1);
+  assert.equal(first.fixtures, 0); assert.equal(first.pending, 2); assert.equal(first.deferred, 1);
+  assert.equal(first.reason, "missing_box");
+  pipeline = new EnrichmentPipeline(writer, mongo, "offline-synthetic-secret");
+  mockProvider();
+  const restarted = await pipeline.run(2);
+  assert.deepEqual(restarted, { fixtures: 1, appearances: 1, pending: 1, unmapped: 0,
+    deferred: 1, retryAt: first.retryAt, reason: "cooldown" });
+  assert.deepEqual(boxCalls, [`/box-score/${scopes[1].externalFixtureId}`, `/box-score/${scopes[0].externalFixtureId}`]);
+  const before = boxCalls.length;
+  const cooling = await pipeline.run(2);
+  assert.equal(cooling.fixtures, 0); assert.equal(cooling.pending, 1); assert.equal(cooling.deferred, 1);
+  assert.equal(boxCalls.length, before);
+  // Advance only the owned synthetic request fixture, without wall-clock sleep.
+  await admin.query(`UPDATE sports.provider_requests SET attempted_at=clock_timestamp()-interval '16 minutes'
+    WHERE resource_key=$1`, [`highlightly:/box-score/${scopes[1].externalFixtureId}`]);
+  pipeline = new EnrichmentPipeline(writer, mongo, "offline-synthetic-secret");
+  mockProvider();
+  assert.deepEqual(await pipeline.run(2), { fixtures: 1, appearances: 1, pending: 0, unmapped: 0 });
+  assert.equal(boxCalls.at(-1), `/box-score/${scopes[1].externalFixtureId}`);
+});
+
+test("cooldown ignores unrelated namespaces and requires a committed accepted source receipt", async () => {
+  const scope = scopes[1];
+  const resource = `highlightly:statistics:${scope.coverage.id}:${scope.externalFixtureId}`;
+  const hash = createHash("sha256").update("uncommitted synthetic capture").digest("hex");
+  await recordBoxAttempt(`/box-score/${scope.externalFixtureId}`);
+  await writer.query(`INSERT INTO sports.source_revisions(provider,action,resource_key,archive_ref,content_sha256,retrieved_at)
+    VALUES('highlightly','get_statistics',$1,$2,$2,clock_timestamp())`, [resource, hash]);
+  assert.equal((await pipeline.store.boxCooldowns([{ leagueId: scope.coverage.id, externalFixtureId: String(scope.externalFixtureId) }])).size, 1);
+  assert.equal((await pipeline.store.boxCooldowns([{ leagueId: scopes[0].coverage.id, externalFixtureId: String(scopes[0].externalFixtureId) }])).size, 0);
+  await writer.query(`INSERT INTO sports.provider_requests(action,resource_key,attempted_at)
+    VALUES('get_events',$1,clock_timestamp()),('get_statistics',$2,clock_timestamp())`,
+  [`highlightly:/box-score/${scopes[0].externalFixtureId}`, `other:/box-score/${scopes[0].externalFixtureId}`]);
+  assert.equal((await pipeline.store.boxCooldowns([{ leagueId: scopes[0].coverage.id, externalFixtureId: String(scopes[0].externalFixtureId) }])).size, 0);
+});
+
+for (const failure of [
+  () => new HighlightlyError("transport_failed", true, "provider", "transport"),
+  () => new HighlightlyError("http_rejected", false, "provider", "authentication", 403),
+  () => new HighlightlyError("http_rate_limit", true, "provider", "rate_limit", 429, new Date(Date.now() + 60_000)),
+  () => new RateLimitError(new Date(Date.now() + 60_000)),
+]) {
+  const label = failure().name + ("reason" in failure() ? `:${(failure() as HighlightlyError).reason}` : "");
+  test(`${label} stops a batch without trying another box or swallowing the error`, async () => {
+    const error = failure();
+    pipeline.provider.get = async (_action, path) => { boxCalls.push(path); throw error; };
+    await assert.rejects(pipeline.run(2), (caught: unknown) => caught === error);
+    assert.equal(boxCalls.length, 1);
+    assert.equal(await mongo.collection("raw_archives").countDocuments({ action: "get_statistics" }), 0);
+  });
+}
+
+test("SQL import failures stop the batch and retain the immutable capture for recovery", async () => {
+  pipeline.store.import = async () => { await writer.query("SELECT * FROM sports.synthetic_missing_table"); throw new Error("unreachable"); };
+  await assert.rejects(pipeline.run(2), (error: unknown) => error instanceof Error && "code" in error && error.code === "42P01");
+  assert.equal(boxCalls.length, 1);
+  assert.equal(await mongo.collection("raw_archives").countDocuments({ action: "get_statistics" }), 1);
+  const pending = await mongo.collection("import_metadata").findOne({ state: "pending" });
+  assert(pending);
+  assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments")).rows[0].count, 0);
 });
 
 test("rejected raw captures never establish completion and are quarantined before a valid retry", async () => {
@@ -606,13 +713,15 @@ test("cached reprocessing uses the latest capture and cannot restore a mapping w
   assert.deepEqual(boxCalls, []);
 });
 
-test("cached reprocessing releases its connection when the normal enrichment runner already holds the lock", async () => {
+test("enrichment runners release their connections and report contention when another runner holds the lock", async () => {
   const owner = await writer.connect();
   const bounded = new pg.Pool({ ...connection, user: "lsp_writer", password: process.env.POSTGRES_WRITER_PASSWORD, max: 1 });
   try {
     await owner.query("SELECT pg_advisory_lock(hashtextextended('lsp:highlightly-run',0))");
     const blocked = new EnrichmentPipeline(bounded, mongo, "offline-synthetic-secret");
     assert.deepEqual(await blocked.reprocessCached(), { captures: 0, appearances: 0, skipped: 0, duplicates: 0 });
+    assert.deepEqual(await blocked.run(2), { fixtures: 0, appearances: 0, pending: 0, unmapped: 0, busy: true });
+    assert.deepEqual(scheduleCalls, []); assert.deepEqual(boxCalls, []);
     assert.equal(bounded.idleCount, bounded.totalCount);
     assert.equal((await bounded.query("SELECT 1 AS available")).rows[0].available, 1);
   } finally {

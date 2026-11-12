@@ -2,13 +2,14 @@ import type { Db } from "mongodb";
 import type { Pool } from "pg";
 import { ArchiveStore, archiveId, validateArchive } from "./archive";
 import { EnrichmentStore } from "./enrichment-store";
-import { HighlightlyClient, HighlightlyScheduleError, highlightlyResponse, object, type HighlightlyBox } from "./highlightly-client";
+import { HighlightlyClient, HighlightlyError, HighlightlyScheduleError, highlightlyResponse, object, type HighlightlyBox, type HighlightlyCapture } from "./highlightly-client";
 import { normalizeHighlightly, primaryFingerprint, sameFixture, scheduleFixtures, type EnrichmentAppearance, type EnrichmentFixture } from "./highlightly-normalize";
 import { CURRENT_SOURCE, sourceSeasonGuard } from "./sources";
 import type { ArchivedResponse } from "./types";
 
 type StoredArchive = Omit<ArchivedResponse, "id"> & { _id: string };
-export type EnrichmentProgress = { fixtures: number; appearances: number; pending: number; unmapped: number };
+export type EnrichmentProgress = { fixtures: number; appearances: number; pending: number; unmapped: number;
+  deferred?: number; retryAt?: string; reason?: string; busy?: true };
 export type EnrichmentReprocessProgress = { captures: number; appearances: number; skipped: number; duplicates: number };
 
 /** Optional worker-only supplementation. The primary source always runs independently. */
@@ -181,7 +182,7 @@ export class EnrichmentPipeline {
     let locked = false;
     try {
       locked = (await lock.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtextextended('lsp:highlightly-run',0)) AS locked")).rows[0].locked;
-      if (!locked) return { fixtures: 0, appearances: 0, pending: 0, unmapped: 0 };
+      if (!locked) return { fixtures: 0, appearances: 0, pending: 0, unmapped: 0, busy: true };
       const fixtures = await this.fixtures();
       await this.recover(fixtures);
       const schedules = new Map((await this.latest("get_events")).map((a) => [a.params.league_id, a]));
@@ -230,6 +231,19 @@ export class EnrichmentPipeline {
         if (valid) completed.add(fixture.id); else pending.push({ fixture, row, schedule });
       }
       const progress: EnrichmentProgress = { fixtures: 0, appearances: 0, pending: pending.length, unmapped };
+      const cooldowns = await this.store.boxCooldowns(pending.map((target) => ({
+        leagueId: target.fixture.leagueId, externalFixtureId: String(target.row.id),
+      })));
+      const defer = (retryAt: string | undefined, reason: string) => {
+        progress.deferred = (progress.deferred ?? 0) + 1;
+        progress.reason = reason;
+        if (retryAt && (!progress.retryAt || retryAt < progress.retryAt)) progress.retryAt = retryAt;
+      };
+      for (let index = pending.length - 1; index >= 0; index--) {
+        const target = pending[index];
+        const retryAt = cooldowns.get(`${target.fixture.leagueId}:${target.row.id}`);
+        if (retryAt) { defer(retryAt, "cooldown"); pending.splice(index, 1); }
+      }
       // Priority affects fetching only. Forecast eligibility still uses the full
       // exact-five validation, including uncertainty, in the forecast engine.
       const windows = new Map<string, string[]>();
@@ -249,7 +263,18 @@ export class EnrichmentPipeline {
           - (scores.get(a.fixture.id) ?? 0) / (1 + (leagueDone.get(a.fixture.leagueId) ?? 0) / 5)
           || b.fixture.kickoffAt.localeCompare(a.fixture.kickoffAt) || a.fixture.nativeId.localeCompare(b.fixture.nativeId));
         const target = pending.shift()!;
-        const capture = await this.provider.get("get_statistics", `/box-score/${target.row.id}`);
+        let capture: HighlightlyCapture;
+        try { capture = await this.provider.get("get_statistics", `/box-score/${target.row.id}`); }
+        catch (error) {
+          // Only an explicitly missing box is local to one fixture. Global
+          // provider, transport, budget and persistence failures still stop.
+          if (!(error instanceof HighlightlyError) || error.scope !== "resource") throw error;
+          const cooldown = await this.store.boxCooldowns([{
+            leagueId: target.fixture.leagueId, externalFixtureId: String(target.row.id),
+          }]);
+          defer(cooldown.get(`${target.fixture.leagueId}:${target.row.id}`), error.reason);
+          continue;
+        }
         const archive = await this.archives.save(highlightlyResponse("get_statistics", target.fixture.leagueId, {
           format: "highlightly-box-v1", fixture: target.row, scheduleArchiveId: target.schedule.id,
           primaryFingerprint: primaryFingerprint(target.fixture), capture,

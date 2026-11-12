@@ -1,3 +1,4 @@
+import { setDefaultAutoSelectFamilyAttemptTimeout } from "node:net";
 import { mongoConnection, mongoDatabase, writerPool, required } from "./connections";
 import { JobQueue, type IngestionJob } from "./jobs";
 import { runtimeSource, sourceCoverage } from "./sources";
@@ -7,6 +8,10 @@ import { ForecastStore } from "../forecast/store";
 import { EnrichmentPipeline } from "./enrichment";
 
 export async function createRuntime(needsProvider = true) {
+  // Slow IPv4 paths must get a chance before falling back to unreachable IPv6.
+  // Configure only ingestion processes, including manual enrichment commands.
+  // Keep hostname resolution, dual-stack fallback and TLS validation intact.
+  setDefaultAutoSelectFamilyAttemptTimeout(2000);
   const profile = runtimeSource();
   const pool = writerPool();
   const mongo = mongoConnection();

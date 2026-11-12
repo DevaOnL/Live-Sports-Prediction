@@ -2,6 +2,47 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { IngestionJob } from "../src/server/ingestion/jobs";
 import { pollForecasts } from "../src/worker/forecast-polling";
+import { supplementFailure, supplementProgress } from "../src/worker/supplement-retry";
+import { HighlightlyError } from "../src/server/ingestion/highlightly-client";
+import { ProviderError } from "../src/server/ingestion/provider";
+import { RateLimitError } from "../src/server/ingestion/store";
+
+test("supplement retries distinguish local allowance, global failures and persistence without exposing error details", () => {
+  const now = Date.parse("2026-11-12T12:00:00Z");
+  const reset = new Date(now + 43_200_000);
+  assert.deepEqual(supplementFailure(new RateLimitError(reset), 1, now), {
+    state: "budget-deferred", retryAt: reset.toISOString(), error: null,
+  });
+  const global = new HighlightlyError("http_rate_limit", true, "provider", "rate_limit", 429, reset);
+  assert.deepEqual(supplementFailure(global, 1, now), {
+    state: "http_rate_limit", retryAt: reset.toISOString(), error: { code: "http_rate_limit", reason: "rate_limit", status: 429 },
+  });
+  const unavailable = new HighlightlyError("http_unavailable", true, "provider", "unavailable", 503, reset);
+  assert.equal(supplementFailure(unavailable, 2, now).retryAt, reset.toISOString());
+  const transport = new ProviderError("transport_failed", true);
+  assert.equal(Date.parse(supplementFailure(transport, 1, now).retryAt) - now, 900_000);
+  assert.equal(Date.parse(supplementFailure(transport, 2, now).retryAt) - now, 1_800_000);
+  assert.equal(Date.parse(supplementFailure(transport, 100, now).retryAt) - now, 3_600_000);
+  const secret = "private-upstream-message-and-key";
+  const failure = supplementFailure(new Error(secret), 1, now);
+  assert.deepEqual(failure, { state: "processing-failed", retryAt: new Date(now + 60_000).toISOString(), error: { code: "processing_failed" } });
+  assert.equal(JSON.stringify(failure).includes(secret), false);
+});
+
+test("supplement progress keeps busy and cooling work distinct from successful synchronization", () => {
+  const now = Date.parse("2026-11-12T12:00:00Z");
+  const empty = { fixtures: 0, appearances: 0, pending: 0, unmapped: 0 };
+  assert.equal(supplementProgress({ ...empty, busy: true }, now).state, "busy");
+  const cooling = new Date(now + 600_000).toISOString();
+  const waiting = supplementProgress({ ...empty, pending: 2, deferred: 2, retryAt: cooling }, now);
+  assert.equal(waiting.state, "waiting-for-data");
+  assert.equal(waiting.retryAt, cooling);
+  const remaining = supplementProgress({ ...empty, pending: 3, deferred: 2, retryAt: cooling }, now);
+  assert.equal(remaining.state, "backfilling");
+  assert.equal(Date.parse(remaining.retryAt) - now, 60_000);
+  assert.equal(supplementProgress({ ...empty, unmapped: 1 }, now).state, "partial");
+  assert.equal(supplementProgress(empty, now).state, "synced");
+});
 
 function gate() {
   let release!: () => void;
