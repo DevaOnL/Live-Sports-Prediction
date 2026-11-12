@@ -12,7 +12,7 @@ import type { Output } from "@/server/forecast/types";
 import { MetricIcon, PlayerArtwork } from "./football-art";
 import { EvidenceProvenance, ForecastView, MatchRatings, ReasonList } from "./forecast-view";
 import { useSelection } from "./selection";
-import { PageHeading, PanelState, SourceNote, StatusBadge } from "./ui";
+import { PageHeading, PanelState, SourceNote, statusLabel, StatusBadge } from "./ui";
 import { HiddenDataButton, useDataVisibility } from "./data-visibility";
 
 function ComparisonValue({ output, unit }: { output?: Output; unit: string }) {
@@ -101,9 +101,9 @@ export function Comparison({ initialIds = [], initialCrossPosition = false }: { 
           {showHidden && !item.result.target && <p className="notice notice-warning">Target not recorded</p>}
           {showHidden && item.input.rosterReasons.some((reason) => reason.code === "ambiguous_current_club") && <p className="notice notice-warning">Club conflict</p>}
           {item.result.target && <p className="compact-note">Target {formatDate(item.result.target.kickoffAt)}</p>}
-          {showHidden && item.canonicalStatus !== item.result.status && <div className="notice"><span>Shown metrics: <StatusBadge status={item.result.status} /></span><span>Full position model: <StatusBadge status={item.canonicalStatus} /></span></div>}
+          {showHidden && item.canonicalStatus !== item.result.status && <div className="notice"><span>Shown metrics: {statusLabel(item.result.status)}</span><span>Full position model: {statusLabel(item.canonicalStatus)}</span></div>}
           <details className="provenance-details"><summary>Selected matches & forecast evidence</summary><ForecastView input={item.input} result={item.result} clubs={clubs.data?.items ?? []} compact /></details>
-          <details className="provenance-details"><summary>Comparison and revision evidence</summary><dl className="data-list"><div><dt>Shared cutoff</dt><dd>{formatDate(data.cutoffAt)}</dd></div><div><dt>Source revision</dt><dd>{data.sourceOrdinal}</dd></div><div><dt>Canonical input hash</dt><dd className="identifier">{item.canonicalInputHash}</dd></div>{(showHidden || item.canonicalStatus !== "unavailable") && <div><dt>Full model status</dt><dd><StatusBadge status={item.canonicalStatus} /></dd></div>}{(item.storedRevision || showHidden) && <div><dt>Prior saved revision</dt><dd className="identifier">{item.storedRevision?.id ?? "Not recorded"}</dd></div>}{item.storedRevision && <div><dt>Saved revision cutoff</dt><dd>{formatDate(item.storedRevision.cutoffAt)}</dd></div>}</dl><EvidenceProvenance provenance={item.provenance} /><p>The comparison uses current canonical inputs at the shared cutoff. The full-model status and hash also cover statistics outside this comparison. Prior saved revisions are historical evidence.</p></details>
+          <details className="provenance-details"><summary>Comparison and revision evidence</summary><dl className="data-list"><div><dt>Shared cutoff</dt><dd>{formatDate(data.cutoffAt)}</dd></div><div><dt>Source revision</dt><dd>{data.sourceOrdinal}</dd></div><div><dt>Canonical input hash</dt><dd className="identifier">{item.canonicalInputHash}</dd></div>{(showHidden || item.canonicalStatus !== "unavailable") && <div><dt>Full model status</dt><dd>{statusLabel(item.canonicalStatus)}</dd></div>}{(item.storedRevision || showHidden) && <div><dt>Prior saved revision</dt><dd className="identifier">{item.storedRevision?.id ?? "Not recorded"}</dd></div>}{item.storedRevision && <div><dt>Saved revision cutoff</dt><dd>{formatDate(item.storedRevision.cutoffAt)}</dd></div>}</dl><EvidenceProvenance provenance={item.provenance} /><p>The comparison uses current canonical inputs at the shared cutoff. The full-model status and hash also cover statistics outside this comparison. Prior saved revisions are historical evidence.</p></details>
         </article>)}</div>
       </div>}
     </PanelState>

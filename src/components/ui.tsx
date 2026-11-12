@@ -20,11 +20,18 @@ export function PanelState({ loading, error, onRetry, empty, children }: { loadi
   if (empty) return <section className="state-panel"><h2>Nothing here yet.</h2><p>{typeof empty === "string" ? empty : "Try changing your filters or check again after an import."}</p></section>;
   return children;
 }
-const labels: Record<string, string> = { available: "Ready", partial: "Some results", unavailable: "Hidden", uncomputed: "Not recorded", ready: "Ready", running: "Running", succeeded: "Completed", failed: "Failed", incomplete_history: "Incomplete history", insufficient_history: "Not enough history" };
-export function StatusBadge({ status }: { status: string }) {
+const labels: Record<string, string> = { available: "Complete results", partial: "Some results", unavailable: "Hidden", uncomputed: "Not recorded", ready: "Queued", running: "Running", succeeded: "Completed", failed: "Failed", incomplete_history: "Incomplete history", insufficient_history: "Not enough history" };
+export function statusLabel(status: string): string {
+  return labels[status] ?? presentationText(status.replaceAll("_", " "));
+}
+export function isStatusBadgeVisible(status: string, showHidden: boolean, kind: "result" | "job" = "result"): boolean {
+  if (status === "available" || (status === "ready" && kind !== "job")) return false;
+  return showHidden || !["unavailable", "uncomputed", "incomplete_history", "insufficient_history"].includes(status);
+}
+export function StatusBadge({ status, kind = "result" }: { status: string; kind?: "result" | "job" }) {
   const { showHidden } = useDataVisibility();
-  if (!showHidden && ["unavailable", "uncomputed", "incomplete_history", "insufficient_history"].includes(status)) return null;
-  return <span className={`badge badge-${status.replace(/[^a-z_]/g, "")}`}>{labels[status] ?? presentationText(status.replaceAll("_", " "))}</span>;
+  if (!isStatusBadgeVisible(status, showHidden, kind)) return null;
+  return <span className={`badge badge-${status.replace(/[^a-z_]/g, "")}`}>{statusLabel(status)}</span>;
 }
 export function SourceNote({ source }: { source: SourceFreshness }) {
   const { showHidden } = useDataVisibility();
