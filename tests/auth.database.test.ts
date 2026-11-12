@@ -175,6 +175,69 @@ test("nonpersistent browser cookies never extend the eight-hour database session
   assert(cookie && !/Max-Age=|Expires=/i.test(cookie));
 });
 
+test("omitting the secondary cookie cannot renew a nonpersistent session", async () => {
+  const login = await signIn("viewer@example.test", password, authentication, { rememberMe: false, persistent: true });
+  assert.equal(login.status, 200);
+  const tokenCookie = cookies(login).split("; ").find((value) => value.startsWith("lsp.session_token="));
+  assert(tokenCookie);
+  const initial = await principal(tokenCookie);
+  assert(initial);
+  await migrator.query(`UPDATE auth.session SET "createdAt"=clock_timestamp()-interval '7 hours',
+    "updatedAt"=clock_timestamp()-interval '1 hour',"expiresAt"=clock_timestamp()+interval '1 hour' WHERE id=$1`, [initial.sessionId]);
+  const before = (await migrator.query('SELECT persistent,"expiresAt" FROM auth.session WHERE id=$1', [initial.sessionId])).rows[0];
+  assert.equal(before.persistent, false, "client additional fields cannot select session mode");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const refreshed = await response(authentication, "GET", "/get-session", undefined, { cookie: tokenCookie });
+    assert.equal(refreshed.status, 200);
+    const body = await refreshed.json();
+    assert.equal(Object.hasOwn(body.session, "persistent"), false);
+    assert.equal(new Date(body.session.expiresAt).getTime(), before.expiresAt.getTime());
+    assert.equal((await migrator.query('SELECT "expiresAt" FROM auth.session WHERE id=$1', [initial.sessionId])).rows[0].expiresAt.getTime(), before.expiresAt.getTime());
+  }
+  assert(await principal(tokenCookie));
+});
+
+test("persistent sessions still renew and renewed sessions remain revocable", async () => {
+  const login = await signIn("viewer@example.test", password, authentication, { rememberMe: true });
+  assert.equal(login.status, 200);
+  const cookie = cookies(login);
+  const initial = await principal(cookie);
+  assert(initial);
+  await migrator.query(`UPDATE auth.session SET "createdAt"=clock_timestamp()-interval '7 hours',
+    "updatedAt"=clock_timestamp()-interval '1 hour',"expiresAt"=clock_timestamp()+interval '1 hour' WHERE id=$1`, [initial.sessionId]);
+  const renewed = await response(authentication, "GET", "/get-session", undefined, { cookie });
+  assert.equal(renewed.status, 200);
+  const body = await renewed.json();
+  assert.equal(Object.hasOwn(body.session, "persistent"), false);
+  const stored = (await migrator.query('SELECT persistent,"expiresAt" FROM auth.session WHERE id=$1', [initial.sessionId])).rows[0];
+  assert.equal(stored.persistent, true);
+  const remainingHours = (stored.expiresAt.getTime() - Date.now()) / 3_600_000;
+  assert(remainingHours > 7.9 && remainingHours <= 8);
+  const renewedCookie = cookies(renewed);
+  assert(await principal(renewedCookie));
+  const logout = await response(authentication, "POST", "/sign-out", {}, { cookie: renewedCookie });
+  assert.equal(logout.status, 200);
+  assert.equal(await principal(renewedCookie), null);
+});
+
+test("sessions with the migration default retain their valid expiry without renewal", async () => {
+  const login = await signIn();
+  assert.equal(login.status, 200);
+  const cookie = cookies(login);
+  const initial = await principal(cookie);
+  assert(initial);
+  // Model an older rolling session at upgrade. Defaulting its new field must
+  // preserve the current valid expiry instead of applying creation plus 8h.
+  await migrator.query(`UPDATE auth.session SET persistent=DEFAULT,"createdAt"=clock_timestamp()-interval '2 days',
+    "updatedAt"=clock_timestamp()-interval '1 hour',"expiresAt"=clock_timestamp()+interval '2 hours' WHERE id=$1`, [initial.sessionId]);
+  const before = (await migrator.query('SELECT persistent,"expiresAt" FROM auth.session WHERE id=$1', [initial.sessionId])).rows[0];
+  assert.equal(before.persistent, false);
+  const checked = await response(authentication, "GET", "/get-session", undefined, { cookie });
+  assert.equal(checked.status, 200);
+  assert.equal(new Date((await checked.json()).session.expiresAt).getTime(), before.expiresAt.getTime());
+  assert(await principal(cookie));
+});
+
 test("role changes are read from SQL on every request and authorization lookups do not refresh expiry", async () => {
   const login = await signIn();
   const cookie = cookies(login);

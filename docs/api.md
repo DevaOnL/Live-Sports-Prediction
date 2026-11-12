@@ -10,7 +10,7 @@ the application does not offer that data as a reusable feed or downloadable data
 
 ## Configure local access
 
-Apply pending migrations explicitly, through `012_appearance_enrichment.sql`. Keep
+Apply pending migrations explicitly, through `013_session_persistence.sql`. Keep
 existing volumes. Set these ignored `.env` variables before recreating the app:
 
 ```dotenv
@@ -52,6 +52,9 @@ Migration credentials remain outside app/worker containers.
 Open `/login`. Sessions use Better Auth 1.7.18 with PostgreSQL storage, an 8-hour
 expiry and a 15-minute refresh interval for persistent sessions. The login screen
 uses nonpersistent cookies and an eight-hour session without renewal.
+The issued persistence mode is stored server-side; omitting a secondary cookie
+cannot make a nonpersistent session renewable. Sessions from before this upgrade
+retain their existing expiry and remain valid until then, without renewal.
 Authenticated guards do not silently refresh a session without returning its
 cookie; the explicit session endpoint can refresh persistent sessions.
 Cookie caching is disabled. Roles are loaded from SQL on every

@@ -187,7 +187,10 @@ or cached role never authorizes a command.
 
 Sessions expire after eight hours. Cookie caching is disabled; cookies are
 HttpOnly and SameSite=Lax, with Secure required for HTTPS. The shipped login uses
-nonpersistent cookies. Database-backed login throttling is shared across app
+nonpersistent cookies with a nonrenewing server expiry; persistence is stored in
+SQL independently of optional client cookies. Explicit persistent sessions can
+renew at the documented interval. Existing sessions retain their expiry and
+become nonrenewing when migration 013 is applied. Database-backed login throttling is shared across app
 instances. With no trusted proxy configured, per-endpoint buckets are shared;
 caller-supplied forwarding headers cannot create a new throttle identity.
 Mutations require the exact configured Host and Origin. See [API access](api.md)

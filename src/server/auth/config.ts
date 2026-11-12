@@ -28,15 +28,34 @@ export function createAuthentication(pool: Pool, settings: { baseURL: string; se
     },
     user: { changeEmail: { enabled: false }, deleteUser: { enabled: false } },
     account: { accountLinking: { enabled: false } },
-    session: { expiresIn: sessionSeconds, updateAge: 15 * 60, cookieCache: { enabled: false } },
+    session: {
+      expiresIn: sessionSeconds, updateAge: 15 * 60, cookieCache: { enabled: false },
+      additionalFields: { persistent: { type: "boolean", required: true, defaultValue: false, input: false, returned: false } },
+    },
     databaseHooks: {
-      session: { create: { async before(session) {
-        // Better Auth otherwise gives nonpersistent cookies a 24-hour SQL
-        // session. Cookie persistence must never extend our server expiry.
-        return { data: { ...session, expiresAt: new Date(Math.min(
-          session.expiresAt.getTime(), Date.now() + sessionSeconds * 1000,
-        )) } };
-      } } },
+      session: {
+        create: { async before(session, context) {
+          // Only the validated sign-in option chooses persistence. The separate
+          // dont_remember cookie can be omitted by a client and is not authority.
+          const persistent = context?.path === "/sign-in/email" && context.body?.rememberMe !== false;
+          // Better Auth otherwise gives nonpersistent cookies a 24-hour SQL session.
+          return { data: { ...session, persistent, expiresAt: new Date(Math.min(
+            session.expiresAt.getTime(), Date.now() + sessionSeconds * 1000,
+          )) } };
+        } },
+        update: { async before(session, context) {
+          const id = context?.context.session?.session.id;
+          if (!id) return false;
+          // Hidden additional fields are omitted from Better Auth's session
+          // output, so consult their authoritative SQL value before renewal.
+          const stored = (await pool.query<{ persistent: boolean; expiresAt: Date }>(
+            'SELECT persistent,"expiresAt" FROM auth.session WHERE id=$1', [id],
+          )).rows[0];
+          if (!stored) return false;
+          return { data: { ...session, persistent: stored.persistent,
+            ...(stored.persistent ? {} : { expiresAt: stored.expiresAt }) } };
+        } },
+      },
     },
     rateLimit: {
       enabled: true,

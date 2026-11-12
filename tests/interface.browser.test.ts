@@ -239,6 +239,58 @@ test("catalogue defaults to ready results and exposes hidden records only throug
   assert.doesNotMatch(await page.getByRole("main").innerText(), /unavailable|uncomputed/i);
 }));
 
+test("overview status links retain exact catalogue filters through unchanged submissions and paging", { timeout: 90_000 }, async () => withPage(async (page) => {
+  await login(page);
+  const playersResponse = () => page.waitForResponse((response) => new URL(response.url()).pathname === "/api/players" && response.status() === 200);
+  const statuses = [
+    ["available", "Complete results", false], ["partial", "Some results", false],
+    ["unavailable", "No model results", true], ["uncomputed", "No saved evaluation", true],
+  ] as const;
+  for (const [status, label, hidden] of statuses) {
+    await page.goto(`${web.origin}/overview`);
+    await page.getByRole("region", { name: "Coverage summary", exact: true }).waitFor();
+    if (hidden) await page.getByRole("button", { name: "Show hidden", exact: true }).click();
+    const firstResponse = playersResponse();
+    await page.locator(`.availability-card[href="/players?availability=${status}"]`).click();
+    const first = await firstResponse;
+    assert.equal(new URL(first.url()).searchParams.get("availability"), status);
+    const original = (await first.json()).data;
+    assert(original.items.every((item: { forecast: { status: string } }) => item.forecast.status === status));
+    await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
+    const filter = page.getByLabel("Model results", { exact: true });
+    assert.equal(await filter.inputValue(), status, "the selected option must describe the exact requested status");
+    assert.deepEqual(await filter.locator("option").allTextContents(), ["Ready", "Hidden", "All", label]);
+    assert.equal(await page.getByRole("button", { name: hidden ? "Hide hidden" : "Show hidden", exact: true }).getAttribute("aria-pressed"), String(hidden));
+    const submittedResponse = playersResponse();
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    const submitted = await submittedResponse;
+    assert.equal(new URL(submitted.url()).searchParams.get("availability"), status, "applying unchanged filters cannot widen the status");
+    const after = (await submitted.json()).data;
+    assert.equal(after.pagination.total, original.pagination.total);
+    assert.deepEqual(after.items.map((item: { id: string }) => item.id), original.items.map((item: { id: string }) => item.id));
+    await page.getByRole("navigation", { name: "Workspace navigation", exact: true }).getByRole("link", { name: "Overview", exact: true }).click();
+    await page.waitForURL(`${web.origin}/overview`);
+    await page.getByRole("heading", { name: "The game, in context.", exact: true }).waitFor();
+    await page.getByRole("button", { name: hidden ? "Hide hidden" : "Show hidden", exact: true }).waitFor();
+  }
+  const firstPageResponse = playersResponse();
+  await page.goto(`${web.origin}/players?availability=available&pageSize=1`);
+  const firstPage = (await (await firstPageResponse).json()).data;
+  assert(firstPage.pagination.total > 1, "the synthetic complete-result cohort supports a second page");
+  const secondPageResponse = playersResponse();
+  await page.getByRole("button", { name: "Next page", exact: true }).click();
+  const secondPage = await secondPageResponse;
+  assert.equal(new URL(secondPage.url()).searchParams.get("availability"), "available");
+  assert.equal(new URL(secondPage.url()).searchParams.get("page"), "2");
+  const next = (await secondPage.json()).data;
+  assert.equal(next.pagination.total, firstPage.pagination.total);
+  assert(next.items.every((item: { forecast: { status: string } }) => item.forecast.status === "available"));
+  assert.notEqual(next.items[0].id, firstPage.items[0].id);
+  await page.locator("summary").filter({ hasText: /^Filter players/ }).click();
+  assert.equal(await page.getByLabel("Model results", { exact: true }).inputValue(), "available");
+  await noOverflow(page);
+}));
+
 test("scouting highlights expose observed strengths on cards and profiles with honest ranks and missing-data states", { timeout: 60_000 }, async () => withPage(async (page) => {
   await login(page);
   // Cohort selection is verified by API integration tests; these response variants

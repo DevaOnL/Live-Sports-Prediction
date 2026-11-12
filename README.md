@@ -80,9 +80,10 @@ upgrades explicitly with `npm run db:migrate` while preserving existing volumes;
 never edit an already-applied migration. Rerun provisioning only for deliberate
 role setup or password rotation.
 
-Existing installations must apply all migrations through `012_appearance_enrichment.sql`
+Existing installations must apply all migrations through `013_session_persistence.sql`
 before starting the current app and worker. These upgrades retain historical records,
 retire the former active leagues and add source-traceable match-stat supplements.
+Session persistence is stored server-side; existing sessions retain their expiry.
 Preserve volumes and applied migration files.
 
 The [database guide](docs/database.md) documents the ER diagram, relational

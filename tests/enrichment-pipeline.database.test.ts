@@ -128,13 +128,13 @@ function headers(scope: Scope) {
       state: { description: finished ? "Finished" : "Not started", score: { current: finished ? "1 - 0" : null } } }];
   }));
 }
-function schedule(coverage: Coverage, subset?: ReturnType<typeof headers>) {
+function schedule(coverage: Coverage, subset?: ReturnType<typeof headers>, observedAt = new Date().toISOString()) {
   const scope = scopes.find((item) => item.coverage.id === coverage.id)!;
   const rows = subset ?? headers(scope);
   if (!subset) assert.equal(rows.length, 380);
   const captures = Array.from({ length: Math.max(1, Math.ceil(rows.length / 100)) }, (_, index) => ({
     path: `/matches?${new URLSearchParams({ leagueId: String(HIGHLIGHTLY_LEAGUES[coverage.id]), season: "2026", limit: "100", offset: String(index * 100) })}`,
-    retrievedAt: new Date().toISOString(),
+    retrievedAt: observedAt,
     text: JSON.stringify({ data: rows.slice(index * 100, (index + 1) * 100), plan: { tier: "BASIC", message: "Synthetic coverage" },
       pagination: { totalCount: rows.length, offset: index * 100, limit: 100 } }),
   }));
@@ -365,6 +365,96 @@ test("absence from a newer partial catalogue preserves earlier verified suppleme
   assert.deepEqual(current.fieldSources, original.fieldSources);
   assert.equal((await mongo.collection("import_metadata").findOne({ _id: boxArchive._id }))?.state, "imported");
 });
+
+test("a header correction also withdraws unchanged-player supplements after another player's primary revision changed", async () => {
+  const scope = scopes[0];
+  const teammate = { id: `Player:${uuid(9000)}`, name: "Second test footballer", position: "MID" as const };
+  const value: Batch = { coverage: scope.coverage, clubs: scope.clubs, players: [scope.player, teammate], standings: [], issues: [],
+    fixtures: [{ id: scope.nativeFixtureId, leagueId: scope.coverage.id, season: scope.coverage.season,
+      home: scope.clubs[0], away: scope.clubs[1], kickoffAt: scope.kickoffAt, status: "final", statisticsStatus: "partial",
+      homeScore: 1, awayScore: 0, detailed: true, appearances: [scope.player, teammate].map((player, index) => ({
+        player, clubId: scope.clubs[0].id, participation: "played", minutes: 90, rating: null,
+        goals: index === 0 ? 1 : 0, assists: 0, shotsOnTarget: index === 0 ? 2 : 0,
+        keyPasses: null, tackles: null, interceptions: 0, saves: null, goalsConceded: 0,
+      })) }] };
+  const publish = async () => {
+    const text = JSON.stringify(value);
+    const response = { action: "get_statistics" as const, resourceKey: "sorare:synthetic:teammate-correction",
+      params: { provider: "sorare", league_id: scope.coverage.id, match_id: scope.nativeFixtureId }, text,
+      retrievedAt: new Date().toISOString(), contentSha256: createHash("sha256").update(text).digest("hex") };
+    await primary.import({ ...response, id: archiveId(response) }, value);
+  };
+  await publish();
+  const get = pipeline.provider.get.bind(pipeline.provider);
+  pipeline.provider.get = async (action, path) => {
+    const capture = await get(action, path);
+    if (path === `/box-score/${scope.externalFixtureId}`) {
+      const rows = JSON.parse(capture.text);
+      rows[0].players.push({ ...rows[0].players[0], id: 8_500_000, name: teammate.name,
+        statistics: { ...rows[0].players[0].statistics, goalsScored: 0, shotsOnTarget: 0 } });
+      capture.text = JSON.stringify(rows);
+    }
+    return capture;
+  };
+  await pipeline.run(2);
+  const reads = new ReadService(reader, CURRENT_SOURCE);
+  assert.equal((await reads.player(teammate.id)).observedAppearances[0].rating, 7.5);
+  value.fixtures[0].appearances[0].minutes = 80;
+  await publish();
+  assert.equal((await reads.player(scope.player.id)).observedAppearances[0].rating, null);
+  assert.equal((await reads.player(teammate.id)).observedAppearances[0].rating, 7.5);
+  const changed = headers(scope);
+  changed[0].state.score.current = "2 - 0";
+  const archive = await archives.save(schedule(scope.coverage, changed));
+  const result = await pipeline.store.recordSchedule(archive);
+  await archives.mark(archive.id, "imported", [], result);
+  pipeline.provider.schedule = async () => { throw new Error("Cached-only correction must not fetch schedules"); };
+  pipeline.provider.get = async () => { throw new Error("Cached-only correction must not fetch boxes"); };
+  await pipeline.reprocessCached();
+  assert.equal((await reads.player(teammate.id)).observedAppearances[0].rating, null);
+});
+
+for (const mode of ["fresh", "recovered", "cached-only"]) {
+  test(`${mode} schedule corrections withdraw contradicted supplements even when another league fails`, async () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    pipeline.provider.schedule = async (coverage) => schedule(coverage, undefined, yesterday);
+    pipeline.provider.get = async (_action, path) => {
+      boxCalls.push(path);
+      const scope = scopes.find((item) => path === `/box-score/${item.externalFixtureId}`)!;
+      return { ...box(scope), retrievedAt: new Date(Date.parse(yesterday) + 1000).toISOString() };
+    };
+    await pipeline.run(2);
+    const fixture = await context(scopes[0]);
+    const original = await mongo.collection("raw_archives").findOne({ action: "get_statistics", "params.league_id": scopes[0].coverage.id });
+    assert(original);
+    const primaryRows = (await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows;
+    assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [fixture.id])).rows[0].rating, "7.50");
+    const changed = headers(scopes[0]);
+    changed[0].state.score.current = "2 - 0";
+    const corrected = schedule(scopes[0].coverage, changed);
+    if (mode !== "fresh") {
+      // The process may stop after accepting a source receipt but before withdrawing its old box.
+      const archive = await archives.save(corrected);
+      const result = await pipeline.store.recordSchedule(archive);
+      await archives.mark(archive.id, "imported", [], result);
+    }
+    pipeline.provider.schedule = async (coverage) => {
+      if (mode === "fresh" && coverage.id === scopes[0].coverage.id) return corrected;
+      throw new Error("Synthetic other-league outage");
+    };
+    if (mode === "cached-only") await pipeline.reprocessCached();
+    else await assert.rejects(pipeline.run(2), /Synthetic other-league outage/);
+    assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [fixture.id])).rows[0].rating, null);
+    assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [(await context(scopes[1])).id])).rows[0].rating, "7.50");
+    assert.equal((await mongo.collection("import_metadata").findOne({ _id: original._id }))?.state, "invalid");
+    assert.equal((await mongo.collection("raw_archives").findOne({ _id: original._id }))?.text, original.text);
+    assert.deepEqual((await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows, primaryRows);
+    assert.equal(boxCalls.length, 2, "an outage must not refetch box scores");
+    const revisions = (await reader.query("SELECT count(*)::int AS count FROM sports.normalized_revisions")).rows[0].count;
+    await assert.rejects(pipeline.run(2), /Synthetic other-league outage/);
+    assert.equal((await reader.query("SELECT count(*)::int AS count FROM sports.normalized_revisions")).rows[0].count, revisions);
+  });
+}
 
 test("cached name-entity reprocessing fills an originally unmapped appearance with its original source and time exactly once", async () => {
   const { scope, fixture, archive } = await importedUnmappedApostropheBox();

@@ -209,7 +209,8 @@ leagues. This is a dated access observation. The service can omit fields or chan
 coverage. Configure `HIGHLIGHTLY_API_KEY` only in the worker/ignored local `.env`;
 the app receives no provider keys. No payment or paid trial is required.
 
-Apply migration `012_appearance_enrichment.sql` before deploying this version.
+Apply all pending migrations through `013_session_persistence.sql` before deploying;
+`012_appearance_enrichment.sql` supplies the supplement storage.
 Run `npm run enrich -- 2` to process up to two match box scores, or enable the
 normal worker to backfill in bounded batches. All pages of the external fixture
 catalogue are cached for a UTC day and completed box scores for seven days.
@@ -279,6 +280,10 @@ Cached reprocessing uses the versioned `primary-minutes-v3` mapping and appends
 only newly resolved identities at their original source revision and observation
 time. Existing captures, primary rows, earlier mapping receipts and accepted
 supplements remain unchanged; repeating the same mapping is idempotent.
+Accepted schedule corrections withdraw contradicted supplements before further
+provider requests, including during cached reprocessing. A failure fetching the
+other league cannot postpone that withdrawal; absence from a partial catalogue
+alone does not contradict an earlier verified match.
 
 [Highlightly's terms](https://highlightly.net/terms/), section 6.1, allow storing
 and displaying data in this application. They prohibit supplying it as a dataset,

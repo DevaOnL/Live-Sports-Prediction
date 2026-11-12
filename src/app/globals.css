@@ -149,6 +149,7 @@ summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .player-art-link { margin: 15px -1px 0; border: 2px solid; border-radius: 8px; overflow: hidden; }
 .football-art { display: block; width: 100%; height: auto; }
 .player-card h2 { font-size: 30px; line-height: 1.05; margin: 17px 0 0; }
+.player-card h2 a, .comparison-player h2 a { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; max-width: 100%; }
 .player-card h2 a:hover { text-decoration: underline; }
 .player-club { font-size: 12px; margin: 10px 0 3px; }
 .player-league { font-size: 10px; color: var(--muted); margin: 0 0 18px; }
@@ -253,6 +254,7 @@ summary:hover { text-decoration: underline; text-underline-offset: 3px; }
 .comparison-player { margin-bottom: 18px; }
 .comparison-value { display: block; font-family: "Barlow Condensed", sans-serif; font-size: 42px; font-weight: 800; margin-bottom: 6px; }
 .comparison-table th { min-width: 160px; }
+.comparison-table th .text-link { min-width: 44px; }
 .comparison-art { width: 140px; border: 2px solid; border-radius: 6px; margin-bottom: 10px; }
 .comparison-table td { min-width: 175px; }
 .comparison-table th > .metric-icon { display: block; margin-bottom: 12px; }

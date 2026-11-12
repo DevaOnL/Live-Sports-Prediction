@@ -12,11 +12,19 @@ import { PlayerArtwork } from "./football-art";
 import { BestStatisticView } from "./best-statistic";
 import { DataVisibilityScope, HiddenDataButton, useDataVisibility } from "./data-visibility";
 
+const exactFilterLabels: Record<string, string> = {
+  available: "Complete results",
+  partial: "Some results",
+  unavailable: "No model results",
+  uncomputed: "No saved evaluation",
+};
+const revealsHidden = (filter: string) => ["all", "hidden", "unavailable", "uncomputed"].includes(filter);
+
 export function PlayerCatalogue() {
   const search = useSearchParams();
   const { showHidden } = useDataVisibility();
   const status = search.get("availability");
-  const reveal = status ? ["all", "hidden", "unavailable", "uncomputed"].includes(status) : showHidden;
+  const reveal = status ? revealsHidden(status) : showHidden;
   return <DataVisibilityScope showHidden={reveal}><CatalogueView key={search.toString()} /></DataVisibilityScope>;
 }
 
@@ -28,7 +36,6 @@ function CatalogueView() {
   const { showHidden, setShowHidden } = useDataVisibility();
   const requestedStatus = search.get("availability");
   const filter = requestedStatus ?? (showHidden ? "all" : "ready");
-  const filterChoice = ["available", "partial"].includes(filter) ? "ready" : ["unavailable", "uncomputed"].includes(filter) ? "hidden" : filter;
   const query = new URLSearchParams();
   for (const key of ["q", "leagueId", "clubId", "position", "page", "pageSize"]) {
     for (const value of search.getAll(key)) query.append(key, value);
@@ -47,17 +54,17 @@ function CatalogueView() {
     }
     const club = clubs.data?.items.find((item) => item.id === next.get("clubId"));
     if (club && next.has("leagueId") && club.leagueId !== next.get("leagueId")) next.delete("clubId");
-    setShowHidden(["all", "hidden"].includes(next.get("availability") ?? ""));
+    setShowHidden(revealsHidden(next.get("availability") ?? ""));
     navigate(next);
   }
   const pageSize = search.get("pageSize") ?? "20";
   const sizes = [...new Set([pageSize, "10", "20", "50"])].filter((value) => /^[1-9]\d?$/.test(value) && Number(value) <= 50).sort((a, b) => Number(a) - Number(b));
   return <div className="page-stack"><PageHeading title="Find your next player."><HiddenDataButton onToggle={() => { setShowHidden(!showHidden); const next = new URLSearchParams(search);next.delete("availability");next.delete("page");navigate(next); }} /><button className="button button-secondary" onClick={refresh}>Refresh view <span aria-hidden="true">↻</span></button></PageHeading>
-    <details className="panel catalogue-filters"><summary>Filter players{["q", "leagueId", "clubId", "position", "availability"].some((key) => search.get(key)) && <span className="badge">Filters active</span>}</summary><form key={`${search.toString()}:${filterChoice}`} onSubmit={apply} className="filter-grid"><div className="field search-field"><label htmlFor="player-search">Search players</label><input id="player-search" name="q" type="search" placeholder="Player name" maxLength={80} defaultValue={search.get("q") ?? ""} /></div>
+    <details className="panel catalogue-filters"><summary>Filter players{["q", "leagueId", "clubId", "position", "availability"].some((key) => search.get(key)) && <span className="badge">Filters active</span>}</summary><form key={`${search.toString()}:${filter}`} onSubmit={apply} className="filter-grid"><div className="field search-field"><label htmlFor="player-search">Search players</label><input id="player-search" name="q" type="search" placeholder="Player name" maxLength={80} defaultValue={search.get("q") ?? ""} /></div>
       <div className="field"><label htmlFor="competition-filter">Competition</label><select id="competition-filter" name="leagueId" value={leagueId} onChange={(event) => { const next = event.target.value;setLeagueId(next);if (next && clubs.data?.items.find((club) => club.id === clubId)?.leagueId !== next) setClubId(""); }}><option value="">All competitions</option>{leagueId && !competitions.data?.items.some((item) => item.id === leagueId) && <option value={leagueId}>Selected competition ({leagueId})</option>}{competitions.data?.items.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
       <div className="field"><label htmlFor="club-filter">Club</label><select id="club-filter" name="clubId" value={clubId} onChange={(event) => setClubId(event.target.value)}><option value="">All clubs</option>{clubId && !clubs.data?.items.some((item) => item.id === clubId) && <option value={clubId}>Selected club ({clubId})</option>}{clubs.data?.items.filter((item) => !leagueId || item.leagueId === leagueId).map((item) => <option value={item.id} key={`${item.leagueId}:${item.id}`}>{item.name} · {item.leagueName}</option>)}</select></div>
       <div className="field"><label htmlFor="position-filter">Position</label><select id="position-filter" name="position" defaultValue={search.get("position") ?? ""}><option value="">All positions</option>{Object.entries(positionLabel).map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></div>
-      <div className="field"><label htmlFor="results-filter">Model results</label><select id="results-filter" name="availability" defaultValue={filterChoice}><option value="ready">Ready</option><option value="hidden">Hidden</option><option value="all">All</option></select></div>
+      <div className="field"><label htmlFor="results-filter">Model results</label><select id="results-filter" name="availability" defaultValue={filter}><option value="ready">Ready</option><option value="hidden">Hidden</option><option value="all">All</option>{Object.hasOwn(exactFilterLabels, filter) && <option value={filter}>{exactFilterLabels[filter]}</option>}</select></div>
       <div className="field"><label htmlFor="size-filter">Results per page</label><select id="size-filter" name="pageSize" defaultValue={pageSize}>{sizes.map((size) => <option value={size} key={size}>{size}</option>)}</select></div><div className="filter-actions"><button className="button" type="submit">Apply filters <span aria-hidden="true">→</span></button><Link href="/players?availability=ready" onClick={() => setShowHidden(false)} className="button button-quiet">Clear filters</Link></div>
     </form><details className="provenance-details"><summary>Filter details</summary><p>Ready includes players with at least one saved model result. Competition and club filters use confirmed current membership. Changing competition clears an incompatible club.</p></details>{Boolean(clubs.error || competitions.error) && <PanelState error={clubs.error ?? competitions.error} onRetry={refresh} />}</details>
     <PanelState loading={players.loading} error={players.error} onRetry={refresh}>{players.data && <>

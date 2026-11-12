@@ -107,6 +107,31 @@ export class EnrichmentPipeline {
     }
   }
 
+  private async reconcileSchedules(fixtures: EnrichmentFixture[], schedules: Map<string, ArchivedResponse>, cache: Map<string, ArchivedResponse>): Promise<void> {
+    for (const coverage of CURRENT_SOURCE.coverage) {
+      const schedule = schedules.get(coverage.id);
+      if (!schedule) continue;
+      const headers = scheduleFixtures(schedule, coverage);
+      for (const fixture of fixtures.filter((candidate) => candidate.leagueId === coverage.id)) {
+        const matches = headers.filter((row) => sameFixture(row, fixture));
+        for (const [key, previous] of cache) {
+          if (previous.params.league_id !== fixture.leagueId || Date.parse(schedule.retrievedAt) <= Date.parse(previous.retrievedAt)) continue;
+          let old: HighlightlyBox;
+          try { old = JSON.parse(previous.text); }
+          catch { continue; } // Cached reprocessing counts malformed historical boxes separately.
+          const knownHeader = headers.find((row) => String(row.id) === previous.params.match_id);
+          const changed = matches.length > 1 || (matches.length === 1 && String(matches[0].id) !== previous.params.match_id)
+            || (knownHeader !== undefined && !sameFixture(knownHeader, fixture));
+          if (object(old) && object(old.fixture) && sameFixture(old.fixture, fixture) && changed) {
+            await this.store.invalidateFixture(schedule, fixture.id, previous.params.match_id);
+            await this.archives.mark(previous.id, "invalid", [{ code: "supplement_source_header_changed", resource: previous.params.match_id }]);
+            cache.delete(key);
+          }
+        }
+      }
+    }
+  }
+
   /** Re-evaluate accepted cached boxes without discovery, HTTP or new observation times. */
   async reprocessCached(): Promise<EnrichmentReprocessProgress> {
     const progress: EnrichmentReprocessProgress = { captures: 0, appearances: 0, skipped: 0, duplicates: 0 };
@@ -116,7 +141,9 @@ export class EnrichmentPipeline {
       locked = (await lock.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtextextended('lsp:highlightly-run',0)) AS locked")).rows[0].locked;
       if (!locked) return progress;
       const fixtures = await this.fixtures();
-      for (const archive of await this.latest("get_statistics", false)) {
+      const cache = new Map((await this.latest("get_statistics", false)).map((a) => [`${a.params.league_id}:${a.params.match_id}`, a]));
+      await this.reconcileSchedules(fixtures, new Map((await this.latest("get_events")).map((a) => [a.params.league_id, a])), cache);
+      for (const archive of cache.values()) {
         progress.captures++;
         let batch: ReturnType<typeof normalizeHighlightly>;
         try {
@@ -158,6 +185,9 @@ export class EnrichmentPipeline {
       const fixtures = await this.fixtures();
       await this.recover(fixtures);
       const schedules = new Map((await this.latest("get_events")).map((a) => [a.params.league_id, a]));
+      const cache = new Map((await this.latest("get_statistics")).map((a) => [`${a.params.league_id}:${a.params.match_id}`, a]));
+      // Finish accepted corrections before any unrelated provider request can fail.
+      await this.reconcileSchedules(fixtures, schedules, cache);
       const today = new Date().toISOString().slice(0, 10);
       for (const coverage of CURRENT_SOURCE.coverage) {
         const current = schedules.get(coverage.id);
@@ -165,6 +195,7 @@ export class EnrichmentPipeline {
           try {
             const archive = await this.archives.save(await this.provider.schedule(coverage));
             await this.apply(archive, fixtures); schedules.set(coverage.id, archive);
+            await this.reconcileSchedules(fixtures, new Map([[coverage.id, archive]]), cache);
           } catch (error) {
             if (error instanceof HighlightlyScheduleError) {
               const partial = await this.archives.save(error.response);
@@ -180,26 +211,12 @@ export class EnrichmentPipeline {
         const schedule = schedules.get(coverage.id)!;
         headers.set(coverage.id, scheduleFixtures(schedule, coverage).map((row) => ({ row, schedule })));
       }
-      const cache = new Map((await this.latest("get_statistics")).map((a) => [`${a.params.league_id}:${a.params.match_id}`, a]));
       const pending: { fixture: EnrichmentFixture; row: Record<string, unknown>; schedule: ArchivedResponse }[] = [];
       const completed = new Set<string>();
       let unmapped = 0;
       for (const fixture of fixtures) {
         const matches = (headers.get(fixture.leagueId) ?? []).filter((h) => sameFixture(h.row, fixture));
         const schedule = schedules.get(fixture.leagueId)!;
-        for (const [key, previous] of cache) {
-          if (previous.params.league_id !== fixture.leagueId || Date.parse(schedule.retrievedAt) <= Date.parse(previous.retrievedAt)) continue;
-          const old: HighlightlyBox = JSON.parse(previous.text);
-          const knownHeader = (headers.get(fixture.leagueId) ?? []).find((candidate) => String(candidate.row.id) === previous.params.match_id);
-          const changed = matches.length > 1 || (matches.length === 1 && String(matches[0].row.id) !== previous.params.match_id)
-            || (knownHeader !== undefined && !sameFixture(knownHeader.row, fixture));
-          if (old.primaryFingerprint === primaryFingerprint(fixture) && sameFixture(old.fixture, fixture)
-            && changed) {
-            await this.store.invalidateFixture(schedule, fixture.id, previous.params.match_id);
-            await this.archives.mark(previous.id, "invalid", [{ code: "supplement_source_header_changed", resource: previous.params.match_id }]);
-            cache.delete(key);
-          }
-        }
         if (matches.length !== 1) { unmapped++; continue; }
         const { row } = matches[0];
         const prior = cache.get(`${fixture.leagueId}:${row.id}`);
