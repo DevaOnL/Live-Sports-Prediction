@@ -240,6 +240,24 @@ SQL-clock pacing and 100-request daily cap. The normal worker keeps its five-cal
 reserve; neither flag resets counters or changes the provider plan. The two flags
 cannot be combined.
 
+Ingestion processes wait up to two seconds before trying the next resolved
+address during dual-stack fallback. This accommodates slower IPv4 paths when IPv6 is unreachable;
+DNS, certificate validation and the 30-second HTTP deadline remain enabled.
+Provider errors are classified separately from internal processing errors. HTTP 200 error
+objects are rejected, and observed `Retry-After` values take precedence over
+rate-limit reset seconds, bounded to one second through 24 hours. A rate-limit
+response without either header uses a one-hour fallback.
+
+A narrowly identified missing or invalid box score is deferred for 15 minutes
+using durable request/accepted-receipt timestamps, while the finite batch tries
+other fixtures. Authentication, quota, transport and service failures stop the
+batch. Transport failures back off from 15 minutes to one hour; an upstream retry
+date can defer longer. Accepted captures and strict matching rules stay unchanged.
+Worker `/health` reports `supplementState`, `supplementRetryAt` and a sanitized
+`supplementError` with fixed code/reason and optional HTTP status. `busy`,
+`waiting-for-data`, `budget-deferred` and provider/processing failures are distinct
+from `synced`; the primary source and local forecast polling run independently.
+
 Each box score must match the league, season, home/away clubs, exact kickoff and
 final result. A player must match one unambiguous name or initial abbreviation
 within that club, plus exact goals, assists and shots on target. Both sources must

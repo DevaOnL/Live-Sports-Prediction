@@ -5,6 +5,7 @@ import { createRuntime } from "../server/ingestion/runtime";
 import { ProviderError } from "../server/ingestion/provider";
 import { RateLimitError } from "../server/ingestion/store";
 import { pollForecasts } from "./forecast-polling";
+import { supplementFailure, supplementProgress, type SupplementStatus } from "./supplement-retry";
 
 async function main() {
   const enabledText = process.env.INGESTION_ENABLED ?? "false";
@@ -22,6 +23,8 @@ async function main() {
   let forecastsUp = true;
   let lastForecastProgress = Date.now();
   let supplementState = runtime?.enrichment ? "awaiting-sync" : "disabled";
+  let supplementStatus: SupplementStatus | null = null;
+  let supplementFailures = 0;
   let nextSupplement = 0;
   const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -40,6 +43,8 @@ async function main() {
       jobsEnabled: enabled, databaseConnections: databases, lastSync, sourceState,
       predictionsEnabled: enabled,
       supplementState,
+      supplementRetryAt: supplementStatus?.retryAt ?? null,
+      supplementError: supplementStatus?.error ?? null,
       forecastPolling: enabled ? forecastsUp && Date.now() - lastForecastProgress < 300_000 ? "alive" : "unavailable" : "disabled",
     }));
   });
@@ -83,12 +88,13 @@ async function main() {
       if (Date.now() >= nextSupplement) {
         try {
           const progress = await runtime.enrichment.run(2);
-          supplementState = progress.pending ? "backfilling" : progress.unmapped ? "partial" : "synced";
-          nextSupplement = Date.now() + (progress.pending ? 60_000 : 3_600_000);
+          supplementFailures = 0;
+          supplementStatus = supplementProgress(progress);
         } catch (error) {
-          supplementState = error instanceof RateLimitError ? "budget-deferred" : "source-unavailable";
-          nextSupplement = error instanceof RateLimitError ? Math.max(Date.now() + 1000, error.retryAt.getTime()) : Date.now() + 900_000;
+          supplementStatus = supplementFailure(error, ++supplementFailures);
         }
+        supplementState = supplementStatus.state;
+        nextSupplement = Date.parse(supplementStatus.retryAt);
       }
       await pause(5_000, undefined, { signal: abort.signal }).catch(() => undefined);
     }
