@@ -17,7 +17,16 @@ export type EnrichmentImportResult = ImportResult & { sourceRevisionId: string; 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const externalId = /^[1-9][0-9]{0,17}$/;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const mappingVersion = "primary-minutes-v3";
+const mappingVersion = "primary-aliases-v4";
+
+function mappingReceipt(archiveId: string, batch: EnrichmentBatch): string {
+  // New captured aliases may resolve another identity after an earlier cached
+  // pass. Key by the resolved alias identity set, so a repeated roster capture
+  // with the same names does not create a different mapping receipt.
+  const aliases = batch.observations.filter((row) => row.evidence.method === "unique_alias_club_goals_assists_shots_primary_minutes")
+    .map((row) => [row.appearanceId, row.externalPlayerId]).sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  return `${archiveId}:${mappingVersion}${aliases.length ? `:${digest(aliases)}` : ""}`;
+}
 
 /** Supplement facts are append-only; current primary revisions remain authoritative. */
 export class EnrichmentStore {
@@ -245,7 +254,7 @@ export class EnrichmentStore {
           throw new Error("Supplementary appearance no longer matches current evidence");
         }
       }
-      const receiptKey = `${archive.id}:${mappingVersion}`;
+      const receiptKey = mappingReceipt(archive.id, batch);
       if (original && (await client.query(`SELECT id FROM sports.normalized_revisions
         WHERE source_revision_id=$1 AND entity_type='appearance_enrichment_mapping' AND entity_key=$2`,
       [original.id, receiptKey])).rowCount) {

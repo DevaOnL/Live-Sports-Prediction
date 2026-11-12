@@ -15,6 +15,8 @@ import { ArchiveStore, archiveId } from "../src/server/ingestion/archive";
 import { EnrichmentPipeline } from "../src/server/ingestion/enrichment";
 import { HIGHLIGHTLY_LEAGUES, HighlightlyError, highlightlyResponse, type HighlightlyCapture } from "../src/server/ingestion/highlightly-client";
 import { normalizeHighlightly, primaryFingerprint, type EnrichmentFixture } from "../src/server/ingestion/highlightly-normalize";
+import { SORARE_FORMAT, SORARE_LEGACY_QUERIES, SORARE_QUERIES, type SorareCapture } from "../src/server/ingestion/sorare-client";
+import { normalizeSorareCapture } from "../src/server/ingestion/sorare-normalize";
 import { CURRENT_SOURCE } from "../src/server/ingestion/sources";
 import { IngestionStore, RateLimitError } from "../src/server/ingestion/store";
 import type { ArchivedResponse, Batch, Coverage } from "../src/server/ingestion/types";
@@ -601,6 +603,105 @@ test("cached name-entity reprocessing fills an originally unmapped appearance wi
   assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.provider_requests")).rows[0].count, 0);
 });
 
+test("new accepted native aliases replay a previously unmapped cached box after an earlier no-op mapping without HTTP or retimestamping", async () => {
+  const scope: Scope = { ...scopes[0], player: { ...scopes[0].player, name: "Rodrigo" } };
+  await importPrimary(scope, 84);
+  const acceptedRoster = async (observedAt: string, labels?: Record<string, string>) => {
+    const connection = (nodes: Record<string, unknown>[]) => ({ nodes, pageInfo: { hasNextPage: false, endCursor: null } });
+    const captures: SorareCapture[] = [{ query: SORARE_QUERIES.teams, variables: { slug: scope.coverage.id, after: null }, retrievedAt: observedAt,
+      text: JSON.stringify({ data: { football: { competition: { slug: scope.coverage.id, teams: connection(scope.clubs) } } } }) }];
+    for (const [index, club] of scope.clubs.entries()) {
+      const player = { id: index === 0 ? scope.player.id : `Player:${uuid(60_000 + index)}`, slug: `native-player-${index}`,
+        displayName: index === 0 ? scope.player.name : `Roster footballer ${index}`, position: "Midfielder",
+        ...(index === 0 ? labels : {}) };
+      captures.push({ query: labels ? SORARE_QUERIES.players : SORARE_LEGACY_QUERIES.players,
+        variables: { slug: club.slug, after: null }, retrievedAt: observedAt,
+        text: JSON.stringify({ data: { football: { club: { ...club, activePlayers: connection([player]) } } } }) });
+    }
+    const text = JSON.stringify({ format: SORARE_FORMAT, complete: true, captures });
+    const archive = await archives.save({ action: "get_teams", resourceKey: `sorare:synthetic:native-alias-roster:${scope.coverage.id}`,
+      params: { provider: "sorare", format: SORARE_FORMAT, league_id: scope.coverage.id }, text, retrievedAt: observedAt,
+      contentSha256: createHash("sha256").update(text).digest("hex") });
+    const batch = normalizeSorareCapture(archive, scope.coverage);
+    assert.equal(batch.roster?.complete, true); assert.deepEqual(batch.issues, []);
+    const result = await primary.import(archive, batch);
+    await archives.mark(archive.id, "imported", batch.issues, result);
+    return archive;
+  };
+  const legacyRoster = await acceptedRoster(new Date(Date.now() - 7_200_000).toISOString());
+  const fixture = await context(scope);
+  const schedules = await importedSchedules();
+  const capture = box(scope);
+  const boxes = JSON.parse(capture.text);
+  boxes[0].players[0].name = "Rodri";
+  boxes[0].players[0].fullName = "Rodrigo Hernández Cascante";
+  boxes[0].players[0].minutesPlayed = 85;
+  capture.text = JSON.stringify(boxes); capture.retrievedAt = new Date(Date.now() - 3_600_000).toISOString();
+  const archive = await archives.save(highlightlyResponse("get_statistics", scope.coverage.id, { format: "highlightly-box-v1",
+    fixture: headers(scope)[0], scheduleArchiveId: schedules.get(scope.coverage.id)!.id,
+    primaryFingerprint: primaryFingerprint(fixture), capture }));
+  const unmapped = normalizeHighlightly(archive, fixture);
+  assert.deepEqual(unmapped.observations, []);
+  const imported = await pipeline.store.import(archive, unmapped);
+  await archives.mark(archive.id, "imported", [], imported);
+  pipeline.provider.schedule = async () => { throw new Error("Alias replay must not fetch schedules"); };
+  pipeline.provider.get = async () => { throw new Error("Alias replay must not fetch boxes"); };
+  assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 0, skipped: 0, duplicates: 0 });
+  const oldMapping = (await reader.query(`SELECT * FROM sports.normalized_revisions
+    WHERE entity_type='appearance_enrichment_mapping' AND entity_key=$1`, [`${archive.id}:primary-aliases-v4`])).rows[0];
+  assert(oldMapping);
+  const oldAudit = (await writer.query("SELECT * FROM sports.audit_log WHERE normalized_revision_id=$1", [oldMapping.id])).rows;
+  const originalReceipt = (await writer.query("SELECT * FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows[0];
+  const originalSource = (await reader.query("SELECT * FROM sports.source_revisions WHERE id=$1", [originalReceipt.source_revision_id])).rows[0];
+  const originalMetadata = await mongo.collection("import_metadata").findOne({ _id: archive.id } as never);
+  const originalFixtures = (await reader.query("SELECT * FROM sports.fixtures ORDER BY id")).rows;
+  const originalAppearances = (await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows;
+  const aliasRoster = await acceptedRoster(new Date().toISOString(), {
+    firstName: "Rodrigo", lastName: "Hernández Cascante", matchName: "Rodri", abbreviatedName: "R. Hernández Cascante",
+  });
+  assert.equal(primaryFingerprint(await context(scope)), primaryFingerprint(fixture));
+  assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [fixture.id])).rows[0].rating, null);
+  assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 1, skipped: 0, duplicates: 0 });
+  const enrichment = (await writer.query("SELECT * FROM sports.appearance_enrichments WHERE fixture_id=$1", [fixture.id])).rows[0];
+  assert.equal(enrichment.source_revision_id, originalSource.id);
+  assert.equal(enrichment.retrieved_at.toISOString(), archive.retrievedAt);
+  assert.equal(enrichment.primary_revision_id, fixture.appearances[0].primaryRevisionId);
+  assert.equal(enrichment.fixture_revision_id, fixture.revisionId);
+  assert.equal(enrichment.evidence_json.method, "unique_alias_club_goals_assists_shots_primary_minutes");
+  assert.equal(enrichment.evidence_json.primaryAlias.archiveId, aliasRoster.id);
+  assert.equal(enrichment.evidence_json.primaryAlias.contentSha256, aliasRoster.contentSha256);
+  assert.equal(enrichment.evidence_json.primaryAlias.retrievedAt, aliasRoster.retrievedAt);
+  assert(Date.parse(enrichment.evidence_json.primaryAlias.retrievedAt) > Date.parse(archive.retrievedAt));
+  assert.equal(enrichment.evidence_json.primaryMinutes, 84);
+  assert.equal(enrichment.evidence_json.externalMinutes, 85);
+  const observed = (await new ReadService(reader, CURRENT_SOURCE).player(scope.player.id)).observedAppearances[0];
+  assert.equal(observed.rating, 7.5); assert.equal(observed.metrics.keyPasses, 2);
+  assert.equal(observed.minutes, 84);
+  assert.equal(observed.fieldSources.rating.sourceRevisionId, originalSource.id);
+  assert.equal(observed.fieldSources.rating.observedAt, archive.retrievedAt);
+  assert.deepEqual((await reader.query("SELECT * FROM sports.fixtures ORDER BY id")).rows, originalFixtures);
+  assert.deepEqual((await reader.query("SELECT * FROM sports.appearances ORDER BY id")).rows, originalAppearances);
+  assert.deepEqual((await reader.query("SELECT * FROM sports.normalized_revisions WHERE id=$1", [oldMapping.id])).rows, [oldMapping]);
+  assert.deepEqual((await writer.query("SELECT * FROM sports.audit_log WHERE normalized_revision_id=$1", [oldMapping.id])).rows, oldAudit);
+  assert.deepEqual((await writer.query("SELECT * FROM sports.ingestion_batches WHERE archive_id=$1", [archive.id])).rows, [originalReceipt]);
+  assert.deepEqual((await reader.query("SELECT * FROM sports.source_revisions WHERE id=$1", [originalSource.id])).rows, [originalSource]);
+  assert.deepEqual(await mongo.collection("import_metadata").findOne({ _id: archive.id } as never), originalMetadata);
+  assert.equal((await archives.get(archive.id))?.text, archive.text);
+  assert.equal((await archives.get(legacyRoster.id))?.text, legacyRoster.text);
+  assert.equal((await reader.query(`SELECT count(*)::int AS count FROM sports.normalized_revisions
+    WHERE entity_type='appearance_enrichment_mapping' AND source_revision_id=$1`, [originalSource.id])).rows[0].count, 2);
+  const revisions = (await reader.query("SELECT count(*)::int AS count FROM sports.normalized_revisions")).rows[0].count;
+  assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 0, skipped: 0, duplicates: 1 });
+  assert.equal((await reader.query("SELECT count(*)::int AS count FROM sports.normalized_revisions")).rows[0].count, revisions);
+  assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments")).rows[0].count, 1);
+  await importPrimary(scope, 80);
+  assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 0, skipped: 1, duplicates: 0 });
+  assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE fixture_id=$1", [fixture.id])).rows[0].rating, null);
+  assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments")).rows[0].count, 1);
+  assert.deepEqual(scheduleCalls, []); assert.deepEqual(boxCalls, []);
+  assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.provider_requests")).rows[0].count, 0);
+});
+
 for (const [minutes, externalMinutes] of [[84, 85], [90, 45], [60, 59], [59, 90]]) {
   test(`cached minute precedence appends ${minutes}/${externalMinutes} evidence after the earlier mapping without changing eligibility or source time`, async () => {
     const { scope, fixture, archive } = await importedUnmappedApostropheBox(minutes, externalMinutes);
@@ -670,7 +771,7 @@ for (const [minutes, externalMinutes] of [[84, 85], [90, 45], [60, 59], [59, 90]
     assert.deepEqual((await reader.query("SELECT * FROM sports.normalized_revisions WHERE id=$1", [oldMapping.id])).rows, [oldMapping]);
     assert.deepEqual((await writer.query("SELECT * FROM sports.audit_log WHERE id=$1", [oldAudit.id])).rows, [oldAudit]);
     assert.equal((await reader.query(`SELECT count(*)::int AS count FROM sports.normalized_revisions
-      WHERE entity_type='appearance_enrichment_mapping' AND entity_key=$1`, [`${archive.id}:primary-minutes-v3`])).rows[0].count, 1);
+      WHERE entity_type='appearance_enrichment_mapping' AND entity_key=$1`, [`${archive.id}:primary-aliases-v4`])).rows[0].count, 1);
     assert.deepEqual(await pipeline.reprocessCached(), { captures: 1, appearances: 0, skipped: 0, duplicates: 1 });
     assert.equal((await writer.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments")).rows[0].count, 1);
     assert.deepEqual(await mongo.collection("import_metadata").findOne({ _id: archive.id } as never), originalMetadata);

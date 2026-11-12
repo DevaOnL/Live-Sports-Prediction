@@ -269,7 +269,7 @@ test("cached remapping appends newly resolved identities with the original sourc
   assert.equal(Date.parse((await effective()).enrichment_provenance.rating.observedAt), Date.parse(response.retrievedAt));
   const receipt = (await pool.query(`SELECT * FROM sports.normalized_revisions
     WHERE entity_type='appearance_enrichment_mapping'`)).rows[0];
-  assert.equal(receipt.entity_key, `${response.id}:primary-minutes-v3`);
+  assert.equal(receipt.entity_key, `${response.id}:primary-aliases-v4`);
   assert.equal(receipt.source_revision_id, imported.sourceRevisionId);
   const audit = (await pool.query("SELECT * FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0];
   assert.equal(audit.normalized_revision_id, receipt.id);
@@ -284,7 +284,7 @@ test("cached remapping appends newly resolved identities with the original sourc
   assert.deepEqual((await pool.query("SELECT * FROM sports.normalized_revisions WHERE entity_type='appearance_enrichment_mapping'")).rows, [receipt]);
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.audit_log WHERE action='enrichment.reprocess'")).rows[0].count, 1);
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.outbox WHERE deduplication_key=$1",
-    [`enrichment-reprocess:${response.id}:primary-minutes-v3`])).rows[0].count, 1);
+    [`enrichment-reprocess:${response.id}:primary-aliases-v4`])).rows[0].count, 1);
   assert.equal((await enrichment.import(response, captured)).appearances, 0, "ordinary import keeps its original immutable receipt");
 });
 
@@ -310,6 +310,37 @@ test("cached remapping preserves accepted values and never withdraws or reassign
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM sports.appearance_enrichments WHERE source_revision_id=$1", [initial.sourceRevisionId])).rows[0].count, 2);
   assert.equal((await reader.query("SELECT rating FROM sports.effective_appearances WHERE id=$1", [old.appearance_id])).rows[0].rating, "7.50");
   assert.equal((await pool.query("SELECT appearance_count FROM sports.ingestion_batches WHERE archive_id=$1", [response.id])).rows[0].appearance_count, 1);
+});
+
+test("later captured aliases can resolve additional identities after an earlier versioned cached pass", async () => {
+  const value = fixture();
+  value.appearances.push({ ...value.appearances[0], player: { ...player, id: `Player:${uuid(2)}`, slug: "second-player", name: "Second player" } });
+  await primary(value);
+  const captured = await batch();
+  const rows = (await pool.query(`SELECT a.id,a.normalized_revision_id FROM sports.appearances a
+    JOIN sports.players p ON p.id=a.player_id ORDER BY p.provider_id`)).rows;
+  const alias = { name: "Provider full name", archiveId: "a".repeat(64), contentSha256: "b".repeat(64), retrievedAt: "2026-11-12T00:00:00.000Z" };
+  captured.observations = rows.map((row, index) => ({ ...captured.observations[0], appearanceId: row.id,
+    primaryRevisionId: row.normalized_revision_id, externalPlayerId: String(456 + index),
+    evidence: { method: "unique_alias_club_goals_assists_shots_primary_minutes", primaryAlias: alias } }));
+  const response = archive();
+  await enrichment.import(response, { ...captured, observations: [] });
+  await enrichment.reprocess(response, { ...captured, observations: [] });
+  const first = await enrichment.reprocess(response, { ...captured, observations: captured.observations.slice(0, 1) });
+  assert.equal(first.appearances, 1);
+  const second = await enrichment.reprocess(response, captured);
+  assert.equal(second.appearances, 1);
+  assert.equal(second.activated, 1);
+  const receipts = (await pool.query("SELECT entity_key FROM sports.normalized_revisions WHERE entity_type='appearance_enrichment_mapping'")).rows;
+  assert.equal(receipts.length, 3);
+  assert.equal(new Set(receipts.map((r) => r.entity_key)).size, 3);
+  const refreshedAliases = { ...captured, observations: [...captured.observations].reverse().map((o) => ({ ...o,
+    evidence: { ...o.evidence, primaryAlias: { ...alias, archiveId: "c".repeat(64), retrievedAt: "2026-11-13T00:00:00.000Z" } } })) };
+  assert.equal((await enrichment.reprocess(response, refreshedAliases)).duplicate, true,
+    "recapturing the same alias identities and changing their order is idempotent");
+  const stored = (await pool.query("SELECT retrieved_at,source_revision_id FROM sports.appearance_enrichments")).rows;
+  assert.equal(stored.length, 2);
+  assert(stored.every((r) => r.retrieved_at.toISOString() === response.retrievedAt && r.source_revision_id === first.sourceRevisionId));
 });
 
 test("cached remapping rejects stale primary anchors and cannot regress a newer effective observation", async () => {

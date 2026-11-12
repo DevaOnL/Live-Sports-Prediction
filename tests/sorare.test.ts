@@ -3,9 +3,12 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { ProviderError } from "../src/server/ingestion/provider";
 import { CURRENT_SOURCE } from "../src/server/ingestion/sources";
+import { extractSorareNameAliases, loadSorareNameAliases } from "../src/server/ingestion/sorare-aliases";
+import { SORARE_LEGACY_QUERIES, sorareOperation } from "../src/server/ingestion/sorare-client";
 import { SorareCaptureError, SorareClient, SorarePipeline, SORARE_FORMAT, SORARE_QUERIES, normalizeSorareCapture } from "../src/server/ingestion/sorare";
 import { RateLimitError } from "../src/server/ingestion/store";
-import type { ProviderAction, ProviderResponse } from "../src/server/ingestion/types";
+import type { ArchivedResponse, ProviderAction, ProviderResponse } from "../src/server/ingestion/types";
+import { archiveId } from "../src/server/ingestion/archive";
 
 const coverage = CURRENT_SOURCE.coverage[0];
 const uuid = (number: number) => `00000000-0000-0000-0000-${String(number).padStart(12, "0")}`;
@@ -112,6 +115,90 @@ test("incomplete cursor chains and conflicting roster membership never claim a c
   assert.equal(batch.roster?.complete, false);
   assert(batch.issues.some((issue) => issue.code === "conflicting_roster_membership"));
   assert(batch.issues.some((issue) => issue.code === "missing_capture_pages"));
+});
+
+function aliasRoster(overrides: (number: number) => Record<string, unknown> = () => ({}), legacy = false): ArchivedResponse {
+  const teams = Array.from({ length: coverage.expectedClubs }, (_, index) => club(index + 1));
+  const captures = [capture("teams", { slug: coverage.id, after: null }, { competition: { slug: coverage.id, teams: connection(teams) } }),
+    ...teams.map((known, index) => ({ ...capture("players", { slug: known.slug, after: null }, { club: { ...known,
+      activePlayers: connection([{ ...player(index + 1), ...overrides(index + 1) }]) } }),
+    ...(legacy ? { query: SORARE_LEGACY_QUERIES.players } : {}) }))];
+  const value = response("get_teams", captures);
+  return { ...value, id: archiveId(value) };
+}
+
+function reviseAliasArchive(archive: ArchivedResponse, change: (bundle: { captures: ReturnType<typeof capture>[]; complete: boolean }) => void): ArchivedResponse {
+  const bundle = JSON.parse(archive.text);
+  change(bundle);
+  const text = JSON.stringify(bundle);
+  const value = { ...archive, text, contentSha256: createHash("sha256").update(text).digest("hex") };
+  return { ...value, id: archiveId(value) };
+}
+
+test("published roster queries still replay exactly while new requests ask for native name labels", () => {
+  const oldQuery = "query SorarePlayers($slug:String!,$after:String) { football { club(slug:$slug) { id slug name activePlayers(first:50,after:$after) { nodes { id slug displayName position } pageInfo { hasNextPage endCursor } } } } }";
+  assert.equal(SORARE_LEGACY_QUERIES.players, oldQuery);
+  assert.equal(sorareOperation(oldQuery), "players");
+  assert.equal(sorareOperation(SORARE_QUERIES.players), "players");
+  assert.equal(sorareOperation(`${oldQuery} `), null);
+  assert.match(SORARE_QUERIES.players, /matchName firstName lastName abbreviatedName/);
+  const archive = aliasRoster(() => ({ matchName: "Unrequested label" }), true);
+  assert.equal(normalizeSorareCapture(archive, coverage).roster?.complete, true);
+  assert.equal(extractSorareNameAliases(archive, coverage).size, 0);
+});
+
+test("native aliases retain exact player IDs, archive hashes and raw page observation times", () => {
+  const archive = aliasRoster((number) => number === 1
+    ? { matchName: " Native Name ", abbreviatedName: "N. Name", firstName: "Native", lastName: "Name" } : {});
+  const aliases = extractSorareNameAliases(archive, coverage);
+  assert.deepEqual(aliases.get(player(1).id), [
+    { name: "Native Name", archiveId: archive.id, contentSha256: archive.contentSha256, retrievedAt: "2026-11-10T15:00:00.000Z" },
+    { name: "N. Name", archiveId: archive.id, contentSha256: archive.contentSha256, retrievedAt: "2026-11-10T15:00:00.000Z" },
+  ]);
+  assert.equal(aliases.size, 1);
+  assert.notEqual(aliases.get(player(1).id)?.[0].retrievedAt, archive.retrievedAt);
+});
+
+test("missing or invalid native labels never become aliases through slugs or partial names", () => {
+  const archive = aliasRoster(() => ({ slug: "real-looking-full-name", matchName: "\nUntrusted",
+    abbreviatedName: "x".repeat(201), firstName: "Partial", lastName: "" }));
+  assert.equal(extractSorareNameAliases(archive, coverage).size, 0);
+});
+
+test("alias extraction rejects corrupted, out-of-scope, incomplete and conflicting roster evidence", () => {
+  const archive = aliasRoster(() => ({ matchName: "Native Name" }));
+  assert.throws(() => extractSorareNameAliases({ ...archive, text: `${archive.text} ` }, coverage), /hash mismatch/);
+  assert.throws(() => extractSorareNameAliases({ ...archive, id: "0".repeat(64) }, coverage), /identity mismatch/);
+  const outside = { ...archive, params: { ...archive.params, league_id: CURRENT_SOURCE.coverage[1].id } };
+  assert.throws(() => extractSorareNameAliases({ ...outside, id: archiveId(outside) }, coverage), /scope mismatch/);
+  assert.throws(() => extractSorareNameAliases(reviseAliasArchive(archive, (bundle) => { bundle.complete = false; }), coverage), /incomplete or invalid/);
+  const conflicting = reviseAliasArchive(archive, (bundle) => {
+    const payload = JSON.parse(bundle.captures[2].text);
+    payload.data.football.club.activePlayers.nodes[0].id = player(1).id;
+    bundle.captures[2].text = JSON.stringify(payload);
+  });
+  assert.throws(() => extractSorareNameAliases(conflicting, coverage), /incomplete or invalid/);
+});
+
+test("identical native labels stay scoped to their own player rather than forming an identity join", () => {
+  const archive = aliasRoster((number) => number <= 2 ? { matchName: "Shared Name" } : {});
+  const aliases = extractSorareNameAliases(archive, coverage);
+  assert.equal(aliases.size, 2);
+  assert.equal(aliases.get(player(1).id)?.[0].name, "Shared Name");
+  assert.equal(aliases.get(player(2).id)?.[0].name, "Shared Name");
+  assert.equal(aliases.has(player(3).id), false);
+});
+
+test("alias loading withholds tied latest roster evidence and validates accepted candidates", async () => {
+  const archive = aliasRoster(() => ({ matchName: "Native Name" }));
+  const { id, ...value } = archive;
+  const rows = [{ _id: coverage.id, count: 2, value: { _id: id, ...value } }];
+  const db = { collection: () => ({ aggregate: () => ({ toArray: async () => rows }) }) } as never;
+  assert.equal((await loadSorareNameAliases(db)).size, 0);
+  rows[0].count = 1;
+  assert.equal((await loadSorareNameAliases(db)).size, coverage.expectedClubs);
+  rows[0].value.contentSha256 = "0".repeat(64);
+  await assert.rejects(() => loadSorareNameAliases(db), /hash mismatch/);
 });
 
 test("failed multi-page captures remain explicitly incomplete and unimportable", async () => {

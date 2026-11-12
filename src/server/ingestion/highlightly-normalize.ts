@@ -7,6 +7,7 @@ export type EnrichmentAppearance = {
   id: string; primaryRevisionId: string; playerId: string; name: string; clubId: string;
   participation: string; minutes: number | null; goals: number | null; assists: number | null;
   shotsOnTarget: number | null;
+  nameAliases?: { name: string; archiveId: string; contentSha256: string; retrievedAt: string }[];
 };
 export type EnrichmentFixture = {
   id: string; nativeId: string; revisionId: string; leagueId: string; kickoffAt: string;
@@ -18,7 +19,10 @@ const id = (value: unknown): value is number => typeof value === "number" && Num
 // Some upstream names contain HTML apostrophe entities. Decode only these
 // separators before comparing names; unknown entities remain literal evidence.
 const apostrophes = (value: string) => value.replace(/&(?:apos|#0*39|#[xX]0*27);/g, "'");
-const name = (value: string) => apostrophes(value).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const letters: Record<string, string> = { ł: "l", ø: "o", đ: "d", ð: "d", ħ: "h", ı: "i" };
+const foldName = (value: string) => apostrophes(value).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+  .replace(/ß/g, "ss").replace(/[łøđðħı]/g, (letter) => letters[letter]);
+const name = (value: string) => foldName(value).replace(/[^a-z0-9]/g, "");
 export function clubName(value: string): string {
   const key = name(value.replace(/\b(?:fc|cf|afc|football|club|de|del|the)\b/gi, ""));
   const aliases: Record<string, string> = {
@@ -38,16 +42,33 @@ export function clubName(value: string): string {
 
 /** Only exact names or explicit initial abbreviations; never edit-distance matching. */
 export function samePlayerName(primary: string, external: string): boolean {
+  // Unsupported letters must not disappear and leave a partial identity match.
+  if ([primary, external].some((value) => /[\p{L}\p{N}]/u.test(foldName(value).replace(/[a-z0-9]/g, "")))) return false;
   const primaryName = name(primary), externalName = name(external);
   if (!primaryName || !externalName) return false;
   if (primaryName === externalName) return true;
-  const tokens = (value: string) => apostrophes(value).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const tokens = (value: string) => foldName(value).match(/[a-z0-9]+/g) ?? [];
   const a = tokens(primary), b = tokens(external);
   const firstA = a[0], firstB = b[0];
   if (!firstA || !firstB || a.length < 2 || b.length < 2 || a.at(-1) !== b.at(-1)) return false;
   // One side must actually use initials, not a different full first name.
   return (firstA.length === 1 || firstB.length === 1) && firstA[0] === firstB[0]
     && (a.length === 2 || b.length === 2 || a.slice(1).join(" ") === b.slice(1).join(" "));
+}
+
+function matchingAlias(appearance: EnrichmentAppearance, externalNames: string[]) {
+  if (!Array.isArray(appearance.nameAliases)) return undefined;
+  return appearance.nameAliases.filter((alias) => object(alias) && typeof alias.name === "string" && alias.name.trim().length > 0
+    && alias.name.length <= 200 && !/[\u0000-\u001f\u007f]/.test(alias.name)
+    && typeof alias.archiveId === "string" && /^[a-f0-9]{64}$/.test(alias.archiveId)
+    && typeof alias.contentSha256 === "string" && /^[a-f0-9]{64}$/.test(alias.contentSha256)
+    && typeof alias.retrievedAt === "string" && Number.isFinite(Date.parse(alias.retrievedAt))
+    && externalNames.some((external) => samePlayerName(alias.name, external)))
+    .sort((a, b) => {
+      const first = JSON.stringify([a.retrievedAt, a.archiveId, a.contentSha256, a.name]);
+      const second = JSON.stringify([b.retrievedAt, b.archiveId, b.contentSha256, b.name]);
+      return first < second ? -1 : first > second ? 1 : 0;
+    })[0];
 }
 
 export function primaryFingerprint(fixture: EnrichmentFixture): string {
@@ -120,16 +141,19 @@ export function normalizeHighlightly(archive: ArchivedResponse, fixture: Enrichm
       if (!stats) continue;
       const names = [player.name, player.fullName].filter((value): value is string => typeof value === "string" && value.length > 0);
       const candidates = fixture.appearances.filter((a) => a.clubId === club.id && a.participation === "played"
-        && a.minutes !== null && count(a.minutes) !== null && a.minutes > 0 && names.some((n) => samePlayerName(a.name, n))
+        && a.minutes !== null && count(a.minutes) !== null && a.minutes > 0
+        && (names.some((n) => samePlayerName(a.name, n)) || matchingAlias(a, names) !== undefined)
         && a.goals !== null && a.goals === count(stats.goalsScored)
         && a.assists !== null && a.assists === count(stats.assists)
         && a.shotsOnTarget !== null && a.shotsOnTarget === count(stats.shotsOnTarget));
       if (candidates.length !== 1) continue;
       const appearance = candidates[0];
+      const primaryAlias = names.some((n) => samePlayerName(appearance.name, n)) ? undefined : matchingAlias(appearance, names);
       const raw = typeof player.matchRating === "number" ? player.matchRating : typeof player.matchRating === "string" && /^\d+(?:\.\d{1,2})?$/.test(player.matchRating) ? Number(player.matchRating) : null;
       const rating = raw !== null && Number.isFinite(raw) && raw >= 0 && raw <= 10 && Math.round(raw * 100) / 100 === raw ? raw : null;
       observations.push({ appearanceId: appearance.id, primaryRevisionId: appearance.primaryRevisionId, externalPlayerId: String(player.id),
-        evidence: { method: "unique_name_club_goals_assists_shots_primary_minutes", primaryName: appearance.name, externalNames: names,
+        evidence: { method: primaryAlias ? "unique_alias_club_goals_assists_shots_primary_minutes" : "unique_name_club_goals_assists_shots_primary_minutes",
+          primaryName: appearance.name, externalNames: names, ...(primaryAlias ? { primaryAlias } : {}),
           minutes: appearance.minutes, primaryMinutes: appearance.minutes, externalMinutes: player.minutesPlayed,
           minutesSource: "sorare", minutesDiscrepancy: Number(player.minutesPlayed) - Number(appearance.minutes),
           goals: appearance.goals, assists: appearance.assists, shotsOnTarget: appearance.shotsOnTarget,

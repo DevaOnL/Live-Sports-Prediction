@@ -18,9 +18,13 @@ const TEAM = "id slug name";
 const PLAYER = "id slug displayName position";
 const PAGE = "pageInfo { hasNextPage endCursor }";
 const HEADER = `id date competition { slug } homeTeam { ${TEAM} } awayTeam { ${TEAM} } homeGoals awayGoals statusTyped coverageStatus lowCoverage scored`;
+/** Published captures retain their original exact query identities for replay. */
+export const SORARE_LEGACY_QUERIES = Object.freeze({
+  players: `query SorarePlayers($slug:String!,$after:String) { football { club(slug:$slug) { ${TEAM} activePlayers(first:50,after:$after) { nodes { ${PLAYER} } ${PAGE} } } } }`,
+});
 export const SORARE_QUERIES = {
   teams: `query SorareTeams($slug:String!,$after:String) { football { competition(slug:$slug) { slug teams(first:50,after:$after) { nodes { ${TEAM} } ${PAGE} } } } }`,
-  players: `query SorarePlayers($slug:String!,$after:String) { football { club(slug:$slug) { ${TEAM} activePlayers(first:50,after:$after) { nodes { ${PLAYER} } ${PAGE} } } } }`,
+  players: `query SorarePlayers($slug:String!,$after:String) { football { club(slug:$slug) { ${TEAM} activePlayers(first:50,after:$after) { nodes { ${PLAYER} matchName firstName lastName abbreviatedName } ${PAGE} } } } }`,
   past: `query SorarePast($slug:String!,$after:String) { football { competition(slug:$slug) { slug pastGames(first:50,after:$after) { nodes { ${HEADER} } ${PAGE} } } } }`,
   future: `query SorareFuture($slug:String!,$after:String) { football { competition(slug:$slug) { slug futureGames(first:50,after:$after) { nodes { ${HEADER} } ${PAGE} } } } }`,
   standings: `query SorareStandings($slug:String!,$year:Int!) { football { competition(slug:$slug) { slug contestants(seasonStartYear:$year) { anyTeam { ${TEAM} } matchesPlayed matchesWon matchesDrawn matchesLost goalsFor goalsAgainst points rank } } } }`,
@@ -29,7 +33,8 @@ export const SORARE_QUERIES = {
 export type SorareOperation = keyof typeof SORARE_QUERIES;
 
 export function sorareOperation(query: string): SorareOperation | null {
-  return (Object.keys(SORARE_QUERIES) as SorareOperation[]).find((kind) => SORARE_QUERIES[kind] === query) ?? null;
+  return (Object.keys(SORARE_QUERIES) as SorareOperation[]).find((kind) => SORARE_QUERIES[kind] === query)
+    ?? (query === SORARE_LEGACY_QUERIES.players ? "players" : null);
 }
 
 function retryAfter(value: string | null): Date {
