@@ -180,7 +180,7 @@ establish predictive accuracy.
 | Form only | Historical weighted ratings are available, but future projections are blocked | Resolve target-specific evidence; form is not a next-match prediction |
 | Source work pending | Detail jobs may wait for the shared application request budget | The worker retries after the budget window; local forecast processing continues |
 
-Model availability badges include the adjusted form index. “Partly available” can
+Model availability includes the adjusted form index. “Some results” can
 therefore mean form only; it does not promise an available future projection.
 Each output has its own status and units. Recorded input gaps may predate the
 selected five; only relevant gaps block that window. Saved forecast targets remain
