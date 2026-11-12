@@ -294,10 +294,19 @@ events. Recovery is source-scoped. Effective reads are shared by profiles,
 forecast inputs, scouting and source-aware SQL reporting; the primary observation
 time stays separate from supplementary freshness. Original observations and old
 forecast revisions are preserved.
-Cached reprocessing uses the versioned `primary-minutes-v3` mapping and appends
+Cached reprocessing uses the versioned `primary-aliases-v4` mapping and appends
 only newly resolved identities at their original source revision and observation
 time. Existing captures, primary rows, earlier mapping receipts and accepted
 supplements remain unchanged; repeating the same mapping is idempotent.
+Name matching folds accents and explicit Latin letter equivalents, including
+`ø/o` and `ß/ss`. Nicknames can also match explicit full or abbreviated names
+from the latest complete, accepted Sorare roster capture for the same native
+player ID. Each such match retains the name, archive hash and retrieval time;
+slugs and guessed aliases are not used. Fixture, club, count, positive-minute
+and unique-player checks still apply. Earlier roster query bytes remain valid
+for replay. Cached mapping receipts also distinguish newly resolved alias
+identities, allowing later name evidence to fill more records without changing
+the original match observation time or previously accepted values.
 Accepted schedule corrections withdraw contradicted supplements before further
 provider requests, including during cached reprocessing. A failure fetching the
 other league cannot postpone that withdrawal; absence from a partial catalogue

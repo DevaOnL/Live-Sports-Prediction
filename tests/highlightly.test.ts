@@ -96,6 +96,120 @@ test("name normalization permits accent/initial equivalence but rejects differen
   assert.equal(clubName("Atlético de Madrid"), clubName("Atletico Madrid"));
   assert.notEqual(clubName("Manchester United"), clubName("Manchester City"));
 });
+test("explicit nondecomposing letters preserve full names and initial abbreviations", () => {
+  for (const [primary, external] of [["Martin Ødegaard", "Martin Odegaard"], ["Alexander Sørloth", "A. Sorloth"],
+    ["Jørgen Larsen", "J. Strand Larsen"], ["Łukasz Fabiański", "L. Fabianski"], ["Đorđe Petrović", "D. Petrovic"],
+    ["Guðmundur Example", "Gudmundur Example"], ["Alex Ħaddad", "A. Haddad"], ["Rıdvan Example", "Ridvan Example"],
+    ["Pascal Groß", "Pascal Gross"], ["Pascal Groß", "P. Gross"]]) {
+    assert(samePlayerName(primary, external), `${primary} should match ${external}`);
+    assert(samePlayerName(external.toUpperCase(), primary.toUpperCase()), "case folding precedes letter equivalence");
+  }
+  assert(!samePlayerName("Đorđe Petrović", "Djordje Petrovic"), "the explicit đ mapping does not invent a dj spelling");
+  assert(!samePlayerName("Jørgen Larsen", "Jonas Strand Larsen"), "different full first names remain distinct");
+  assert(!samePlayerName("Jørgen Larsen", "Larsen"), "a surname alone does not establish identity");
+});
+test("transliterated supplemental names retain club, count, participation and canonical minute checks", () => {
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Jørgen Larsen", minutes: 84 }] };
+  const row = normalizeHighlightly(capture({ name: "J. Strand Larsen", minutesPlayed: 85 }, {}, primary), primary).observations[0];
+  assert(row);
+  assert.equal(row.appearanceId, primary.appearances[0].id);
+  assert.deepEqual(row.metrics, { rating: 7.2, keyPasses: 0, tackles: 3, interceptions: 0 });
+  assert.equal(row.evidence.primaryName, "Jørgen Larsen");
+  assert.deepEqual(row.evidence.externalNames, ["J. Strand Larsen"]);
+  assert.equal(row.evidence.primaryMinutes, 84);
+  assert.equal(row.evidence.externalMinutes, 85);
+  assert.equal(row.evidence.minutesDiscrepancy, 1);
+  assert.equal(primary.appearances[0].minutes, 84);
+  for (const change of [{ clubId: "away" }, { goals: 0 }, { assists: 1 }, { shotsOnTarget: null },
+    { minutes: null }, { participation: "unknown" }]) {
+    const contradicted = { ...primary, appearances: [{ ...primary.appearances[0], ...change }] };
+    assert.equal(normalizeHighlightly(capture({ name: "J. Strand Larsen" }, {}, contradicted), contradicted).observations.length, 0);
+  }
+  for (const stats of [{ goalsScored: 0 }, { assists: 1 }, { shotsOnTarget: 1 }]) {
+    assert.equal(normalizeHighlightly(capture({ name: "J. Strand Larsen" }, stats, primary), primary).observations.length, 0);
+  }
+});
+test("letter equivalence cannot disambiguate competing primary or external identities", () => {
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Jørgen Larsen" }] };
+  const ambiguous = { ...primary, appearances: [...primary.appearances,
+    { ...primary.appearances[0], id: "second", playerId: "second-player", primaryRevisionId: "second-primary", name: "Jorgen Larsen" }] };
+  assert.equal(normalizeHighlightly(capture({ name: "J. Strand Larsen" }, {}, ambiguous), ambiguous).observations.length, 0);
+  const duplicate = capture({ name: "J. Strand Larsen" }, {}, primary);
+  const bundle = JSON.parse(duplicate.text), boxes = JSON.parse(bundle.capture.text);
+  boxes[0].players.push({ ...boxes[0].players[0], id: 5, name: "Jorgen Larsen" });
+  bundle.capture.text = JSON.stringify(boxes); duplicate.text = JSON.stringify(bundle);
+  assert.equal(normalizeHighlightly(duplicate, primary).observations.length, 0);
+});
+test("unsupported scripts cannot disappear into a partial transliterated identity", () => {
+  for (const [primary, external] of [["Ødegaard李", "Odegaard"], ["Jørgen 李 Larsen", "J. Strand Larsen"],
+    ["Jørgen Larsen", "J. Strand Larsen 李"], ["Jørgen Larsen", "Ј. Strand Larsen"], ["李明", "王强"]]) {
+    assert(!samePlayerName(primary, external), `${primary} must not match ${external}`);
+  }
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Jørgen 李 Larsen" }] };
+  assert.equal(normalizeHighlightly(capture({ name: "J. Strand Larsen" }, {}, primary), primary).observations.length, 0);
+});
+test("captured native-player aliases resolve a display name with their original archive provenance", () => {
+  const alias = { name: "Rodrigo Hernández Cascante", archiveId: "b".repeat(64), contentSha256: "c".repeat(64),
+    retrievedAt: "2026-11-12T12:00:00.000Z" };
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Rodrigo", nameAliases: [alias], minutes: 84 }] };
+  assert(!samePlayerName(primary.appearances[0].name, alias.name));
+  const row = normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name, minutesPlayed: 85 }, {}, primary), primary).observations[0];
+  assert(row);
+  assert.equal(row.evidence.method, "unique_alias_club_goals_assists_shots_primary_minutes");
+  assert.deepEqual(row.evidence.primaryAlias, alias);
+  assert.equal(row.evidence.primaryName, "Rodrigo");
+  assert.deepEqual(row.evidence.externalNames, ["Rodri", alias.name]);
+  assert.equal(row.evidence.primaryMinutes, 84);
+  assert.equal(row.evidence.externalMinutes, 85);
+  assert.equal(primary.appearances[0].minutes, 84);
+  assert.equal(primaryFingerprint(primary), primaryFingerprint(fixture), "name metadata does not relabel an original capture's primary fingerprint");
+  assert.equal(normalizeHighlightly(capture({ name: "R. Hernández Cascante" }, {}, primary), primary).observations.length, 1);
+  const direct = { ...fixture, appearances: [{ ...fixture.appearances[0], nameAliases: [alias] }] };
+  assert.deepEqual(normalizeHighlightly(capture({}, {}, direct), direct).observations[0].evidence,
+    normalizeHighlightly(capture(), fixture).observations[0].evidence, "direct name matches retain their original evidence shape");
+});
+test("aliases require actual capture provenance and cannot guess, truncate or rearrange names", () => {
+  const alias = { name: "Rodrigo Hernández Cascante", archiveId: "b".repeat(64), contentSha256: "c".repeat(64),
+    retrievedAt: "2026-11-12T12:00:00.000Z" };
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Rodrigo", nameAliases: [alias] }] };
+  for (const name of ["Rodri", "Rodrigo Hernández", "Rodrigo Cascante Hernández", "Hernández Cascante", `${alias.name} 李`]) {
+    assert.equal(normalizeHighlightly(capture({ name }, {}, primary), primary).observations.length, 0);
+  }
+  for (const invalid of [{ ...alias, name: "" }, { ...alias, name: "Rodrigo\nHernández Cascante" },
+    { ...alias, name: "x".repeat(201) }, { ...alias, archiveId: "not-an-archive" }, { ...alias, contentSha256: "" },
+    { ...alias, retrievedAt: "not-a-time" }, ...Object.keys(alias).map((field) => ({ ...alias, [field]: undefined }))]) {
+    const unproven = { ...primary, appearances: [{ ...primary.appearances[0], nameAliases: [invalid] }] };
+    assert.equal(normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name }, {}, unproven), unproven).observations.length, 0);
+  }
+  const absent = { ...primary, appearances: [{ ...primary.appearances[0], nameAliases: [] }] };
+  assert.equal(normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name }, {}, absent), absent).observations.length, 0);
+});
+test("captured alias matching keeps club, counts, participation and minutes mandatory", () => {
+  const alias = { name: "Rodrigo Hernández Cascante", archiveId: "b".repeat(64), contentSha256: "c".repeat(64),
+    retrievedAt: "2026-11-12T12:00:00.000Z" };
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Rodrigo", nameAliases: [alias] }] };
+  for (const change of [{ clubId: "away" }, { goals: 0 }, { assists: 1 }, { shotsOnTarget: null },
+    { participation: "unknown" }, { minutes: 0 }, { minutes: null }]) {
+    const contradicted = { ...primary, appearances: [{ ...primary.appearances[0], ...change }] };
+    assert.equal(normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name }, {}, contradicted), contradicted).observations.length, 0);
+  }
+  for (const stats of [{ goalsScored: 0 }, { assists: 1 }, { shotsOnTarget: 1 }]) {
+    assert.equal(normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name }, stats, primary), primary).observations.length, 0);
+  }
+});
+test("captured aliases preserve primary and external identity ambiguity rejection", () => {
+  const alias = { name: "Rodrigo Hernández Cascante", archiveId: "b".repeat(64), contentSha256: "c".repeat(64),
+    retrievedAt: "2026-11-12T12:00:00.000Z" };
+  const primary = { ...fixture, appearances: [{ ...fixture.appearances[0], name: "Rodrigo", nameAliases: [alias] }] };
+  const ambiguous = { ...primary, appearances: [...primary.appearances,
+    { ...primary.appearances[0], id: "second", playerId: "second-player", name: alias.name, nameAliases: [] }] };
+  assert.equal(normalizeHighlightly(capture({ name: "Rodri", fullName: alias.name }, {}, ambiguous), ambiguous).observations.length, 0);
+  const duplicate = capture({ name: "Rodri", fullName: alias.name }, {}, primary);
+  const bundle = JSON.parse(duplicate.text), boxes = JSON.parse(bundle.capture.text);
+  boxes[0].players.push({ ...boxes[0].players[0], id: 5, name: "R. Hernández Cascante" });
+  bundle.capture.text = JSON.stringify(boxes); duplicate.text = JSON.stringify(bundle);
+  assert.equal(normalizeHighlightly(duplicate, primary).observations.length, 0);
+});
 test("HTML apostrophes preserve strict identity and observed-count corroboration", () => {
   for (const entity of ["&apos;", "&#39;", "&#039;", "&#x27;", "&#X0027;"]) {
     assert(samePlayerName("Luke O'Nien", `L. O${entity}Nien`));

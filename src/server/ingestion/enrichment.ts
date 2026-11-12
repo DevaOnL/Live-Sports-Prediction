@@ -6,6 +6,7 @@ import { HighlightlyClient, HighlightlyError, HighlightlyScheduleError, highligh
 import { normalizeHighlightly, primaryFingerprint, sameFixture, scheduleFixtures, type EnrichmentAppearance, type EnrichmentFixture } from "./highlightly-normalize";
 import { CURRENT_SOURCE, sourceSeasonGuard } from "./sources";
 import type { ArchivedResponse } from "./types";
+import { loadSorareNameAliases } from "./sorare-aliases";
 
 type StoredArchive = Omit<ArchivedResponse, "id"> & { _id: string };
 export type EnrichmentProgress = { fixtures: number; appearances: number; pending: number; unmapped: number;
@@ -24,6 +25,7 @@ export class EnrichmentPipeline {
   }
 
   private async fixtures(): Promise<EnrichmentFixture[]> {
+    const aliases = await loadSorareNameAliases(this.db);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -38,9 +40,9 @@ export class EnrichmentPipeline {
         AND f.kickoff_at IS NOT NULL AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
         AND ${sourceSeasonGuard(CURRENT_SOURCE)} ORDER BY f.kickoff_at DESC,f.provider_id`)).rows;
       const appearances = (await client.query<{
-        id: string; fixture_id: string; primary_revision_id: string; player_id: string; name: string; club_id: string;
+        id: string; fixture_id: string; primary_revision_id: string; player_id: string; native_player_id: string; name: string; club_id: string;
         participation: string; minutes: number | null; goals: number | null; assists: number | null; shots_on_target: number | null;
-      }>(`SELECT a.id,a.fixture_id,a.normalized_revision_id AS primary_revision_id,a.player_id,p.name,a.club_id,
+      }>(`SELECT a.id,a.fixture_id,a.normalized_revision_id AS primary_revision_id,a.player_id,p.provider_id AS native_player_id,p.name,a.club_id,
         a.participation,a.minutes,a.goals,a.assists,a.shots_on_target
         FROM sports.appearances a JOIN sports.players p ON p.id=a.player_id WHERE a.fixture_id=ANY($1::uuid[])
         ORDER BY a.id`, [fixtures.map((f) => f.id)])).rows;
@@ -48,7 +50,8 @@ export class EnrichmentPipeline {
       for (const a of appearances) {
         const rows = byFixture.get(a.fixture_id) ?? [];
         rows.push({ id: a.id, primaryRevisionId: a.primary_revision_id, playerId: a.player_id, name: a.name,
-          clubId: a.club_id, participation: a.participation, minutes: a.minutes, goals: a.goals, assists: a.assists, shotsOnTarget: a.shots_on_target });
+          clubId: a.club_id, participation: a.participation, minutes: a.minutes, goals: a.goals, assists: a.assists, shotsOnTarget: a.shots_on_target,
+          ...(aliases.has(a.native_player_id) ? { nameAliases: aliases.get(a.native_player_id) } : {}) });
         byFixture.set(a.fixture_id, rows);
       }
       await client.query("COMMIT");
