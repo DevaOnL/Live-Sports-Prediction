@@ -132,7 +132,7 @@ verification never targeted the existing application databases.
 ## Screen evidence
 
 These live interface snapshots were captured on **2026-11-12**, between
-**12:12:16 and 12:12:27 UTC**, using imported Premier League and La Liga data.
+**13:28:37 and 13:28:49 UTC**, using imported Premier League and La Liga data.
 They include the current navigation, hidden-results filter and scouting statistic.
 Displayed values were checked against the exact API responses used by the browser;
 player and comparison arithmetic was independently recomputed from recorded inputs.
@@ -143,7 +143,7 @@ data. The [UI test prerequisites](ingestion.md#isolated-integration-tests) and
 
 | Screen | Example | What to inspect |
 | --- | --- | --- |
-| `/overview` | [Overview](screenshots/overview.png) | 1,402 players, 40 clubs, two leagues; 386 ready and 79 partial saved results |
+| `/overview` | [Overview](screenshots/overview.png) | 1,402 players, 40 clubs, two leagues; 386 complete and 79 partial saved results |
 | `/players/PLAYER_ID` | [Player detail](screenshots/player.png) | Kylian Mbappé's observed best statistic, separate form/forecast and exact five-match window |
 | `/compare` | [Comparison](screenshots/comparison.png) | Mbappé and Lamine Yamal at one shared cutoff, observed ratings and populated outputs with aligned units |
 | `/admin` | [Administration](screenshots/administration.png) | Actual application budget, coverage, committed imports, job history and correction controls |
