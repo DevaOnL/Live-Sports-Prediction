@@ -1,0 +1,813 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3832.65" height="5077" viewBox="0 0 3832.65 5077" role="img" aria-labelledby="schema-title schema-description">
+<title id="schema-title">Relational schema 1/5: Football and registration</title>
+<desc id="schema-description">Horizontal relational schema, sheet 1 of five. Football and registration. Full rows contain every stored attribute; solid underlines mark primary-key components. Each F-number is one whole ordered foreign key, joined by source and target component buses. Gray rows are referenced key subsets from the named schema sheet. Types, nullability, ordered tuples, checks and context rules are in relational-schema.md.</desc>
+<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#626b64"/></marker></defs>
+<rect width="100%" height="100%" fill="#fffdf8"/>
+<g font-family="DejaVu Sans, Arial, sans-serif" fill="#202620">
+<text x="34" y="50" font-size="30" font-weight="600">RELATIONAL SCHEMA · 1/5 · Football and registration</text>
+<text x="34" y="91" font-size="22">One named horizontal strip per relation. Underlined attributes form one combined primary key.</text>
+<text x="34" y="126" font-size="22">Each Fnn arrow represents one whole ordered FK tuple; joined ticks show every source and target component.</text>
+<text x="34" y="161" font-size="22">Gray strips repeat only referenced key attributes. Types, nullability and full constraints: relational-schema.md.</text>
+<g id="table_sports_competitions" data-table="sports.competitions" data-kind="relation">
+<text x="34" y="218" font-size="25" font-weight="600">sports.competitions</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="270" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="274" x2="102.2" y2="274" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="provider" data-pk="false">
+<rect x="146" y="235" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="215.4" y="270" text-anchor="middle" font-size="22">provider</text>
+</g>
+<g data-column="provider_id" data-pk="false">
+<rect x="284.8" y="235" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="373.85" y="270" text-anchor="middle" font-size="22">provider_id</text>
+</g>
+<g data-column="name" data-pk="false">
+<rect x="462.9" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="518.9" y="270" text-anchor="middle" font-size="22">name</text>
+</g>
+<g data-column="country_name" data-pk="false">
+<rect x="574.9" y="235" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="670.5" y="270" text-anchor="middle" font-size="22">country_name</text>
+</g>
+<g data-column="timezone" data-pk="false">
+<rect x="766.1" y="235" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="835.5" y="270" text-anchor="middle" font-size="22">timezone</text>
+</g>
+<g data-column="coefficient" data-pk="false">
+<rect x="904.9" y="235" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="993.95" y="270" text-anchor="middle" font-size="22">coefficient</text>
+</g>
+<g data-column="enabled" data-pk="false">
+<rect x="1083" y="235" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1145.85" y="270" text-anchor="middle" font-size="22">enabled</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="1208.7" y="235" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1369.8" y="270" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F21" data-fk="competitions_normalized_revision_id_fkey" data-fk-id="F21" data-source="sports.competitions" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 1369.8 289 V 425" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1369.8 289 V 425" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1365.8" y1="293" x2="1373.8" y2="293" stroke="#727973" stroke-width="1.4"/>
+<path d="M 1369.8 425 H 1814.9 V 403" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 1369.8 425 H 1814.9 V 403" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1369.8" cy="425" r="2.2" fill="#626b64"/>
+<line x1="1814.9" y1="403" x2="1814.9" y2="403" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1814.9" y1="403" x2="1814.9" y2="384" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1810.9" y1="388" x2="1818.9" y2="388" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1558.9" y="407" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1566.9" y="429" font-size="20" font-weight="600">F21</text>
+<text x="1758.9" y="317" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1758.9" y="330" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1814.9" y="365" text-anchor="middle" font-size="22">id</text>
+<line x1="1802.7" y1="369" x2="1827.1" y2="369" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="468" font-size="20" fill="#505750">UNIQUE (provider, provider_id)</text>
+<line x1="34" y1="541" x2="2317.35" y2="541" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_competition_seasons" data-table="sports.competition_seasons" data-kind="relation">
+<text x="34" y="569" font-size="25" font-weight="600">sports.competition_seasons</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="586" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="621" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="625" x2="102.2" y2="625" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="competition_id" data-pk="false">
+<rect x="146" y="586" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="254.7" y="621" text-anchor="middle" font-size="22">competition_id</text>
+</g>
+<g data-column="label" data-pk="false">
+<rect x="363.4" y="586" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="419.4" y="621" text-anchor="middle" font-size="22">label</text>
+</g>
+<g data-column="starts_on" data-pk="false">
+<rect x="475.4" y="586" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="551.35" y="621" text-anchor="middle" font-size="22">starts_on</text>
+</g>
+<g data-column="ends_on" data-pk="false">
+<rect x="627.3" y="586" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="690.15" y="621" text-anchor="middle" font-size="22">ends_on</text>
+</g>
+<g data-column="expected_clubs" data-pk="false">
+<rect x="753" y="586" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="861.7" y="621" text-anchor="middle" font-size="22">expected_clubs</text>
+</g>
+<g data-column="enabled" data-pk="false">
+<rect x="970.4" y="586" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1033.25" y="621" text-anchor="middle" font-size="22">enabled</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="1096.1" y="586" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1257.2" y="621" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F19" data-fk="competition_seasons_competition_id_fkey" data-fk-id="F19" data-source="sports.competition_seasons" data-columns="competition_id" data-target="sports.competitions" data-target-columns="id">
+<path d="M 254.7 640 V 776" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 254.7 640 V 776" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="250.7" y1="644" x2="258.7" y2="644" stroke="#727973" stroke-width="1.4"/>
+<path d="M 254.7 776 H 1702.3 V 754" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 254.7 776 H 1702.3 V 754" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="254.7" cy="776" r="2.2" fill="#626b64"/>
+<line x1="1702.3" y1="754" x2="1702.3" y2="754" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1702.3" y1="754" x2="1702.3" y2="735" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1698.3" y1="739" x2="1706.3" y2="739" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1446.3" y="758" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1454.3" y="780" font-size="20" font-weight="600">F19</text>
+<text x="1646.3" y="668" font-size="20" fill="#4f5750">sports.competitions · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="1646.3" y="681" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1702.3" y="716" text-anchor="middle" font-size="22">id</text>
+<line x1="1690.1" y1="720" x2="1714.5" y2="720" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F20" data-fk="competition_seasons_normalized_revision_id_fkey" data-fk-id="F20" data-source="sports.competition_seasons" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 1257.2 640 V 930" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1257.2 640 V 930" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1253.2" y1="644" x2="1261.2" y2="644" stroke="#727973" stroke-width="1.4"/>
+<path d="M 1257.2 930 H 1702.3 V 908" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 1257.2 930 H 1702.3 V 908" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1257.2" cy="930" r="2.2" fill="#626b64"/>
+<line x1="1702.3" y1="908" x2="1702.3" y2="908" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1702.3" y1="908" x2="1702.3" y2="889" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1698.3" y1="893" x2="1706.3" y2="893" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1446.3" y="912" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1454.3" y="934" font-size="20" font-weight="600">F20</text>
+<text x="1646.3" y="822" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1646.3" y="835" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1702.3" y="870" text-anchor="middle" font-size="22">id</text>
+<line x1="1690.1" y1="874" x2="1714.5" y2="874" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="973" font-size="20" fill="#505750">UNIQUE (competition_id, label)</text>
+<line x1="34" y1="1046" x2="2317.35" y2="1046" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_clubs" data-table="sports.clubs" data-kind="relation">
+<text x="34" y="1074" font-size="25" font-weight="600">sports.clubs</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="1091" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="1126" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="1130" x2="102.2" y2="1130" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="provider" data-pk="false">
+<rect x="146" y="1091" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="215.4" y="1126" text-anchor="middle" font-size="22">provider</text>
+</g>
+<g data-column="provider_id" data-pk="false">
+<rect x="284.8" y="1091" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="373.85" y="1126" text-anchor="middle" font-size="22">provider_id</text>
+</g>
+<g data-column="name" data-pk="false">
+<rect x="462.9" y="1091" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="518.9" y="1126" text-anchor="middle" font-size="22">name</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="574.9" y="1091" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="736" y="1126" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+<g data-column="provider_slug" data-pk="false">
+<rect x="897.1" y="1091" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="999.25" y="1126" text-anchor="middle" font-size="22">provider_slug</text>
+</g>
+</g>
+<g id="schema_fk_F18" data-fk="clubs_normalized_revision_id_fkey" data-fk-id="F18" data-source="sports.clubs" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 736 1145 V 1281" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 736 1145 V 1281" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="732" y1="1149" x2="740" y2="1149" stroke="#727973" stroke-width="1.4"/>
+<path d="M 736 1281 H 1385.4 V 1259" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 736 1281 H 1385.4 V 1259" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="736" cy="1281" r="2.2" fill="#626b64"/>
+<line x1="1385.4" y1="1259" x2="1385.4" y2="1259" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1385.4" y1="1259" x2="1385.4" y2="1240" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1381.4" y1="1244" x2="1389.4" y2="1244" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1129.4" y="1263" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1137.4" y="1285" font-size="20" font-weight="600">F18</text>
+<text x="1329.4" y="1173" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1329.4" y="1186" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1385.4" y="1221" text-anchor="middle" font-size="22">id</text>
+<line x1="1373.2" y1="1225" x2="1397.6" y2="1225" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="1324" font-size="20" fill="#505750">UNIQUE (provider, provider_id)</text>
+<line x1="34" y1="1397" x2="2317.35" y2="1397" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_season_clubs" data-table="sports.season_clubs" data-kind="relation">
+<text x="34" y="1425" font-size="25" font-weight="600">sports.season_clubs</text>
+<g data-column="season_id" data-pk="true">
+<rect x="34" y="1442" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="109.95" y="1477" text-anchor="middle" font-size="22">season_id</text>
+<line x1="55.05" y1="1481" x2="164.85" y2="1481" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="club_id" data-pk="true">
+<rect x="185.9" y="1442" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="248.75" y="1477" text-anchor="middle" font-size="22">club_id</text>
+<line x1="206.05" y1="1481" x2="291.45" y2="1481" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="311.6" y="1442" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="472.7" y="1477" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F47" data-fk="season_clubs_club_id_fkey" data-fk-id="F47" data-source="sports.season_clubs" data-columns="club_id" data-target="sports.clubs" data-target-columns="id">
+<path d="M 248.75 1496 V 1632" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 248.75 1496 V 1632" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="244.75" y1="1500" x2="252.75" y2="1500" stroke="#727973" stroke-width="1.4"/>
+<path d="M 248.75 1632 H 917.8 V 1610" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 248.75 1632 H 917.8 V 1610" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="248.75" cy="1632" r="2.2" fill="#626b64"/>
+<line x1="917.8" y1="1610" x2="917.8" y2="1610" stroke="#626b64" stroke-width="1.8"/>
+<line x1="917.8" y1="1610" x2="917.8" y2="1591" stroke="#626b64" stroke-width="1.5"/>
+<line x1="913.8" y1="1595" x2="921.8" y2="1595" stroke="#626b64" stroke-width="1.4"/>
+<rect x="661.8" y="1614" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="669.8" y="1636" font-size="20" font-weight="600">F47</text>
+<text x="861.8" y="1524" font-size="20" fill="#4f5750">sports.clubs · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="861.8" y="1537" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="917.8" y="1572" text-anchor="middle" font-size="22">id</text>
+<line x1="905.6" y1="1576" x2="930" y2="1576" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F48" data-fk="season_clubs_normalized_revision_id_fkey" data-fk-id="F48" data-source="sports.season_clubs" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 472.7 1496 V 1786" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 472.7 1496 V 1786" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="468.7" y1="1500" x2="476.7" y2="1500" stroke="#727973" stroke-width="1.4"/>
+<path d="M 472.7 1786 H 917.8 V 1764" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 472.7 1786 H 917.8 V 1764" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="472.7" cy="1786" r="2.2" fill="#626b64"/>
+<line x1="917.8" y1="1764" x2="917.8" y2="1764" stroke="#626b64" stroke-width="1.8"/>
+<line x1="917.8" y1="1764" x2="917.8" y2="1745" stroke="#626b64" stroke-width="1.5"/>
+<line x1="913.8" y1="1749" x2="921.8" y2="1749" stroke="#626b64" stroke-width="1.4"/>
+<rect x="661.8" y="1768" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="669.8" y="1790" font-size="20" font-weight="600">F48</text>
+<text x="861.8" y="1678" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="861.8" y="1691" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="917.8" y="1726" text-anchor="middle" font-size="22">id</text>
+<line x1="905.6" y1="1730" x2="930" y2="1730" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F49" data-fk="season_clubs_season_id_fkey" data-fk-id="F49" data-source="sports.season_clubs" data-columns="season_id" data-target="sports.competition_seasons" data-target-columns="id">
+<path d="M 109.95 1496 V 1940" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 109.95 1496 V 1940" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="105.95" y1="1500" x2="113.95" y2="1500" stroke="#727973" stroke-width="1.4"/>
+<path d="M 109.95 1940 H 917.8 V 1918" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 109.95 1940 H 917.8 V 1918" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="109.95" cy="1940" r="2.2" fill="#626b64"/>
+<line x1="917.8" y1="1918" x2="917.8" y2="1918" stroke="#626b64" stroke-width="1.8"/>
+<line x1="917.8" y1="1918" x2="917.8" y2="1899" stroke="#626b64" stroke-width="1.5"/>
+<line x1="913.8" y1="1903" x2="921.8" y2="1903" stroke="#626b64" stroke-width="1.4"/>
+<rect x="661.8" y="1922" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="669.8" y="1944" font-size="20" font-weight="600">F49</text>
+<text x="861.8" y="1832" font-size="20" fill="#4f5750">sports.competition_seasons · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="861.8" y="1845" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="917.8" y="1880" text-anchor="middle" font-size="22">id</text>
+<line x1="905.6" y1="1884" x2="930" y2="1884" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<line x1="34" y1="2027" x2="2317.35" y2="2027" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_players" data-table="sports.players" data-kind="relation">
+<text x="34" y="2055" font-size="25" font-weight="600">sports.players</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="2072" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="2107" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="2111" x2="102.2" y2="2111" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="provider" data-pk="false">
+<rect x="146" y="2072" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="215.4" y="2107" text-anchor="middle" font-size="22">provider</text>
+</g>
+<g data-column="provider_id" data-pk="false">
+<rect x="284.8" y="2072" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="373.85" y="2107" text-anchor="middle" font-size="22">provider_id</text>
+</g>
+<g data-column="name" data-pk="false">
+<rect x="462.9" y="2072" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="518.9" y="2107" text-anchor="middle" font-size="22">name</text>
+</g>
+<g data-column="position" data-pk="false">
+<rect x="574.9" y="2072" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="644.3" y="2107" text-anchor="middle" font-size="22">position</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="713.7" y="2072" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="874.8" y="2107" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+<g data-column="provider_slug" data-pk="false">
+<rect x="1035.9" y="2072" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1138.05" y="2107" text-anchor="middle" font-size="22">provider_slug</text>
+</g>
+</g>
+<g id="schema_fk_F38" data-fk="players_normalized_revision_id_fkey" data-fk-id="F38" data-source="sports.players" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 874.8 2126 V 2262" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 874.8 2126 V 2262" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="870.8" y1="2130" x2="878.8" y2="2130" stroke="#727973" stroke-width="1.4"/>
+<path d="M 874.8 2262 H 1524.2 V 2240" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 874.8 2262 H 1524.2 V 2240" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="874.8" cy="2262" r="2.2" fill="#626b64"/>
+<line x1="1524.2" y1="2240" x2="1524.2" y2="2240" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1524.2" y1="2240" x2="1524.2" y2="2221" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1520.2" y1="2225" x2="1528.2" y2="2225" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1268.2" y="2244" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1276.2" y="2266" font-size="20" font-weight="600">F38</text>
+<text x="1468.2" y="2154" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1468.2" y="2167" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1524.2" y="2202" text-anchor="middle" font-size="22">id</text>
+<line x1="1512" y1="2206" x2="1536.4" y2="2206" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="2305" font-size="20" fill="#505750">UNIQUE (provider, provider_id)</text>
+<line x1="34" y1="2378" x2="2317.35" y2="2378" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_player_memberships" data-table="sports.player_memberships" data-kind="relation">
+<text x="34" y="2406" font-size="25" font-weight="600">sports.player_memberships</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="2423" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="2458" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="2462" x2="102.2" y2="2462" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="player_id" data-pk="false">
+<rect x="146" y="2423" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="221.95" y="2458" text-anchor="middle" font-size="22">player_id</text>
+</g>
+<g data-column="club_id" data-pk="false">
+<rect x="297.9" y="2423" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="360.75" y="2458" text-anchor="middle" font-size="22">club_id</text>
+</g>
+<g data-column="season_id" data-pk="false">
+<rect x="423.6" y="2423" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="499.55" y="2458" text-anchor="middle" font-size="22">season_id</text>
+</g>
+<g data-column="valid_from" data-pk="false">
+<rect x="575.5" y="2423" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="658" y="2458" text-anchor="middle" font-size="22">valid_from</text>
+</g>
+<g data-column="valid_until" data-pk="false">
+<rect x="740.5" y="2423" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="829.55" y="2458" text-anchor="middle" font-size="22">valid_until</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="918.6" y="2423" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1079.7" y="2458" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F35" data-fk="player_memberships_normalized_revision_id_fkey" data-fk-id="F35" data-source="sports.player_memberships" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 1079.7 2477 V 2613" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 1079.7 2477 V 2613" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="1075.7" y1="2481" x2="1083.7" y2="2481" stroke="#727973" stroke-width="1.4"/>
+<path d="M 1079.7 2613 H 1524.8 V 2591" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 1079.7 2613 H 1524.8 V 2591" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="1079.7" cy="2613" r="2.2" fill="#626b64"/>
+<line x1="1524.8" y1="2591" x2="1524.8" y2="2591" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1524.8" y1="2591" x2="1524.8" y2="2572" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1520.8" y1="2576" x2="1528.8" y2="2576" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1268.8" y="2595" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1276.8" y="2617" font-size="20" font-weight="600">F35</text>
+<text x="1468.8" y="2505" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="1468.8" y="2518" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1524.8" y="2553" text-anchor="middle" font-size="22">id</text>
+<line x1="1512.6" y1="2557" x2="1537" y2="2557" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F36" data-fk="player_memberships_player_id_fkey" data-fk-id="F36" data-source="sports.player_memberships" data-columns="player_id" data-target="sports.players" data-target-columns="id">
+<path d="M 221.95 2477 V 2767" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 221.95 2477 V 2767" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="217.95" y1="2481" x2="225.95" y2="2481" stroke="#727973" stroke-width="1.4"/>
+<path d="M 221.95 2767 H 1524.8 V 2745" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 221.95 2767 H 1524.8 V 2745" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="221.95" cy="2767" r="2.2" fill="#626b64"/>
+<line x1="1524.8" y1="2745" x2="1524.8" y2="2745" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1524.8" y1="2745" x2="1524.8" y2="2726" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1520.8" y1="2730" x2="1528.8" y2="2730" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1268.8" y="2749" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1276.8" y="2771" font-size="20" font-weight="600">F36</text>
+<text x="1468.8" y="2659" font-size="20" fill="#4f5750">sports.players · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="1468.8" y="2672" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1524.8" y="2707" text-anchor="middle" font-size="22">id</text>
+<line x1="1512.6" y1="2711" x2="1537" y2="2711" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F37" data-fk="player_memberships_season_id_club_id_fkey" data-fk-id="F37" data-source="sports.player_memberships" data-columns="season_id,club_id" data-target="sports.season_clubs" data-target-columns="season_id,club_id">
+<path d="M 499.55 2477 V 2921" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 499.55 2477 V 2921" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="495.55" y1="2481" x2="503.55" y2="2481" stroke="#727973" stroke-width="1.4"/>
+<path d="M 360.75 2477 V 2921" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 360.75 2477 V 2921" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="356.75" y1="2481" x2="364.75" y2="2481" stroke="#727973" stroke-width="1.4"/>
+<path d="M 360.75 2921 H 1614.15 V 2899" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 360.75 2921 H 1614.15 V 2899" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="499.55" cy="2921" r="2.2" fill="#626b64"/>
+<circle cx="360.75" cy="2921" r="2.2" fill="#626b64"/>
+<line x1="1544.75" y1="2899" x2="1683.55" y2="2899" stroke="#626b64" stroke-width="1.8"/>
+<line x1="1544.75" y1="2899" x2="1544.75" y2="2880" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1540.75" y1="2884" x2="1548.75" y2="2884" stroke="#626b64" stroke-width="1.4"/>
+<line x1="1683.55" y1="2899" x2="1683.55" y2="2880" stroke="#626b64" stroke-width="1.5"/>
+<line x1="1679.55" y1="2884" x2="1687.55" y2="2884" stroke="#626b64" stroke-width="1.4"/>
+<rect x="1268.8" y="2903" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="1276.8" y="2925" font-size="20" font-weight="600">F37</text>
+<text x="1468.8" y="2813" font-size="20" fill="#4f5750">sports.season_clubs · key reference · schema 1</text>
+<g data-reference-column="season_id">
+<rect x="1468.8" y="2826" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1544.75" y="2861" text-anchor="middle" font-size="22">season_id</text>
+<line x1="1489.85" y1="2865" x2="1599.65" y2="2865" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="club_id">
+<rect x="1620.7" y="2826" width="125.7" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="1683.55" y="2861" text-anchor="middle" font-size="22">club_id</text>
+<line x1="1640.85" y1="2865" x2="1726.25" y2="2865" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="2964" font-size="20" fill="#505750">UNIQUE (id, player_id, club_id, season_id)</text>
+<text x="34" y="2993" font-size="20" fill="#505750">UNIQUE (player_id, club_id, season_id, valid_from)</text>
+<line x1="34" y1="3066" x2="2317.35" y2="3066" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_fixtures" data-table="sports.fixtures" data-kind="relation">
+<text x="34" y="3094" font-size="25" font-weight="600">sports.fixtures</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="3111" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="3146" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="3150" x2="102.2" y2="3150" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="provider" data-pk="false">
+<rect x="146" y="3111" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="215.4" y="3146" text-anchor="middle" font-size="22">provider</text>
+</g>
+<g data-column="provider_id" data-pk="false">
+<rect x="284.8" y="3111" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="373.85" y="3146" text-anchor="middle" font-size="22">provider_id</text>
+</g>
+<g data-column="season_id" data-pk="false">
+<rect x="462.9" y="3111" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="538.85" y="3146" text-anchor="middle" font-size="22">season_id</text>
+</g>
+<g data-column="home_club_id" data-pk="false">
+<rect x="614.8" y="3111" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="710.4" y="3146" text-anchor="middle" font-size="22">home_club_id</text>
+</g>
+<g data-column="away_club_id" data-pk="false">
+<rect x="806" y="3111" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="901.6" y="3146" text-anchor="middle" font-size="22">away_club_id</text>
+</g>
+<g data-column="kickoff_at" data-pk="false">
+<rect x="997.2" y="3111" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1079.7" y="3146" text-anchor="middle" font-size="22">kickoff_at</text>
+</g>
+<g data-column="status" data-pk="false">
+<rect x="1162.2" y="3111" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1218.5" y="3146" text-anchor="middle" font-size="22">status</text>
+</g>
+<g data-column="statistics_status" data-pk="false">
+<rect x="1274.8" y="3111" width="256.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1403.15" y="3146" text-anchor="middle" font-size="22">statistics_status</text>
+</g>
+<g data-column="home_score" data-pk="false">
+<rect x="1531.5" y="3111" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1614" y="3146" text-anchor="middle" font-size="22">home_score</text>
+</g>
+<g data-column="away_score" data-pk="false">
+<rect x="1696.5" y="3111" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1779" y="3146" text-anchor="middle" font-size="22">away_score</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="1861.5" y="3111" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2022.6" y="3146" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F22" data-fk="fixtures_normalized_revision_id_fkey" data-fk-id="F22" data-source="sports.fixtures" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 2022.6 3165 V 3301" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 2022.6 3165 V 3301" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="2018.6" y1="3169" x2="2026.6" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 2022.6 3301 H 2467.7 V 3279" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 2022.6 3301 H 2467.7 V 3279" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="2022.6" cy="3301" r="2.2" fill="#626b64"/>
+<line x1="2467.7" y1="3279" x2="2467.7" y2="3279" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2467.7" y1="3279" x2="2467.7" y2="3260" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2463.7" y1="3264" x2="2471.7" y2="3264" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2211.7" y="3283" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2219.7" y="3305" font-size="20" font-weight="600">F22</text>
+<text x="2411.7" y="3193" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="2411.7" y="3206" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2467.7" y="3241" text-anchor="middle" font-size="22">id</text>
+<line x1="2455.5" y1="3245" x2="2479.9" y2="3245" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F23" data-fk="fixtures_season_id_away_club_id_fkey" data-fk-id="F23" data-source="sports.fixtures" data-columns="season_id,away_club_id" data-target="sports.season_clubs" data-target-columns="season_id,club_id">
+<path d="M 530.85 3165 V 3455" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 530.85 3165 V 3455" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="526.85" y1="3169" x2="534.85" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 901.6 3165 V 3455" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 901.6 3165 V 3455" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="897.6" y1="3169" x2="905.6" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 530.85 3455 H 2557.05 V 3433" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 530.85 3455 H 2557.05 V 3433" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="530.85" cy="3455" r="2.2" fill="#626b64"/>
+<circle cx="901.6" cy="3455" r="2.2" fill="#626b64"/>
+<line x1="2487.65" y1="3433" x2="2626.45" y2="3433" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2487.65" y1="3433" x2="2487.65" y2="3414" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2483.65" y1="3418" x2="2491.65" y2="3418" stroke="#626b64" stroke-width="1.4"/>
+<line x1="2626.45" y1="3433" x2="2626.45" y2="3414" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2622.45" y1="3418" x2="2630.45" y2="3418" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2211.7" y="3437" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2219.7" y="3459" font-size="20" font-weight="600">F23</text>
+<text x="2411.7" y="3347" font-size="20" fill="#4f5750">sports.season_clubs · key reference · schema 1</text>
+<g data-reference-column="season_id">
+<rect x="2411.7" y="3360" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2487.65" y="3395" text-anchor="middle" font-size="22">season_id</text>
+<line x1="2432.75" y1="3399" x2="2542.55" y2="3399" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="club_id">
+<rect x="2563.6" y="3360" width="125.7" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2626.45" y="3395" text-anchor="middle" font-size="22">club_id</text>
+<line x1="2583.75" y1="3399" x2="2669.15" y2="3399" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F24" data-fk="fixtures_season_id_fkey" data-fk-id="F24" data-source="sports.fixtures" data-columns="season_id" data-target="sports.competition_seasons" data-target-columns="id">
+<path d="M 538.85 3165 V 3609" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 538.85 3165 V 3609" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="534.85" y1="3169" x2="542.85" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 538.85 3609 H 2467.7 V 3587" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 538.85 3609 H 2467.7 V 3587" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="538.85" cy="3609" r="2.2" fill="#626b64"/>
+<line x1="2467.7" y1="3587" x2="2467.7" y2="3587" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2467.7" y1="3587" x2="2467.7" y2="3568" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2463.7" y1="3572" x2="2471.7" y2="3572" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2211.7" y="3591" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2219.7" y="3613" font-size="20" font-weight="600">F24</text>
+<text x="2411.7" y="3501" font-size="20" fill="#4f5750">sports.competition_seasons · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="2411.7" y="3514" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2467.7" y="3549" text-anchor="middle" font-size="22">id</text>
+<line x1="2455.5" y1="3553" x2="2479.9" y2="3553" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F25" data-fk="fixtures_season_id_home_club_id_fkey" data-fk-id="F25" data-source="sports.fixtures" data-columns="season_id,home_club_id" data-target="sports.season_clubs" data-target-columns="season_id,club_id">
+<path d="M 546.85 3165 V 3763" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 546.85 3165 V 3763" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="542.85" y1="3169" x2="550.85" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 710.4 3165 V 3763" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 710.4 3165 V 3763" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="706.4" y1="3169" x2="714.4" y2="3169" stroke="#727973" stroke-width="1.4"/>
+<path d="M 546.85 3763 H 2557.05 V 3741" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 546.85 3763 H 2557.05 V 3741" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="546.85" cy="3763" r="2.2" fill="#626b64"/>
+<circle cx="710.4" cy="3763" r="2.2" fill="#626b64"/>
+<line x1="2487.65" y1="3741" x2="2626.45" y2="3741" stroke="#626b64" stroke-width="1.8"/>
+<line x1="2487.65" y1="3741" x2="2487.65" y2="3722" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2483.65" y1="3726" x2="2491.65" y2="3726" stroke="#626b64" stroke-width="1.4"/>
+<line x1="2626.45" y1="3741" x2="2626.45" y2="3722" stroke="#626b64" stroke-width="1.5"/>
+<line x1="2622.45" y1="3726" x2="2630.45" y2="3726" stroke="#626b64" stroke-width="1.4"/>
+<rect x="2211.7" y="3745" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="2219.7" y="3767" font-size="20" font-weight="600">F25</text>
+<text x="2411.7" y="3655" font-size="20" fill="#4f5750">sports.season_clubs · key reference · schema 1</text>
+<g data-reference-column="season_id">
+<rect x="2411.7" y="3668" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2487.65" y="3703" text-anchor="middle" font-size="22">season_id</text>
+<line x1="2432.75" y1="3707" x2="2542.55" y2="3707" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="club_id">
+<rect x="2563.6" y="3668" width="125.7" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="2626.45" y="3703" text-anchor="middle" font-size="22">club_id</text>
+<line x1="2583.75" y1="3707" x2="2669.15" y2="3707" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="3806" font-size="20" fill="#505750">UNIQUE (id, season_id)</text>
+<text x="34" y="3835" font-size="20" fill="#505750">UNIQUE (provider, provider_id)</text>
+<line x1="34" y1="3908" x2="2970.37" y2="3908" stroke="#d8dcd5" stroke-width="1"/>
+<g id="table_sports_appearances" data-table="sports.appearances" data-kind="relation">
+<text x="34" y="3936" font-size="25" font-weight="600">sports.appearances</text>
+<g data-column="id" data-pk="true">
+<rect x="34" y="3953" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="90" y="3988" text-anchor="middle" font-size="22">id</text>
+<line x1="77.8" y1="3992" x2="102.2" y2="3992" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-column="fixture_id" data-pk="false">
+<rect x="146" y="3953" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="228.5" y="3988" text-anchor="middle" font-size="22">fixture_id</text>
+</g>
+<g data-column="player_id" data-pk="false">
+<rect x="311" y="3953" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="386.95" y="3988" text-anchor="middle" font-size="22">player_id</text>
+</g>
+<g data-column="season_id" data-pk="false">
+<rect x="462.9" y="3953" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="538.85" y="3988" text-anchor="middle" font-size="22">season_id</text>
+</g>
+<g data-column="club_id" data-pk="false">
+<rect x="614.8" y="3953" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="677.65" y="3988" text-anchor="middle" font-size="22">club_id</text>
+</g>
+<g data-column="membership_id" data-pk="false">
+<rect x="740.5" y="3953" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="842.65" y="3988" text-anchor="middle" font-size="22">membership_id</text>
+</g>
+<g data-column="participation" data-pk="false">
+<rect x="944.8" y="3953" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1046.95" y="3988" text-anchor="middle" font-size="22">participation</text>
+</g>
+<g data-column="minutes" data-pk="false">
+<rect x="1149.1" y="3953" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1211.95" y="3988" text-anchor="middle" font-size="22">minutes</text>
+</g>
+<g data-column="rating" data-pk="false">
+<rect x="1274.8" y="3953" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1331.1" y="3988" text-anchor="middle" font-size="22">rating</text>
+</g>
+<g data-column="goals" data-pk="false">
+<rect x="1387.4" y="3953" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1443.4" y="3988" text-anchor="middle" font-size="22">goals</text>
+</g>
+<g data-column="assists" data-pk="false">
+<rect x="1499.4" y="3953" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1562.25" y="3988" text-anchor="middle" font-size="22">assists</text>
+</g>
+<g data-column="shots_on_target" data-pk="false">
+<rect x="1625.1" y="3953" width="230.5" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1740.35" y="3988" text-anchor="middle" font-size="22">shots_on_target</text>
+</g>
+<g data-column="key_passes" data-pk="false">
+<rect x="1855.6" y="3953" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="1938.1" y="3988" text-anchor="middle" font-size="22">key_passes</text>
+</g>
+<g data-column="tackles" data-pk="false">
+<rect x="2020.6" y="3953" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2083.45" y="3988" text-anchor="middle" font-size="22">tackles</text>
+</g>
+<g data-column="interceptions" data-pk="false">
+<rect x="2146.3" y="3953" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2248.45" y="3988" text-anchor="middle" font-size="22">interceptions</text>
+</g>
+<g data-column="saves" data-pk="false">
+<rect x="2350.6" y="3953" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2406.6" y="3988" text-anchor="middle" font-size="22">saves</text>
+</g>
+<g data-column="goals_conceded" data-pk="false">
+<rect x="2462.6" y="3953" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2571.3" y="3988" text-anchor="middle" font-size="22">goals_conceded</text>
+</g>
+<g data-column="normalized_revision_id" data-pk="false">
+<rect x="2680" y="3953" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
+<text x="2841.1" y="3988" text-anchor="middle" font-size="22">normalized_revision_id</text>
+</g>
+</g>
+<g id="schema_fk_F11" data-fk="appearances_club_id_fkey" data-fk-id="F11" data-source="sports.appearances" data-columns="club_id" data-target="sports.clubs" data-target-columns="id">
+<path d="M 673.65 4007 V 4143" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 673.65 4007 V 4143" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="669.65" y1="4011" x2="677.65" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 673.65 4143 H 3286.2 V 4121" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 673.65 4143 H 3286.2 V 4121" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="673.65" cy="4143" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4121" x2="3286.2" y2="4121" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4121" x2="3286.2" y2="4102" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4106" x2="3290.2" y2="4106" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4125" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4147" font-size="20" font-weight="600">F11</text>
+<text x="3230.2" y="4035" font-size="20" fill="#4f5750">sports.clubs · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4048" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4083" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4087" x2="3298.4" y2="4087" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F12" data-fk="appearances_fixture_id_season_id_fkey" data-fk-id="F12" data-source="sports.appearances" data-columns="fixture_id,season_id" data-target="sports.fixtures" data-target-columns="id,season_id">
+<path d="M 228.5 4007 V 4297" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 228.5 4007 V 4297" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="224.5" y1="4011" x2="232.5" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 534.85 4007 V 4297" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 534.85 4007 V 4297" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="530.85" y1="4011" x2="538.85" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 228.5 4297 H 3352.17 V 4275" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 228.5 4297 H 3352.17 V 4275" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="228.5" cy="4297" r="2.2" fill="#626b64"/>
+<circle cx="534.85" cy="4297" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4275" x2="3418.15" y2="4275" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4275" x2="3286.2" y2="4256" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4260" x2="3290.2" y2="4260" stroke="#626b64" stroke-width="1.4"/>
+<line x1="3418.15" y1="4275" x2="3418.15" y2="4256" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3414.15" y1="4260" x2="3422.15" y2="4260" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4279" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4301" font-size="20" font-weight="600">F12</text>
+<text x="3230.2" y="4189" font-size="20" fill="#4f5750">sports.fixtures · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4202" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4237" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4241" x2="3298.4" y2="4241" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="season_id">
+<rect x="3342.2" y="4202" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3418.15" y="4237" text-anchor="middle" font-size="22">season_id</text>
+</g>
+</g>
+<g id="schema_fk_F13" data-fk="appearances_membership_id_fkey" data-fk-id="F13" data-source="sports.appearances" data-columns="membership_id" data-target="sports.player_memberships" data-target-columns="id">
+<path d="M 838.65 4007 V 4451" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 838.65 4007 V 4451" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="834.65" y1="4011" x2="842.65" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 838.65 4451 H 3286.2 V 4429" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 838.65 4451 H 3286.2 V 4429" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="838.65" cy="4451" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4429" x2="3286.2" y2="4429" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4429" x2="3286.2" y2="4410" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4414" x2="3290.2" y2="4414" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4433" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4455" font-size="20" font-weight="600">F13</text>
+<text x="3230.2" y="4343" font-size="20" fill="#4f5750">sports.player_memberships · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4356" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4391" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4395" x2="3298.4" y2="4395" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F14" data-fk="appearances_membership_id_player_id_club_id_season_id_fkey" data-fk-id="F14" data-source="sports.appearances" data-columns="membership_id,player_id,club_id,season_id" data-target="sports.player_memberships" data-target-columns="id,player_id,club_id,season_id">
+<path d="M 846.65 4007 V 4605" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 846.65 4007 V 4605" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="842.65" y1="4011" x2="850.65" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 382.95 4007 V 4605" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 382.95 4007 V 4605" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="378.95" y1="4011" x2="386.95" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 681.65 4007 V 4605" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 681.65 4007 V 4605" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="677.65" y1="4011" x2="685.65" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 542.85 4007 V 4605" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 542.85 4007 V 4605" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="538.85" y1="4011" x2="546.85" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 382.95 4605 H 3490.97 V 4583" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 382.95 4605 H 3490.97 V 4583" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="846.65" cy="4605" r="2.2" fill="#626b64"/>
+<circle cx="382.95" cy="4605" r="2.2" fill="#626b64"/>
+<circle cx="681.65" cy="4605" r="2.2" fill="#626b64"/>
+<circle cx="542.85" cy="4605" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4583" x2="3695.75" y2="4583" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4583" x2="3286.2" y2="4564" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4568" x2="3290.2" y2="4568" stroke="#626b64" stroke-width="1.4"/>
+<line x1="3418.15" y1="4583" x2="3418.15" y2="4564" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3414.15" y1="4568" x2="3422.15" y2="4568" stroke="#626b64" stroke-width="1.4"/>
+<line x1="3556.95" y1="4583" x2="3556.95" y2="4564" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3552.95" y1="4568" x2="3560.95" y2="4568" stroke="#626b64" stroke-width="1.4"/>
+<line x1="3695.75" y1="4583" x2="3695.75" y2="4564" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3691.75" y1="4568" x2="3699.75" y2="4568" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4587" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4609" font-size="20" font-weight="600">F14</text>
+<text x="3230.2" y="4497" font-size="20" fill="#4f5750">sports.player_memberships · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4510" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4545" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4549" x2="3298.4" y2="4549" stroke="#202420" stroke-width="1.5"/>
+</g>
+<g data-reference-column="player_id">
+<rect x="3342.2" y="4510" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3418.15" y="4545" text-anchor="middle" font-size="22">player_id</text>
+</g>
+<g data-reference-column="club_id">
+<rect x="3494.1" y="4510" width="125.7" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3556.95" y="4545" text-anchor="middle" font-size="22">club_id</text>
+</g>
+<g data-reference-column="season_id">
+<rect x="3619.8" y="4510" width="151.9" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3695.75" y="4545" text-anchor="middle" font-size="22">season_id</text>
+</g>
+</g>
+<g id="schema_fk_F15" data-fk="appearances_normalized_revision_id_fkey" data-fk-id="F15" data-source="sports.appearances" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 2841.1 4007 V 4759" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 2841.1 4007 V 4759" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="2837.1" y1="4011" x2="2845.1" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 2841.1 4759 H 3286.2 V 4737" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 2841.1 4759 H 3286.2 V 4737" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="2841.1" cy="4759" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4737" x2="3286.2" y2="4737" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4737" x2="3286.2" y2="4718" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4722" x2="3290.2" y2="4722" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4741" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4763" font-size="20" font-weight="600">F15</text>
+<text x="3230.2" y="4651" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4664" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4699" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4703" x2="3298.4" y2="4703" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<g id="schema_fk_F16" data-fk="appearances_player_id_fkey" data-fk-id="F16" data-source="sports.appearances" data-columns="player_id" data-target="sports.players" data-target-columns="id">
+<path d="M 390.95 4007 V 4913" stroke="#fffdf8" stroke-width="5" fill="none"/>
+<path d="M 390.95 4007 V 4913" stroke="#727973" stroke-width="1.5" fill="none"/>
+<line x1="386.95" y1="4011" x2="394.95" y2="4011" stroke="#727973" stroke-width="1.4"/>
+<path d="M 390.95 4913 H 3286.2 V 4891" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
+<path d="M 390.95 4913 H 3286.2 V 4891" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
+<circle cx="390.95" cy="4913" r="2.2" fill="#626b64"/>
+<line x1="3286.2" y1="4891" x2="3286.2" y2="4891" stroke="#626b64" stroke-width="1.8"/>
+<line x1="3286.2" y1="4891" x2="3286.2" y2="4872" stroke="#626b64" stroke-width="1.5"/>
+<line x1="3282.2" y1="4876" x2="3290.2" y2="4876" stroke="#626b64" stroke-width="1.4"/>
+<rect x="3030.2" y="4895" width="74" height="30" rx="3" fill="#fffdf8"/>
+<text x="3038.2" y="4917" font-size="20" font-weight="600">F16</text>
+<text x="3230.2" y="4805" font-size="20" fill="#4f5750">sports.players · key reference · schema 1</text>
+<g data-reference-column="id">
+<rect x="3230.2" y="4818" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
+<text x="3286.2" y="4853" text-anchor="middle" font-size="22">id</text>
+<line x1="3274" y1="4857" x2="3298.4" y2="4857" stroke="#202420" stroke-width="1.5"/>
+</g>
+</g>
+<text x="34" y="4956" font-size="20" fill="#505750">UNIQUE (fixture_id, player_id)</text>
+<line x1="34" y1="5029" x2="3788.65" y2="5029" stroke="#d8dcd5" stroke-width="1"/>
+</g></svg>

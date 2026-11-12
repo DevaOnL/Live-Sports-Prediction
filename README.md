@@ -86,9 +86,8 @@ retire the former active leagues and add source-traceable match-stat supplements
 Session persistence is stored server-side; existing sessions retain their expiry.
 Preserve volumes and applied migration files.
 
-The [database guide](docs/database.md) documents the ER diagram, relational
-constraints, role grants, migration behavior, and an isolated PostgreSQL test
-recipe. Database tests create temporary databases and require a verified disposable
+The [database guide](docs/database.md) covers the [Chen ER diagrams and derived relational schema](docs/relational-schema.md),
+constraints, role grants, migration behavior, and an isolated PostgreSQL test recipe. Database tests create temporary databases and require a verified disposable
 cluster. Run them only using that recipe or the dedicated CI service.
 
 ## Create users and start the app
@@ -289,7 +288,7 @@ self-hosted through the application bundle.
 | Guide | Contents |
 | --- | --- |
 | [Architecture](docs/architecture.md) | Implemented data flow, credential boundaries and technology choices |
-| [Database](docs/database.md) | ER diagram, relational schema, constraints, grants and migrations |
+| [Database](docs/database.md) | Chen ER model, derived horizontal relational diagrams, full schema, constraints, grants and migrations |
 | [Ingestion](docs/ingestion.md) | Approved real-data coverage, mapping, request budget and recovery |
 | [Forecasting](docs/forecasting.md) | Exact-five selection, formulas, units and unavailable states |
 | [API and authentication](docs/api.md) | Account administration, sessions, viewer reads and administrator commands |

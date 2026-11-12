@@ -38,64 +38,31 @@ authorization. The [ingestion guide](ingestion.md) covers MongoDB archives and r
 
 ## Entity relationships
 
-```mermaid
-erDiagram
-  COMPETITIONS ||--o{ COMPETITION_SEASONS : contains
-  COMPETITION_SEASONS ||--o{ SEASON_CLUBS : registers
-  CLUBS ||--o{ SEASON_CLUBS : participates
-  SEASON_CLUBS ||--o{ PLAYER_MEMBERSHIPS : registers
-  PLAYERS ||--o{ PLAYER_MEMBERSHIPS : joins
-  COMPETITION_SEASONS ||--o{ ROSTER_SNAPSHOTS : observes
-  SOURCE_REVISIONS ||--o| ROSTER_SNAPSHOTS : explains
-  ROSTER_SNAPSHOTS ||--o{ ROSTER_ENTRIES : contains
-  PLAYERS ||--o{ ROSTER_ENTRIES : appears
-  SEASON_CLUBS ||--o{ ROSTER_ENTRIES : observes
-  PLAYERS ||--o{ FORECAST_REVISIONS : predicts
-  FORECAST_REVISIONS o|--o{ FORECAST_REVISIONS : parent
-  PLAYERS ||--o| FORECAST_HEADS : current
-  FORECAST_REVISIONS ||--o| FORECAST_HEADS : points_to
-  COMPETITION_SEASONS ||--o{ FIXTURES : schedules
-  SEASON_CLUBS ||--o{ FIXTURES : home_club
-  SEASON_CLUBS ||--o{ FIXTURES : away_club
-  FIXTURES ||--o{ APPEARANCES : records
-  PLAYERS ||--o{ APPEARANCES : participates
-  CLUBS o|--o{ APPEARANCES : optional_club
-  PLAYER_MEMBERSHIPS o|--o{ APPEARANCES : confirms_membership
-  SOURCE_REVISIONS ||--o{ NORMALIZED_REVISIONS : produces
-  NORMALIZED_REVISIONS o|--o{ NORMALIZED_REVISIONS : parent
-  APPEARANCES ||--o{ APPEARANCE_ENRICHMENTS : supplements
-  FIXTURES ||--o{ APPEARANCE_ENRICHMENTS : anchors
-  NORMALIZED_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : primary_revision
-  NORMALIZED_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : fixture_revision
-  SOURCE_REVISIONS ||--o{ APPEARANCE_ENRICHMENTS : observes
-  NORMALIZED_REVISIONS ||--o| APPEARANCE_ENRICHMENTS : explains
-  APPEARANCES ||--o| APPEARANCE_ENRICHMENT_HEADS : current_supplement
-  APPEARANCE_ENRICHMENTS ||--o| APPEARANCE_ENRICHMENT_HEADS : points_to
-  NORMALIZED_REVISIONS ||--o{ STANDINGS_SNAPSHOTS : explains
-  NORMALIZED_REVISIONS o|--o{ AUDIT_LOG : explains
-  COMPETITION_SEASONS ||--o{ STANDINGS_SNAPSHOTS : contextualizes
-  STANDINGS_SNAPSHOTS ||--o{ STANDINGS_ROWS : contains
-  SEASON_CLUBS ||--o{ STANDINGS_ROWS : ranks
-  SEASON_CLUBS ||--o{ POINTS_ADJUSTMENTS : adjusts
-  OUTBOX ||--o{ JOBS : schedules
-  AUTH_USER ||--o{ AUTH_SESSION : opens
-  AUTH_USER ||--o{ AUTH_ACCOUNT : owns
-```
+The [Chen ER model and derived relational schema](relational-schema.md) use two
+separate notations. In the ER model, rectangles denote entities, diamonds denote
+relationships, and ellipses denote attributes. Chosen keys are underlined; double
+lines show total participation. The relational diagrams instead use horizontal
+attribute strips, underlined primary keys and grouped foreign-key arrows.
 
-Each child has exactly one referenced parent unless the diagram marks that parent
-optional (`o|`); a parent can have zero or more children (`o{`). Fixture home and
-away references each identify a club registered in that fixture's season.
-Optional canonical provenance links to `normalized_revisions` are omitted for
-readability. Supplement appearance/fixture revision anchors are shown explicitly.
-`sports.enrichment_request_quota`, `auth.verification`, `auth."rateLimit"` and the
-migration ledger are independent tables. `sports.effective_appearances` is a
-derived view, not another stored appearance table.
+![Connected football ER overview in Chen notation](diagrams/er-overview.svg)
+
+The overview selects the main football facts. The [five complete ER sheets](relational-schema.md#diagrams-and-export)
+include all supporting entities and relationship attributes. The same guide derives
+all 31 stored relations, then gives the separate [relational diagrams](relational-schema.md#diagrams-and-export)
+and [complete definitions](relational-schema.md#complete-relation-definitions), including
+all 248 columns, 53 ordered FK groups, unique constraints, types and nullability.
+The [combined PDF](diagrams/database-model.pdf) includes the overview and all ten
+detailed sheets. The SVG originals remain editable and zoomable.
+
+`sports.effective_appearances` is a derived view. MongoDB archives use application
+correlations rather than SQL foreign keys; neither adds another stored SQL table.
+See the [mapping and storage boundaries](relational-schema.md#documents-archives-and-derived-results).
 
 ## Tables and keys
 
 Football and processing tables live in `sports`, authentication tables in `auth`,
 and the migration ledger in `infra`. Most `sports` tables have a generated UUID
-primary key named `id`; `season_clubs` and `standings_rows` use composite keys,
+primary key named `id`; `season_clubs`, `standings_rows` and `roster_entries` use composite keys,
 `ingestion_batches` uses its archive identifier, heads use their player/appearance
 key, and the supplementary quota uses its provider key. External identifiers remain
 text. The original schema's `provider` default is `apifootball`; current ingestion
