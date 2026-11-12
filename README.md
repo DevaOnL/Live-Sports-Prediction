@@ -300,13 +300,15 @@ self-hosted through the application bundle.
 
 ## Interface examples
 
-Captured on 2026-11-10 from the implemented application using isolated synthetic
-data and example accounts. These show interface behavior, not live coverage or
-measured accuracy. Photography is illustrative; the player artwork is generic.
+Captured on 2026-11-12 from the live application with imported Premier League and
+La Liga data. Displayed values were checked against each screen's API responses;
+player and comparison calculations were independently recomputed from their
+recorded inputs. These dated snapshots do not establish complete source coverage
+or predictive accuracy. Photography is illustrative; player artwork is generic.
 
-![Overview with synthetic coverage and model availability](docs/screenshots/overview.png)
+![Overview with current Premier League and La Liga coverage and model result counts](docs/screenshots/overview.png)
 
-![Synthetic player with separate form and forecast evidence](docs/screenshots/player.png)
+![Kylian Mbappé with observed best statistic, separate form and forecast, and five selected matches](docs/screenshots/player.png)
 
 [Comparison](docs/screenshots/comparison.png) ·
 [Administrator operations](docs/screenshots/administration.png).

@@ -329,4 +329,6 @@ databases and never an application/shared database. The
 [requirement guide](requirements.md) maps these checks to executable artifacts.
 The [evaluation report](evaluation.md) records actual historical zero coverage
 and unavailable errors; neither a restore test nor a healthy deployment establishes
-predictive accuracy. The screenshots are labeled synthetic examples.
+predictive accuracy. The [screenshots](requirements.md#screen-evidence) are dated
+live-data snapshots; their displayed values were verified separately from these
+synthetic setup and restore checks.

@@ -131,25 +131,32 @@ verification never targeted the existing application databases.
 
 ## Screen evidence
 
-These archived interface examples were captured on **2026-11-10** using isolated
-synthetic demonstration data and example accounts. They show implemented screen
-behavior before the current-source/scouting/navigation changes, not current
-league coverage or measured forecast accuracy. Reproduce
-the journeys with the [UI test prerequisites](ingestion.md#isolated-integration-tests)
-and `npm run test:ui`, or sign in to an application configured through the
-[setup guide](../README.md).
+These live interface snapshots were captured on **2026-11-12**, between
+**12:12:16 and 12:12:27 UTC**, using imported Premier League and La Liga data.
+They include the current navigation, hidden-results filter and scouting statistic.
+Displayed values were checked against the exact API responses used by the browser;
+player and comparison arithmetic was independently recomputed from recorded inputs.
+Counts, worker state and forecasts can change after capture. Sign in to an
+application configured through the [setup guide](../README.md) to inspect current
+data. The [UI test prerequisites](ingestion.md#isolated-integration-tests) and
+`npm run test:ui` reproduce the journeys using isolated synthetic test data.
 
 | Screen | Example | What to inspect |
 | --- | --- | --- |
-| `/overview` | [Overview](screenshots/overview.png) | Stored evaluation/coverage counts and links into player discovery |
-| `/players/PLAYER_ID` | [Player detail](screenshots/player.png) | Separately labeled form/forecast, the exact selected five and output evidence |
-| `/compare` | [Comparison](screenshots/comparison.png) | Shared snapshot, aligned units and each player's availability |
-| `/admin` | [Administration](screenshots/administration.png) | Restricted status, queued operations, corrections and audit/recovery controls |
+| `/overview` | [Overview](screenshots/overview.png) | 1,402 players, 40 clubs, two leagues; 386 ready and 79 partial saved results |
+| `/players/PLAYER_ID` | [Player detail](screenshots/player.png) | Kylian Mbappé's observed best statistic, separate form/forecast and exact five-match window |
+| `/compare` | [Comparison](screenshots/comparison.png) | Mbappé and Lamine Yamal at one shared cutoff, observed ratings and populated outputs with aligned units |
+| `/admin` | [Administration](screenshots/administration.png) | Actual application budget, coverage, committed imports, job history and correction controls |
 
-The player example shows a saved August forecast with its stale-target warning;
-comparison recalculates at the current shared cutoff and shows missing-history
-reasons. A saved revision and a current comparison can therefore differ in
-availability. Neither screen substitutes missing evidence with invented values.
+The player screenshot shows a 7.98/10 forecast rating and 59.86/100 adjusted form
+index. Its observed best statistic is 12 shots on target across 443 minutes
+(2.44 per 90); its projected shots-on-target rate is separately shown as 2.17 per
+90 minutes. Comparison shows Yamal's 8.21/10 forecast and 61.56/100 form index,
+alongside both players' five observed match ratings. Mbappé's zero assists is an
+observed zero and remains a numeric zero in the projection. Administration was
+captured through reads only; no imports, retries, refresh jobs or corrections were
+submitted for these images. Missing history and genuine freshness warnings remain
+subject to the normal application rules; no output or image was fabricated.
 
 The offline database demo uses clearly labeled synthetic football data to make
 SQL/NoSQL behavior repeatable. The separate [real-data replay](replay.md) uses
