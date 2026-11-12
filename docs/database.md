@@ -13,8 +13,9 @@ metadata. The executable definitions are
 [`008_reporting.sql`](../db/migrations/008_reporting.sql),
 [`009_auth_rate_limit.sql`](../db/migrations/009_auth_rate_limit.sql),
 [`010_current_coverage.sql`](../db/migrations/010_current_coverage.sql),
-[`011_suspended_fixtures.sql`](../db/migrations/011_suspended_fixtures.sql), and
-[`012_appearance_enrichment.sql`](../db/migrations/012_appearance_enrichment.sql).
+[`011_suspended_fixtures.sql`](../db/migrations/011_suspended_fixtures.sql),
+[`012_appearance_enrichment.sql`](../db/migrations/012_appearance_enrichment.sql), and
+[`013_session_persistence.sql`](../db/migrations/013_session_persistence.sql).
 
 Current product coverage is Sorare Premier League/La Liga, 2026/27. Migration
 010 disables the former APIFootball competitions/seasons while preserving their
@@ -24,6 +25,8 @@ Migration 011 adds an explicit suspended fixture state; existing observations an
 applied migration files are unchanged. Migration 012 adds optional Highlightly
 supplement observations, current heads, a shared daily request allowance and an
 effective appearance view. Sorare remains the primary source.
+Migration 013 records issued session persistence on the server. Existing sessions
+keep their expiry and default to nonrenewing sessions.
 
 The app uses Better Auth 1.7.18 database sessions, SQL-backed roles, authenticated
 football reads and administrator operations. The interface includes login, a player
@@ -128,7 +131,7 @@ identifiers retain their prefixes. Competition business IDs are
 | `sports.forecast_revisions` | UUID PK and increasing ordinal; player FK; same-player earlier parent FK; model version, semantic hash, canonical source ordinal, cutoff, full input/provenance/result JSON objects; append-only |
 | `sports.forecast_heads` | Player PK/FK and same-player revision FK; mutable pointer/update time plus latest evaluation cutoff, source ordinal, provenance and check time |
 | `auth."user"` | Text PK; case-insensitive unique email, name, verification flag, optional image, `viewer`/`admin` role, creation/update times |
-| `auth.session` | Text PK; unique nonempty token; user FK with cascading deletion; expiry after creation and optional client metadata |
+| `auth.session` | Text PK; unique nonempty token; user FK with cascading deletion; expiry after creation; server-managed persistence flag and optional client metadata |
 | `auth.account` | Text PK; user FK with cascading deletion; unique `("providerId", "accountId")`; optional password/token fields |
 | `auth.verification` | Text PK; nonempty identifier/value, expiry and creation/update times; identifier index |
 | `auth."rateLimit"` | Text PK and unique nonempty key; atomic shared authentication attempt count and millisecond last-request timestamp; timestamp index |
@@ -301,11 +304,12 @@ For an existing managed database, preserve its data and apply only new migration
 npm run db:migrate
 ```
 
-Apply all pending files through `012_appearance_enrichment.sql` before starting the
+Apply all pending files through `013_session_persistence.sql` before starting the
 upgraded app/worker. Migration 009 adds the database-backed authentication limiter
 and its auth-role grants; 010 retires prior product coverage and adds
 source-aware reporting overloads and lookup slugs; 012 adds optional supplement
-storage/grants and makes the Sorare history overload read effective appearances.
+storage/grants and makes the Sorare history overload read effective appearances;
+013 prevents client cookie omission from enabling renewal of nonpersistent sessions.
 The same command applies all earlier pending files, including ingestion commit
 markers, forecast freshness
 and reporting routines. MongoDB

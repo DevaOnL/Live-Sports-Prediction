@@ -426,12 +426,11 @@ export class IngestionStore {
             appearances++;
           }
         }
-        const currentIncomplete = this.profile.provider === "sorare" && statisticsStatus !== "complete";
         if (archive.action === "get_events" && fixture.status === "final"
-          && (currentIncomplete || (canonical.revision.changed && (statisticsStatus !== "complete" || changedHeader)) || summaryMembershipRevisions.length > 0)) {
-          // A fresh current-source observation can carry review corrections even
-          // when its schedule header is unchanged. Archived legacy keys stay exact.
-          const enrichmentRevision = currentIncomplete ? archive.id : summaryMembershipRevisions.at(-1) ?? canonical.revision.id;
+          && ((canonical.revision.changed && (statisticsStatus !== "complete" || changedHeader)) || summaryMembershipRevisions.length > 0)) {
+          // New or changed fixture evidence needs immediate details. Unchanged
+          // partial/reviewing statistics use the bounded daily queue scheduler.
+          const enrichmentRevision = summaryMembershipRevisions.at(-1) ?? canonical.revision.id;
           await this.outbox(client, "fixture.statistics", "fixture", canonical.id,
             `fixture.statistics:${fixture.id}:${enrichmentRevision}`, { fixtureId: fixture.id, leagueId: coverage.id });
         }

@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { MongoClient, type Db } from "mongodb";
 import pg from "pg";
 import { ArchiveStore } from "../src/server/ingestion/archive";
+import { JobQueue } from "../src/server/ingestion/jobs";
 import { CURRENT_SOURCE, LEGACY_SOURCE, sourceEntityKey } from "../src/server/ingestion/sources";
 import { SorarePipeline, SORARE_FORMAT, SORARE_QUERIES } from "../src/server/ingestion/sorare";
 import { IngestionStore, RateLimitError } from "../src/server/ingestion/store";
@@ -244,16 +245,55 @@ test("current recovery filters before the limit and leaves retired pending archi
   assert.equal((await store.fixture(fixture().id))?.id, fixture().id);
 });
 
-test("fresh current schedule captures refresh REVIEWING statistics without changing fixture headers", async () => {
+test("unchanged current schedules retain one active statistics job and use bounded daily review refreshes", async () => {
   const value = batch();
   value.fixtures[0].detailed = false;
   value.fixtures[0].appearances = [];
+  value.issues.push({ code: "statistics_under_review", resource: appearance().player.id });
+  const queue = new JobQueue(pool, "synthetic-current-review-worker", false, CURRENT_SOURCE);
   await importBatch(value, { action: "get_events", resourceKey: "sorare:test:events" });
-  value.issues.push({ code: "synthetic_new_observation", resource: coverage.id });
+  assert.equal(await queue.dispatch(), 2, "initial final fixture queues detail and standings work");
+  const firstJobs = (await administrator.query("SELECT id FROM sports.jobs WHERE kind='fixture.statistics'")).rows;
+  assert.equal(firstJobs.length, 1);
+
   await importBatch(value, { action: "get_events", resourceKey: "sorare:test:events" });
-  const jobs = (await administrator.query("SELECT payload FROM sports.outbox WHERE event_type='fixture.statistics'")).rows;
-  assert.equal(jobs.length, 2);
-  assert(jobs.every((item) => item.payload.fixtureId === fixture().id && item.payload.provider === "sorare"));
+  assert.equal(await queue.dispatch(), 0);
+  assert.equal(await queue.scheduleStatistics(), 0, "an active job suppresses another statistics refresh");
+  assert.equal((await administrator.query("SELECT count(*)::integer AS count FROM sports.jobs WHERE kind='fixture.statistics' AND status='ready'")).rows[0].count, 1);
+
+  await administrator.query("UPDATE sports.jobs SET status='succeeded',completed_at=clock_timestamp() WHERE kind='fixture.statistics'");
+  await importBatch(value, { action: "get_events", resourceKey: "sorare:test:events" });
+  assert.equal(await queue.dispatch(), 0, "an unchanged schedule does not bypass the completed daily refresh");
+  assert.equal(await queue.scheduleStatistics(), 0, "completed review work is not repeated in the same UTC day");
+  await administrator.query(`UPDATE sports.jobs SET
+    created_at=(date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')-interval '2 seconds',
+    completed_at=(date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')-interval '1 second'
+    WHERE kind='fixture.statistics'`);
+  assert.equal(await queue.scheduleStatistics(), 1, "a partial final can be reviewed again on the next daily budget");
+  assert.equal(await queue.scheduleStatistics(), 0, "the pending daily event suppresses repeated scheduling");
+  assert.equal(await queue.dispatch(), 1);
+  assert.equal(await queue.scheduleStatistics(), 0);
+  const jobs = (await administrator.query("SELECT payload FROM sports.jobs WHERE kind='fixture.statistics' AND status='ready'")).rows;
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].payload.fixtureId, fixture().id);
+  assert.equal(jobs[0].payload.provider, "sorare");
+});
+
+test("current final fixture header corrections still queue immediate details within the daily bucket", async () => {
+  const value = batch();
+  value.fixtures[0].detailed = false;
+  value.fixtures[0].appearances = [];
+  const queue = new JobQueue(pool, "synthetic-current-correction-worker", false, CURRENT_SOURCE);
+  await importBatch(value, { action: "get_events", resourceKey: "sorare:test:events" });
+  await queue.dispatch();
+  await administrator.query("UPDATE sports.jobs SET status='succeeded',completed_at=clock_timestamp() WHERE kind='fixture.statistics'");
+  assert.equal(await queue.scheduleStatistics(), 0);
+
+  value.fixtures[0].homeScore = 2;
+  await importBatch(value, { action: "get_events", resourceKey: "sorare:test:events" });
+  assert.equal(await queue.dispatch(), 2, "a corrected result queues new detail and standings work immediately");
+  assert.equal((await administrator.query("SELECT count(*)::integer AS count FROM sports.jobs WHERE kind='fixture.statistics' AND status='ready'")).rows[0].count, 1);
+  assert.equal((await store.fixture(fixture().id))?.homeScore, 2);
 });
 
 test("incomplete schedules are quarantined before publication and cannot overwrite a complete canonical season", async () => {

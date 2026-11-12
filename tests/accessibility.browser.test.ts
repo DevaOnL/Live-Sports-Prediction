@@ -231,6 +231,51 @@ test("keyboard readers can sign in, filter and inspect expanded football evidenc
   });
 });
 
+test("short player names retain separate touch targets and keyboard access in catalogue and comparison", { timeout: 120_000 }, async () => {
+  for (const width of [320, ...widths]) await journey(width, async (page) => {
+    // Change only a synthetic display name so long fixture names cannot conceal
+    // undersized links for real short names such as Abde.
+    await page.route((url) => url.origin === web.origin && url.pathname === "/api/players", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.data.items.find((player: { id: string }) => player.id === "8004").name = "Abde";
+      await route.fulfill({ response, json: body });
+    });
+    await page.route((url) => url.origin === web.origin && url.pathname === "/api/compare", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.data.players.find((entry: { player: { id: string } }) => entry.player.id === "8004").player.name = "Abde";
+      await route.fulfill({ response, json: body });
+    });
+    await keyboardLogin(page, "viewer");
+    await page.goto(`${web.origin}/players`);
+    const title = page.getByRole("heading", { name: "Abde", exact: true }).getByRole("link");
+    await title.waitFor();
+    const card = page.locator(".player-card").filter({ has: title });
+    const targets = await card.locator(".player-art-link, h2 a, .player-card-actions a, .player-card-actions button").evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { name: element.getAttribute("aria-label") ?? element.textContent, left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    }));
+    for (const [index, target] of targets.entries()) for (const other of targets.slice(index + 1)) {
+      assert(target.right <= other.left || other.right <= target.left || target.bottom <= other.top || other.bottom <= target.top,
+        `${target.name} and ${other.name} have separate click targets at ${width}px`);
+    }
+    await semantics(page);
+    await activate(title, page);
+    await page.waitForURL(`${web.origin}/players/8004`);
+    await page.getByRole("heading", { name: "Synthetic demo forwards", exact: true }).waitFor();
+    await page.goto(`${web.origin}/compare?playerId=8004&playerId=8003&allowCrossPosition=true`);
+    await page.getByRole("region", { name: "Aligned comparison results", exact: true }).waitFor();
+    const table = page.getByRole("table", { name: "Recorded match ratings, aligned player forecasts and adjusted form indexes with explicit units", exact: true });
+    await focusControl(table.getByRole("link", { name: "Abde", exact: true }));
+    await semantics(page);
+    const comparisonTitle = page.getByRole("article", { name: "Evidence for Abde", exact: true }).getByRole("heading", { name: "Abde", exact: true }).getByRole("link");
+    await activate(comparisonTitle, page);
+    await page.waitForURL(`${web.origin}/players/8004`);
+    await page.getByRole("heading", { name: "Synthetic demo forwards", exact: true }).waitFor();
+  });
+});
+
 test("keyboard administrators can expand operational tables, source gaps and audit evidence without overflow", { timeout: 120_000 }, async () => {
   for (const width of widths) await journey(width, async (page) => {
     await keyboardLogin(page, "admin");
