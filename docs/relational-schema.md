@@ -7,13 +7,16 @@ The schema follows the thirteen published migrations and the migration ledger cr
 ## Diagrams and export
 
 Start with the connected [football ER overview](diagrams/er-overview.svg), then use
-the complete domain sheets. Gray reference boxes repeat an entity or key already
-defined elsewhere; they do not add tables. The detailed sheets are zoomable vector
-artwork. The [combined PDF](diagrams/database-model.pdf) presents the overview,
+the complete domain sheets. Gray reference boxes in the ER sheets repeat existing
+entities. Each relational sheet shows its principal relations once and repeats each
+required target from another sheet once in full, labeled as a cross-sheet reference.
+Repeated rows denote the same stored relation and add no tables. The detailed
+sheets are zoomable vector artwork. The [combined PDF](diagrams/database-model.pdf)
+presents the overview,
 all five Chen sheets, then all five derived relational sheets in that order.
 It uses detailed poster pages; use the SVG originals or PDF zoom for full labels.
 
-| Domain | Chen ER model | Derived horizontal relational diagram |
+| Domain | Chen ER model | Derived relational diagram |
 | --- | --- | --- |
 | Football and registration | [ER sheet 1](diagrams/er-football.svg) | [Schema sheet 1](diagrams/schema-football.svg) |
 | Standings and rosters | [ER sheet 2](diagrams/er-context.svg) | [Schema sheet 2](diagrams/schema-context.svg) |
@@ -21,12 +24,20 @@ It uses detailed poster pages; use the SVG originals or PDF zoom for full labels
 | Processing and infrastructure | [ER sheet 4](diagrams/er-operations.svg) | [Schema sheet 4](diagrams/schema-operations.svg) |
 | Authentication | [ER sheet 5](diagrams/er-auth.svg) | [Schema sheet 5](diagrams/schema-auth.svg) |
 
-In each relational diagram, a named horizontal strip lists stored attributes, with
-every primary-key component underlined. Each `Fnn` arrow joins an ordered foreign-key
-group to its referenced key. Ticks join the participating cells into one group;
-composite keys are not several independent scalar constraints. Gray strips show
-only the referenced key, with the complete relation’s sheet number. Types, nullable
-columns, defaults, unique expressions and full FK declarations are listed below.
+The relational diagrams follow the row-and-arrow layout in Clark University's
+[Figure 8.14](https://cs.clarku.edu/~cs220/homework/hw9/). Gray rows on a white canvas
+have black outlines and list every stored attribute in database order. Bold,
+uppercase qualified relation names head the rows; quoted mixed-case identifiers
+retain their case. Every primary-key component is underlined. Black arrows connect
+referencing attributes directly to their referenced key attributes.
+
+A scalar foreign key has one arrowhead. For a composite foreign key, one connector
+joins the source components through a shared trunk and branches to
+arrowheads at the corresponding referenced components. This small extension to the
+example groups the source and target columns as one constraint. The ordered source
+and target tuples in the dictionary below define the exact component mapping;
+branch positions do not define tuple order. Types, nullability, defaults, unique
+expressions and full FK declarations are also listed there.
 
 ## Reading the Chen model
 
@@ -102,7 +113,7 @@ The five sheets collectively map to all 31 stored relations. Gray reference rect
 
 ## Logical structure and physical constraints
 
-The relational diagrams show each relation as a **horizontal strip of named attribute cells**, with every primary-key component underlined. Arrows run from the referencing FK attribute group to its referenced key group. A composite FK is one ordered group, even when its connector branches to several cells; it is not several independent scalar FKs. Group labels connect each arrow to the exact constraint in the dictionary. This relational notation is distinct from Chen entity rectangles, relationship diamonds and attribute ellipses.
+The relational diagrams express declared SQL foreign keys with direct arrows between attribute rows. A shared connector trunk groups all components of one composite FK; its branches belong to that single constraint. Match the source relation, target relation and ordered columns to the dictionary for the exact declaration. Full rows labeled as cross-sheet references repeat existing relations so their endpoints can be read locally. Chen entity rectangles, relationship diamonds and attribute ellipses remain in the separate ER sheets.
 
 The diagrams show every stored attribute name, while the dictionary supplies complete types, nullability, PKs, unique constraints and ordered FK source/target columns. Nullable columns remain nullable; missing observations are not converted to zero. The dictionary includes unique indexes as well as table-level unique constraints, including expression-based uniqueness such as case-insensitive email. A nullable FK can make the referenced parent optional for that row; a nonnull FK does not by itself require the parent to have any children.
 
@@ -126,9 +137,10 @@ For the conceptual/relational distinction and the meaning of candidate keys and 
 
 The signatures below contain every stored column after migrations 001–013 and the
 migration runner’s ledger definition. Column order follows PostgreSQL. `Fnn` labels
-are shared with the schema diagrams; each label denotes one whole ordered FK tuple,
-not independently valid scalar references. `PK` marks components of one combined
-primary key. `UNIQUE` includes redundant supersets retained as composite FK targets;
+identify FK declarations within this dictionary; match diagram connectors by their
+source, target and ordered component columns. Each declaration denotes one whole
+ordered FK tuple. `PK` marks components of one combined primary key. `UNIQUE`
+includes redundant supersets retained as composite FK targets;
 it does not assert that every listed tuple is a minimal candidate key. Types use
 PostgreSQL spelling in the dictionary. The diagrams show attribute names.
 

@@ -41,8 +41,11 @@ authorization. The [ingestion guide](ingestion.md) covers MongoDB archives and r
 The [Chen ER model and derived relational schema](relational-schema.md) use two
 separate notations. In the ER model, rectangles denote entities, diamonds denote
 relationships, and ellipses denote attributes. Chosen keys are underlined; double
-lines show total participation. The relational diagrams instead use horizontal
-attribute strips, underlined primary keys and grouped foreign-key arrows.
+lines show total participation. The relational diagrams follow Clark University's
+row-and-arrow layout, with gray attribute rows, underlined primary keys and direct
+foreign-key arrows. A shared branching connector groups each composite foreign key;
+the [notation guide](relational-schema.md#diagrams-and-export) explains its ordered
+components and the full rows repeated as cross-sheet references.
 
 ![Connected football ER overview in Chen notation](diagrams/er-overview.svg)
 
