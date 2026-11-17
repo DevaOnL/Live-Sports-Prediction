@@ -288,7 +288,7 @@ self-hosted through the application bundle.
 | Guide | Contents |
 | --- | --- |
 | [Architecture](docs/architecture.md) | Implemented data flow, credential boundaries and technology choices |
-| [Database](docs/database.md) | Chen ER model, derived horizontal relational diagrams, full schema, constraints, grants and migrations |
+| [Database](docs/database.md) | Chen ER model, Clark-style relational diagrams, full schema, constraints, grants and migrations |
 | [Ingestion](docs/ingestion.md) | Approved real-data coverage, mapping, request budget and recovery |
 | [Forecasting](docs/forecasting.md) | Exact-five selection, formulas, units and unavailable states |
 | [API and authentication](docs/api.md) | Account administration, sessions, viewer reads and administrator commands |

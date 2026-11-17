@@ -1,248 +1,248 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2940.51" height="1735" viewBox="0 0 2940.51 1735" role="img" aria-labelledby="schema-title schema-description">
+<svg xmlns="http://www.w3.org/2000/svg" width="2287.96" height="1221" viewBox="0 0 2287.96 1221" role="img" aria-labelledby="schema-title schema-description">
 <title id="schema-title">Relational schema 4/5: Processing and infrastructure</title>
-<desc id="schema-description">Horizontal relational schema, sheet 4 of five. Processing and infrastructure. Full rows contain every stored attribute; solid underlines mark primary-key components. Each F-number is one whole ordered foreign key, joined by source and target component buses. Gray rows are referenced key subsets from the named schema sheet. Types, nullability, ordered tuples, checks and context rules are in relational-schema.md.</desc>
-<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#626b64"/></marker></defs>
-<rect width="100%" height="100%" fill="#fffdf8"/>
-<g font-family="DejaVu Sans, Arial, sans-serif" fill="#202620">
-<text x="34" y="50" font-size="30" font-weight="600">RELATIONAL SCHEMA · 4/5 · Processing and infrastructure</text>
-<text x="34" y="91" font-size="22">One named horizontal strip per relation. Underlined attributes form one combined primary key.</text>
-<text x="34" y="126" font-size="22">Each Fnn arrow represents one whole ordered FK tuple; joined ticks show every source and target component.</text>
-<text x="34" y="161" font-size="22">Gray strips repeat only referenced key attributes. Types, nullability and full constraints: relational-schema.md.</text>
-<g id="table_sports_outbox" data-table="sports.outbox" data-kind="relation">
-<text x="34" y="218" font-size="25" font-weight="600">sports.outbox</text>
+<desc id="schema-description">Relational schema 4 of five: Processing and infrastructure. Clark Figure 8.14 notation: gray horizontal attribute rows, uppercase relation names, underlined primary-key components and black foreign-key arrows pointing to referenced columns. Each composite foreign key has one branching connector and one shared trunk; column order is recorded in metadata and the relational schema dictionary. Full rows labeled cross-sheet reference repeat a relation from its principal sheet, not another stored relation. Types, nullability, UNIQUE and CHECK constraints are in relational-schema.md.</desc>
+<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="12" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#000"/></marker></defs>
+<rect width="100%" height="100%" fill="#fff"/>
+<g font-family="DejaVu Sans, Arial, sans-serif" fill="#000">
+<g data-fk="audit_log_normalized_revision_id_fkey" data-fk-id="F17" data-source="sports.audit_log" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
+<path d="M 254.67 475 V 508 H 2233.96" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2233.96 508 V 1171" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2233.96 1171 H 64 V 1138" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 254.67 475 V 508 H 2233.96" fill="none" stroke="#000" stroke-width="1.7" data-component="source" data-source-column="normalized_revision_id"/>
+<path d="M 2233.96 508 V 1171" fill="none" stroke="#000" stroke-width="1.7" data-component="trunk"/>
+<path d="M 2233.96 1171 H 64 V 1138" fill="none" stroke="#000" stroke-width="1.7" data-component="target" data-target-column="id" marker-end="url(#fk-arrow)"/>
+</g>
+<g data-fk="jobs_outbox_id_fkey" data-fk-id="F32" data-source="sports.jobs" data-columns="outbox_id" data-target="sports.outbox" data-target-columns="id">
+<path d="M 176.31 295 V 328 H 2252.96" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2252.96 328 V 148" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2252.96 148 H 64 V 115" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 176.31 295 V 328 H 2252.96" fill="none" stroke="#000" stroke-width="1.7" data-component="source" data-source-column="outbox_id"/>
+<path d="M 2252.96 328 V 148" fill="none" stroke="#000" stroke-width="1.7" data-component="trunk"/>
+<path d="M 2252.96 148 H 64 V 115" fill="none" stroke="#000" stroke-width="1.7" data-component="target" data-target-column="id" marker-end="url(#fk-arrow)"/>
+</g>
+<g data-kind="relation" data-table="sports.outbox">
+<text x="28" y="46" font-size="28" font-weight="bold">SPORTS.OUTBOX</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="270" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="274" x2="102.2" y2="274" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="63" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="98" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="104" x2="74.95" y2="104" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="event_type" data-pk="false">
-<rect x="146" y="235" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="228.5" y="270" text-anchor="middle" font-size="22">event_type</text>
+<rect x="100" y="63" width="169.97" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="184.99" y="98" font-size="24" text-anchor="middle">event_type</text>
 </g>
 <g data-column="aggregate_type" data-pk="false">
-<rect x="311" y="235" width="217.4" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="419.7" y="270" text-anchor="middle" font-size="22">aggregate_type</text>
+<rect x="269.97" y="63" width="225" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="382.47" y="98" font-size="24" text-anchor="middle">aggregate_type</text>
 </g>
 <g data-column="aggregate_id" data-pk="false">
-<rect x="528.4" y="235" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="624" y="270" text-anchor="middle" font-size="22">aggregate_id</text>
+<rect x="494.97" y="63" width="193.3" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="591.62" y="98" font-size="24" text-anchor="middle">aggregate_id</text>
 </g>
 <g data-column="deduplication_key" data-pk="false">
-<rect x="719.6" y="235" width="256.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="847.95" y="270" text-anchor="middle" font-size="22">deduplication_key</text>
+<rect x="688.27" y="63" width="252.94" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="814.74" y="98" font-size="24" text-anchor="middle">deduplication_key</text>
 </g>
 <g data-column="payload" data-pk="false">
-<rect x="976.3" y="235" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1039.15" y="270" text-anchor="middle" font-size="22">payload</text>
+<rect x="941.21" y="63" width="131.44" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1006.93" y="98" font-size="24" text-anchor="middle">payload</text>
 </g>
 <g data-column="created_at" data-pk="false">
-<rect x="1102" y="235" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1184.5" y="270" text-anchor="middle" font-size="22">created_at</text>
+<rect x="1072.65" y="63" width="163.53" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1154.42" y="98" font-size="24" text-anchor="middle">created_at</text>
 </g>
 <g data-column="published_at" data-pk="false">
-<rect x="1267" y="235" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1362.6" y="270" text-anchor="middle" font-size="22">published_at</text>
+<rect x="1236.18" y="63" width="188.86" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1330.61" y="98" font-size="24" text-anchor="middle">published_at</text>
 </g>
 </g>
-<text x="34" y="323" font-size="20" fill="#505750">UNIQUE (deduplication_key)</text>
-<line x1="34" y1="396" x2="1766" y2="396" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_sports_jobs" data-table="sports.jobs" data-kind="relation">
-<text x="34" y="424" font-size="25" font-weight="600">sports.jobs</text>
+<g data-kind="relation" data-table="sports.jobs">
+<text x="28" y="226" font-size="28" font-weight="bold">SPORTS.JOBS</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="441" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="476" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="480" x2="102.2" y2="480" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="243" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="278" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="284" x2="74.95" y2="284" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="outbox_id" data-pk="false">
-<rect x="146" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="221.95" y="476" text-anchor="middle" font-size="22">outbox_id</text>
+<rect x="100" y="243" width="152.61" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="176.31" y="278" font-size="24" text-anchor="middle">outbox_id</text>
 </g>
 <g data-column="kind" data-pk="false">
-<rect x="297.9" y="441" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="353.9" y="476" text-anchor="middle" font-size="22">kind</text>
+<rect x="252.61" y="243" width="87.03" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="296.12" y="278" font-size="24" text-anchor="middle">kind</text>
 </g>
 <g data-column="deduplication_key" data-pk="false">
-<rect x="409.9" y="441" width="256.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="538.25" y="476" text-anchor="middle" font-size="22">deduplication_key</text>
+<rect x="339.64" y="243" width="252.94" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="466.11" y="278" font-size="24" text-anchor="middle">deduplication_key</text>
 </g>
 <g data-column="payload" data-pk="false">
-<rect x="666.6" y="441" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="729.45" y="476" text-anchor="middle" font-size="22">payload</text>
+<rect x="592.58" y="243" width="131.44" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="658.3" y="278" font-size="24" text-anchor="middle">payload</text>
 </g>
 <g data-column="status" data-pk="false">
-<rect x="792.3" y="441" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="848.6" y="476" text-anchor="middle" font-size="22">status</text>
+<rect x="724.02" y="243" width="109.73" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="778.88" y="278" font-size="24" text-anchor="middle">status</text>
 </g>
 <g data-column="attempts" data-pk="false">
-<rect x="904.9" y="441" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="974.3" y="476" text-anchor="middle" font-size="22">attempts</text>
+<rect x="833.75" y="243" width="144.8" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="906.15" y="278" font-size="24" text-anchor="middle">attempts</text>
 </g>
 <g data-column="max_attempts" data-pk="false">
-<rect x="1043.7" y="441" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1139.3" y="476" text-anchor="middle" font-size="22">max_attempts</text>
+<rect x="978.55" y="243" width="209.08" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1083.09" y="278" font-size="24" text-anchor="middle">max_attempts</text>
 </g>
 <g data-column="run_after" data-pk="false">
-<rect x="1234.9" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1310.85" y="476" text-anchor="middle" font-size="22">run_after</text>
+<rect x="1187.63" y="243" width="145.09" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1260.17" y="278" font-size="24" text-anchor="middle">run_after</text>
 </g>
 <g data-column="locked_by" data-pk="false">
-<rect x="1386.8" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1462.75" y="476" text-anchor="middle" font-size="22">locked_by</text>
+<rect x="1332.72" y="243" width="155.05" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1410.24" y="278" font-size="24" text-anchor="middle">locked_by</text>
 </g>
 <g data-column="locked_until" data-pk="false">
-<rect x="1538.7" y="441" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1634.3" y="476" text-anchor="middle" font-size="22">locked_until</text>
+<rect x="1487.77" y="243" width="178.8" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1577.17" y="278" font-size="24" text-anchor="middle">locked_until</text>
 </g>
 <g data-column="last_error" data-pk="false">
-<rect x="1729.9" y="441" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1812.4" y="476" text-anchor="middle" font-size="22">last_error</text>
+<rect x="1666.57" y="243" width="149.41" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1741.27" y="278" font-size="24" text-anchor="middle">last_error</text>
 </g>
 <g data-column="created_at" data-pk="false">
-<rect x="1894.9" y="441" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1977.4" y="476" text-anchor="middle" font-size="22">created_at</text>
+<rect x="1815.98" y="243" width="163.53" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1897.74" y="278" font-size="24" text-anchor="middle">created_at</text>
 </g>
 <g data-column="completed_at" data-pk="false">
-<rect x="2059.9" y="441" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="2155.5" y="476" text-anchor="middle" font-size="22">completed_at</text>
+<rect x="1979.51" y="243" width="199.45" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="2079.23" y="278" font-size="24" text-anchor="middle">completed_at</text>
 </g>
 </g>
-<g id="schema_fk_F32" data-fk="jobs_outbox_id_fkey" data-fk-id="F32" data-source="sports.jobs" data-columns="outbox_id" data-target="sports.outbox" data-target-columns="id">
-<path d="M 221.95 495 V 631" stroke="#fffdf8" stroke-width="5" fill="none"/>
-<path d="M 221.95 495 V 631" stroke="#727973" stroke-width="1.5" fill="none"/>
-<line x1="217.95" y1="499" x2="225.95" y2="499" stroke="#727973" stroke-width="1.4"/>
-<path d="M 221.95 631 H 2535.1 V 609" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
-<path d="M 221.95 631 H 2535.1 V 609" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
-<circle cx="221.95" cy="631" r="2.2" fill="#626b64"/>
-<line x1="2535.1" y1="609" x2="2535.1" y2="609" stroke="#626b64" stroke-width="1.8"/>
-<line x1="2535.1" y1="609" x2="2535.1" y2="590" stroke="#626b64" stroke-width="1.5"/>
-<line x1="2531.1" y1="594" x2="2539.1" y2="594" stroke="#626b64" stroke-width="1.4"/>
-<rect x="2279.1" y="613" width="74" height="30" rx="3" fill="#fffdf8"/>
-<text x="2287.1" y="635" font-size="20" font-weight="600">F32</text>
-<text x="2479.1" y="523" font-size="20" fill="#4f5750">sports.outbox · key reference · schema 4</text>
-<g data-reference-column="id">
-<rect x="2479.1" y="536" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
-<text x="2535.1" y="571" text-anchor="middle" font-size="22">id</text>
-<line x1="2522.9" y1="575" x2="2547.3" y2="575" stroke="#202420" stroke-width="1.5"/>
-</g>
-</g>
-<text x="34" y="674" font-size="20" fill="#505750">UNIQUE (deduplication_key)</text>
-<line x1="34" y1="747" x2="2896.51" y2="747" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_sports_audit_log" data-table="sports.audit_log" data-kind="relation">
-<text x="34" y="775" font-size="25" font-weight="600">sports.audit_log</text>
+<g data-kind="relation" data-table="sports.audit_log">
+<text x="28" y="406" font-size="28" font-weight="bold">SPORTS.AUDIT_LOG</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="792" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="827" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="831" x2="102.2" y2="831" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="423" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="458" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="464" x2="74.95" y2="464" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="normalized_revision_id" data-pk="false">
-<rect x="146" y="792" width="322.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="307.1" y="827" text-anchor="middle" font-size="22">normalized_revision_id</text>
+<rect x="100" y="423" width="309.34" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="254.67" y="458" font-size="24" text-anchor="middle">normalized_revision_id</text>
 </g>
 <g data-column="actor_type" data-pk="false">
-<rect x="468.2" y="792" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="550.7" y="827" text-anchor="middle" font-size="22">actor_type</text>
+<rect x="409.34" y="423" width="163.48" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="491.08" y="458" font-size="24" text-anchor="middle">actor_type</text>
 </g>
 <g data-column="actor_id" data-pk="false">
-<rect x="633.2" y="792" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="702.6" y="827" text-anchor="middle" font-size="22">actor_id</text>
+<rect x="572.82" y="423" width="131.78" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="638.71" y="458" font-size="24" text-anchor="middle">actor_id</text>
 </g>
 <g data-column="action" data-pk="false">
-<rect x="772" y="792" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="828.3" y="827" text-anchor="middle" font-size="22">action</text>
+<rect x="704.6" y="423" width="109.89" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="759.54" y="458" font-size="24" text-anchor="middle">action</text>
 </g>
 <g data-column="entity_type" data-pk="false">
-<rect x="884.6" y="792" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="973.65" y="827" text-anchor="middle" font-size="22">entity_type</text>
+<rect x="814.49" y="423" width="171.28" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="900.13" y="458" font-size="24" text-anchor="middle">entity_type</text>
 </g>
 <g data-column="entity_key" data-pk="false">
-<rect x="1062.7" y="792" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1145.2" y="827" text-anchor="middle" font-size="22">entity_key</text>
+<rect x="985.77" y="423" width="159.69" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1065.61" y="458" font-size="24" text-anchor="middle">entity_key</text>
 </g>
 <g data-column="detail" data-pk="false">
-<rect x="1227.7" y="792" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1284" y="827" text-anchor="middle" font-size="22">detail</text>
+<rect x="1145.46" y="423" width="103.45" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1197.18" y="458" font-size="24" text-anchor="middle">detail</text>
 </g>
 <g data-column="occurred_at" data-pk="false">
-<rect x="1340.3" y="792" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1429.35" y="827" text-anchor="middle" font-size="22">occurred_at</text>
+<rect x="1248.91" y="423" width="177.22" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1337.52" y="458" font-size="24" text-anchor="middle">occurred_at</text>
 </g>
 </g>
-<g id="schema_fk_F17" data-fk="audit_log_normalized_revision_id_fkey" data-fk-id="F17" data-source="sports.audit_log" data-columns="normalized_revision_id" data-target="sports.normalized_revisions" data-target-columns="id">
-<path d="M 307.1 846 V 982" stroke="#fffdf8" stroke-width="5" fill="none"/>
-<path d="M 307.1 846 V 982" stroke="#727973" stroke-width="1.5" fill="none"/>
-<line x1="303.1" y1="850" x2="311.1" y2="850" stroke="#727973" stroke-width="1.4"/>
-<path d="M 307.1 982 H 1802.4 V 960" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
-<path d="M 307.1 982 H 1802.4 V 960" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
-<circle cx="307.1" cy="982" r="2.2" fill="#626b64"/>
-<line x1="1802.4" y1="960" x2="1802.4" y2="960" stroke="#626b64" stroke-width="1.8"/>
-<line x1="1802.4" y1="960" x2="1802.4" y2="941" stroke="#626b64" stroke-width="1.5"/>
-<line x1="1798.4" y1="945" x2="1806.4" y2="945" stroke="#626b64" stroke-width="1.4"/>
-<rect x="1546.4" y="964" width="74" height="30" rx="3" fill="#fffdf8"/>
-<text x="1554.4" y="986" font-size="20" font-weight="600">F17</text>
-<text x="1746.4" y="874" font-size="20" fill="#4f5750">sports.normalized_revisions · key reference · schema 3</text>
-<g data-reference-column="id">
-<rect x="1746.4" y="887" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
-<text x="1802.4" y="922" text-anchor="middle" font-size="22">id</text>
-<line x1="1790.2" y1="926" x2="1814.6" y2="926" stroke="#202420" stroke-width="1.5"/>
-</g>
-</g>
-<line x1="34" y1="1069" x2="2896.51" y2="1069" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_sports_provider_requests" data-table="sports.provider_requests" data-kind="relation">
-<text x="34" y="1097" font-size="25" font-weight="600">sports.provider_requests</text>
+<g data-kind="relation" data-table="sports.provider_requests">
+<text x="28" y="586" font-size="28" font-weight="bold">SPORTS.PROVIDER_REQUESTS</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="1114" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="1149" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="1153" x2="102.2" y2="1153" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="603" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="638" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="644" x2="74.95" y2="644" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="action" data-pk="false">
-<rect x="146" y="1114" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="202.3" y="1149" text-anchor="middle" font-size="22">action</text>
+<rect x="100" y="603" width="109.89" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="154.94" y="638" font-size="24" text-anchor="middle">action</text>
 </g>
 <g data-column="resource_key" data-pk="false">
-<rect x="258.6" y="1114" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="354.2" y="1149" text-anchor="middle" font-size="22">resource_key</text>
+<rect x="209.89" y="603" width="193.84" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="306.81" y="638" font-size="24" text-anchor="middle">resource_key</text>
 </g>
 <g data-column="attempted_at" data-pk="false">
-<rect x="449.8" y="1114" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="545.4" y="1149" text-anchor="middle" font-size="22">attempted_at</text>
+<rect x="403.73" y="603" width="198.41" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="502.94" y="638" font-size="24" text-anchor="middle">attempted_at</text>
 </g>
 </g>
-<text x="34" y="1202" font-size="20" fill="#646c65">No declared foreign keys or alternate UNIQUE constraints.</text>
-<line x1="34" y1="1275" x2="2896.51" y2="1275" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_sports_enrichment_request_quota" data-table="sports.enrichment_request_quota" data-kind="relation">
-<text x="34" y="1303" font-size="25" font-weight="600">sports.enrichment_request_quota</text>
+<g data-kind="relation" data-table="sports.enrichment_request_quota">
+<text x="28" y="747" font-size="28" font-weight="bold">SPORTS.ENRICHMENT_REQUEST_QUOTA</text>
 <g data-column="provider" data-pk="true">
-<rect x="34" y="1320" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="103.4" y="1355" text-anchor="middle" font-size="22">provider</text>
-<line x1="54.6" y1="1359" x2="152.2" y2="1359" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="764" width="136.02" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="96.01" y="799" font-size="24" text-anchor="middle">provider</text>
+<line x1="46" y1="805" x2="146.02" y2="805" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="utc_day" data-pk="false">
-<rect x="172.8" y="1320" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="235.65" y="1355" text-anchor="middle" font-size="22">utc_day</text>
+<rect x="164.02" y="764" width="129.97" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="229" y="799" font-size="24" text-anchor="middle">utc_day</text>
 </g>
 <g data-column="remaining" data-pk="false">
-<rect x="298.5" y="1320" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="374.45" y="1355" text-anchor="middle" font-size="22">remaining</text>
+<rect x="293.99" y="764" width="157.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="372.59" y="799" font-size="24" text-anchor="middle">remaining</text>
 </g>
 </g>
-<text x="34" y="1408" font-size="20" fill="#646c65">No declared foreign keys or alternate UNIQUE constraints.</text>
-<line x1="34" y1="1481" x2="2896.51" y2="1481" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_infra_schema_migrations" data-table="infra.schema_migrations" data-kind="relation">
-<text x="34" y="1509" font-size="25" font-weight="600">infra.schema_migrations</text>
+<g data-kind="relation" data-table="infra.schema_migrations">
+<text x="28" y="908" font-size="28" font-weight="bold">INFRA.SCHEMA_MIGRATIONS</text>
 <g data-column="filename" data-pk="true">
-<rect x="34" y="1526" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="103.4" y="1561" text-anchor="middle" font-size="22">filename</text>
-<line x1="54.6" y1="1565" x2="152.2" y2="1565" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="925" width="140.62" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="98.31" y="960" font-size="24" text-anchor="middle">filename</text>
+<line x1="46" y1="966" x2="150.62" y2="966" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="checksum" data-pk="false">
-<rect x="172.8" y="1526" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="242.2" y="1561" text-anchor="middle" font-size="22">checksum</text>
+<rect x="168.62" y="925" width="157.39" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="247.31" y="960" font-size="24" text-anchor="middle">checksum</text>
 </g>
 <g data-column="applied_at" data-pk="false">
-<rect x="311.6" y="1526" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="394.1" y="1561" text-anchor="middle" font-size="22">applied_at</text>
+<rect x="326.01" y="925" width="160.62" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="406.32" y="960" font-size="24" text-anchor="middle">applied_at</text>
 </g>
 </g>
-<text x="34" y="1614" font-size="20" fill="#646c65">No declared foreign keys or alternate UNIQUE constraints.</text>
-<line x1="34" y1="1687" x2="2896.51" y2="1687" stroke="#d8dcd5" stroke-width="1"/>
+<g data-kind="reference" data-reference-table="sports.normalized_revisions">
+<text x="28" y="1069" font-size="28" font-weight="bold">SPORTS.NORMALIZED_REVISIONS</text>
+<text x="580.75" y="1069" font-size="18">(cross-sheet reference: schema 3)</text>
+<g data-reference-column="id">
+<rect x="28" y="1086" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="1121" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="1127" x2="74.95" y2="1127" stroke="#000" stroke-width="1.5"/>
+</g>
+<g data-reference-column="ordinal">
+<rect x="100" y="1086" width="118.64" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="159.32" y="1121" font-size="24" text-anchor="middle">ordinal</text>
+</g>
+<g data-reference-column="source_revision_id">
+<rect x="218.64" y="1086" width="255.69" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="346.49" y="1121" font-size="24" text-anchor="middle">source_revision_id</text>
+</g>
+<g data-reference-column="entity_type">
+<rect x="474.33" y="1086" width="171.28" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="559.97" y="1121" font-size="24" text-anchor="middle">entity_type</text>
+</g>
+<g data-reference-column="entity_key">
+<rect x="645.61" y="1086" width="159.69" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="725.46" y="1121" font-size="24" text-anchor="middle">entity_key</text>
+</g>
+<g data-reference-column="content_sha256">
+<rect x="805.3" y="1086" width="228.12" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="919.36" y="1121" font-size="24" text-anchor="middle">content_sha256</text>
+</g>
+<g data-reference-column="parent_id">
+<rect x="1033.42" y="1086" width="148.58" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1107.71" y="1121" font-size="24" text-anchor="middle">parent_id</text>
+</g>
+<g data-reference-column="created_at">
+<rect x="1182" y="1086" width="163.53" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1263.77" y="1121" font-size="24" text-anchor="middle">created_at</text>
+</g>
+</g>
 </g></svg>

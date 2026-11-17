@@ -1,239 +1,203 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2877.9" height="1558" viewBox="0 0 2877.9 1558" role="img" aria-labelledby="schema-title schema-description">
+<svg xmlns="http://www.w3.org/2000/svg" width="2302.82" height="899" viewBox="0 0 2302.82 899" role="img" aria-labelledby="schema-title schema-description">
 <title id="schema-title">Relational schema 5/5: Authentication storage</title>
-<desc id="schema-description">Horizontal relational schema, sheet 5 of five. Authentication storage. Full rows contain every stored attribute; solid underlines mark primary-key components. Each F-number is one whole ordered foreign key, joined by source and target component buses. Gray rows are referenced key subsets from the named schema sheet. Types, nullability, ordered tuples, checks and context rules are in relational-schema.md.</desc>
-<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#626b64"/></marker></defs>
-<rect width="100%" height="100%" fill="#fffdf8"/>
-<g font-family="DejaVu Sans, Arial, sans-serif" fill="#202620">
-<text x="34" y="50" font-size="30" font-weight="600">RELATIONAL SCHEMA · 5/5 · Authentication storage</text>
-<text x="34" y="91" font-size="22">One named horizontal strip per relation. Underlined attributes form one combined primary key.</text>
-<text x="34" y="126" font-size="22">Each Fnn arrow represents one whole ordered FK tuple; joined ticks show every source and target component.</text>
-<text x="34" y="161" font-size="22">Gray strips repeat only referenced key attributes. Types, nullability and full constraints: relational-schema.md.</text>
-<g id="table_auth_user" data-table="auth.user" data-kind="relation">
-<text x="34" y="218" font-size="25" font-weight="600">auth.user</text>
+<desc id="schema-description">Relational schema 5 of five: Authentication storage. Clark Figure 8.14 notation: gray horizontal attribute rows, uppercase relation names, underlined primary-key components and black foreign-key arrows pointing to referenced columns. Each composite foreign key has one branching connector and one shared trunk; column order is recorded in metadata and the relational schema dictionary. Full rows labeled cross-sheet reference repeat a relation from its principal sheet, not another stored relation. Types, nullability, UNIQUE and CHECK constraints are in relational-schema.md.</desc>
+<defs><marker id="fk-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="12" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#000"/></marker></defs>
+<rect width="100%" height="100%" fill="#fff"/>
+<g font-family="DejaVu Sans, Arial, sans-serif" fill="#000">
+<g data-fk="account_userId_fkey" data-fk-id="F01" data-source="auth.account" data-columns="userId" data-target="auth.user" data-target-columns="id">
+<path d="M 467.61 494 V 527 H 2248.82" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2248.82 527 V 148" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2248.82 148 H 57 V 115" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 467.61 494 V 527 H 2248.82" fill="none" stroke="#000" stroke-width="1.7" data-component="source" data-source-column="userId"/>
+<path d="M 2248.82 527 V 148" fill="none" stroke="#000" stroke-width="1.7" data-component="trunk"/>
+<path d="M 2248.82 148 H 57 V 115" fill="none" stroke="#000" stroke-width="1.7" data-component="target" data-target-column="id" marker-end="url(#fk-arrow)"/>
+</g>
+<g data-fk="session_userId_fkey" data-fk-id="F02" data-source="auth.session" data-columns="userId" data-target="auth.user" data-target-columns="id">
+<path d="M 1033.85 314 V 347 H 2267.82" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2267.82 347 V 167" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 2267.82 167 H 71 V 115" fill="none" stroke="#fff" stroke-width="6"/>
+<path d="M 1033.85 314 V 347 H 2267.82" fill="none" stroke="#000" stroke-width="1.7" data-component="source" data-source-column="userId"/>
+<path d="M 2267.82 347 V 167" fill="none" stroke="#000" stroke-width="1.7" data-component="trunk"/>
+<path d="M 2267.82 167 H 71 V 115" fill="none" stroke="#000" stroke-width="1.7" data-component="target" data-target-column="id" marker-end="url(#fk-arrow)"/>
+</g>
+<g data-kind="relation" data-table="auth.user">
+<text x="28" y="46" font-size="28" font-weight="bold">AUTH.&quot;user&quot;</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="270" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="274" x2="102.2" y2="274" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="63" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="98" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="104" x2="74.95" y2="104" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="name" data-pk="false">
-<rect x="146" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="202" y="270" text-anchor="middle" font-size="22">name</text>
+<rect x="100" y="63" width="104.06" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="152.03" y="98" font-size="24" text-anchor="middle">name</text>
 </g>
 <g data-column="email" data-pk="false">
-<rect x="258" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="314" y="270" text-anchor="middle" font-size="22">email</text>
+<rect x="204.06" y="63" width="102.19" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="255.16" y="98" font-size="24" text-anchor="middle">email</text>
 </g>
 <g data-column="emailVerified" data-pk="false">
-<rect x="370" y="235" width="204.3" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="472.15" y="270" text-anchor="middle" font-size="22">emailVerified</text>
+<rect x="306.25" y="63" width="193.19" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="402.85" y="98" font-size="24" text-anchor="middle">emailVerified</text>
 </g>
 <g data-column="image" data-pk="false">
-<rect x="574.3" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="630.3" y="270" text-anchor="middle" font-size="22">image</text>
+<rect x="499.44" y="63" width="110.75" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="554.82" y="98" font-size="24" text-anchor="middle">image</text>
 </g>
 <g data-column="role" data-pk="false">
-<rect x="686.3" y="235" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="742.3" y="270" text-anchor="middle" font-size="22">role</text>
+<rect x="610.19" y="63" width="81.47" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="650.93" y="98" font-size="24" text-anchor="middle">role</text>
 </g>
 <g data-column="createdAt" data-pk="false">
-<rect x="798.3" y="235" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="874.25" y="270" text-anchor="middle" font-size="22">createdAt</text>
+<rect x="691.66" y="63" width="152.83" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="768.08" y="98" font-size="24" text-anchor="middle">createdAt</text>
 </g>
 <g data-column="updatedAt" data-pk="false">
-<rect x="950.2" y="235" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1026.15" y="270" text-anchor="middle" font-size="22">updatedAt</text>
+<rect x="844.49" y="63" width="161.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="925.09" y="98" font-size="24" text-anchor="middle">updatedAt</text>
 </g>
 </g>
-<text x="34" y="323" font-size="20" fill="#505750">UNIQUE INDEX (lower(email))</text>
-<line x1="34" y1="396" x2="1766" y2="396" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_auth_session" data-table="auth.session" data-kind="relation">
-<text x="34" y="424" font-size="25" font-weight="600">auth.session</text>
+<g data-kind="relation" data-table="auth.session">
+<text x="28" y="245" font-size="28" font-weight="bold">AUTH.SESSION</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="441" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="476" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="480" x2="102.2" y2="480" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="262" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="297" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="303" x2="74.95" y2="303" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="expiresAt" data-pk="false">
-<rect x="146" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="221.95" y="476" text-anchor="middle" font-size="22">expiresAt</text>
+<rect x="100" y="262" width="148.47" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="174.24" y="297" font-size="24" text-anchor="middle">expiresAt</text>
 </g>
 <g data-column="token" data-pk="false">
-<rect x="297.9" y="441" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="353.9" y="476" text-anchor="middle" font-size="22">token</text>
+<rect x="248.47" y="262" width="103.12" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="300.03" y="297" font-size="24" text-anchor="middle">token</text>
 </g>
 <g data-column="createdAt" data-pk="false">
-<rect x="409.9" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="485.85" y="476" text-anchor="middle" font-size="22">createdAt</text>
+<rect x="351.59" y="262" width="152.83" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="428.01" y="297" font-size="24" text-anchor="middle">createdAt</text>
 </g>
 <g data-column="updatedAt" data-pk="false">
-<rect x="561.8" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="637.75" y="476" text-anchor="middle" font-size="22">updatedAt</text>
+<rect x="504.42" y="262" width="161.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="585.02" y="297" font-size="24" text-anchor="middle">updatedAt</text>
 </g>
 <g data-column="ipAddress" data-pk="false">
-<rect x="713.7" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="789.65" y="476" text-anchor="middle" font-size="22">ipAddress</text>
+<rect x="665.62" y="262" width="153.48" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="742.36" y="297" font-size="24" text-anchor="middle">ipAddress</text>
 </g>
 <g data-column="userAgent" data-pk="false">
-<rect x="865.6" y="441" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="941.55" y="476" text-anchor="middle" font-size="22">userAgent</text>
+<rect x="819.1" y="262" width="159.41" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="898.81" y="297" font-size="24" text-anchor="middle">userAgent</text>
 </g>
 <g data-column="userId" data-pk="false">
-<rect x="1017.5" y="441" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1073.8" y="476" text-anchor="middle" font-size="22">userId</text>
+<rect x="978.51" y="262" width="110.67" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1033.85" y="297" font-size="24" text-anchor="middle">userId</text>
 </g>
 <g data-column="persistent" data-pk="false">
-<rect x="1130.1" y="441" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1212.6" y="476" text-anchor="middle" font-size="22">persistent</text>
+<rect x="1089.18" y="262" width="156.34" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1167.35" y="297" font-size="24" text-anchor="middle">persistent</text>
 </g>
 </g>
-<g id="schema_fk_F02" data-fk="session_userId_fkey" data-fk-id="F02" data-source="auth.session" data-columns="userId" data-target="auth.user" data-target-columns="id">
-<path d="M 1073.8 495 V 631" stroke="#fffdf8" stroke-width="5" fill="none"/>
-<path d="M 1073.8 495 V 631" stroke="#727973" stroke-width="1.5" fill="none"/>
-<line x1="1069.8" y1="499" x2="1077.8" y2="499" stroke="#727973" stroke-width="1.4"/>
-<path d="M 1073.8 631 H 1579.1 V 609" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
-<path d="M 1073.8 631 H 1579.1 V 609" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
-<circle cx="1073.8" cy="631" r="2.2" fill="#626b64"/>
-<line x1="1579.1" y1="609" x2="1579.1" y2="609" stroke="#626b64" stroke-width="1.8"/>
-<line x1="1579.1" y1="609" x2="1579.1" y2="590" stroke="#626b64" stroke-width="1.5"/>
-<line x1="1575.1" y1="594" x2="1583.1" y2="594" stroke="#626b64" stroke-width="1.4"/>
-<rect x="1323.1" y="613" width="74" height="30" rx="3" fill="#fffdf8"/>
-<text x="1331.1" y="635" font-size="20" font-weight="600">F02</text>
-<text x="1523.1" y="523" font-size="20" fill="#4f5750">auth.user · key reference · schema 5</text>
-<g data-reference-column="id">
-<rect x="1523.1" y="536" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
-<text x="1579.1" y="571" text-anchor="middle" font-size="22">id</text>
-<line x1="1566.9" y1="575" x2="1591.3" y2="575" stroke="#202420" stroke-width="1.5"/>
-</g>
-</g>
-<text x="34" y="674" font-size="20" fill="#505750">UNIQUE (token)</text>
-<line x1="34" y1="747" x2="1898.8" y2="747" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_auth_account" data-table="auth.account" data-kind="relation">
-<text x="34" y="775" font-size="25" font-weight="600">auth.account</text>
+<g data-kind="relation" data-table="auth.account">
+<text x="28" y="425" font-size="28" font-weight="bold">AUTH.ACCOUNT</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="792" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="827" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="831" x2="102.2" y2="831" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="442" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="477" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="483" x2="74.95" y2="483" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="accountId" data-pk="false">
-<rect x="146" y="792" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="221.95" y="827" text-anchor="middle" font-size="22">accountId</text>
+<rect x="100" y="442" width="153.95" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="176.97" y="477" font-size="24" text-anchor="middle">accountId</text>
 </g>
 <g data-column="providerId" data-pk="false">
-<rect x="297.9" y="792" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="380.4" y="827" text-anchor="middle" font-size="22">providerId</text>
+<rect x="253.95" y="442" width="158.33" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="333.12" y="477" font-size="24" text-anchor="middle">providerId</text>
 </g>
 <g data-column="userId" data-pk="false">
-<rect x="462.9" y="792" width="112.6" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="519.2" y="827" text-anchor="middle" font-size="22">userId</text>
+<rect x="412.28" y="442" width="110.67" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="467.61" y="477" font-size="24" text-anchor="middle">userId</text>
 </g>
 <g data-column="accessToken" data-pk="false">
-<rect x="575.5" y="792" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="664.55" y="827" text-anchor="middle" font-size="22">accessToken</text>
+<rect x="522.95" y="442" width="185.17" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="615.53" y="477" font-size="24" text-anchor="middle">accessToken</text>
 </g>
 <g data-column="refreshToken" data-pk="false">
-<rect x="753.6" y="792" width="191.2" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="849.2" y="827" text-anchor="middle" font-size="22">refreshToken</text>
+<rect x="708.12" y="442" width="188.69" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="802.46" y="477" font-size="24" text-anchor="middle">refreshToken</text>
 </g>
 <g data-column="idToken" data-pk="false">
-<rect x="944.8" y="792" width="125.7" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1007.65" y="827" text-anchor="middle" font-size="22">idToken</text>
+<rect x="896.81" y="442" width="126.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="959.91" y="477" font-size="24" text-anchor="middle">idToken</text>
 </g>
 <g data-column="accessTokenExpiresAt" data-pk="false">
-<rect x="1070.5" y="792" width="296" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1218.5" y="827" text-anchor="middle" font-size="22">accessTokenExpiresAt</text>
+<rect x="1023.01" y="442" width="298.47" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1172.24" y="477" font-size="24" text-anchor="middle">accessTokenExpiresAt</text>
 </g>
 <g data-column="refreshTokenExpiresAt" data-pk="false">
-<rect x="1366.5" y="792" width="309.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1521.05" y="827" text-anchor="middle" font-size="22">refreshTokenExpiresAt</text>
+<rect x="1321.48" y="442" width="301.98" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1472.47" y="477" font-size="24" text-anchor="middle">refreshTokenExpiresAt</text>
 </g>
 <g data-column="scope" data-pk="false">
-<rect x="1675.6" y="792" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1731.6" y="827" text-anchor="middle" font-size="22">scope</text>
+<rect x="1623.46" y="442" width="106.39" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1676.65" y="477" font-size="24" text-anchor="middle">scope</text>
 </g>
 <g data-column="password" data-pk="false">
-<rect x="1787.6" y="792" width="138.8" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="1857" y="827" text-anchor="middle" font-size="22">password</text>
+<rect x="1729.85" y="442" width="149.94" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1804.82" y="477" font-size="24" text-anchor="middle">password</text>
 </g>
 <g data-column="createdAt" data-pk="false">
-<rect x="1926.4" y="792" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="2002.35" y="827" text-anchor="middle" font-size="22">createdAt</text>
+<rect x="1879.79" y="442" width="152.83" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="1956.21" y="477" font-size="24" text-anchor="middle">createdAt</text>
 </g>
 <g data-column="updatedAt" data-pk="false">
-<rect x="2078.3" y="792" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="2154.25" y="827" text-anchor="middle" font-size="22">updatedAt</text>
+<rect x="2032.62" y="442" width="161.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="2113.22" y="477" font-size="24" text-anchor="middle">updatedAt</text>
 </g>
 </g>
-<g id="schema_fk_F01" data-fk="account_userId_fkey" data-fk-id="F01" data-source="auth.account" data-columns="userId" data-target="auth.user" data-target-columns="id">
-<path d="M 519.2 846 V 982" stroke="#fffdf8" stroke-width="5" fill="none"/>
-<path d="M 519.2 846 V 982" stroke="#727973" stroke-width="1.5" fill="none"/>
-<line x1="515.2" y1="850" x2="523.2" y2="850" stroke="#727973" stroke-width="1.4"/>
-<path d="M 519.2 982 H 2514.2 V 960" stroke="#fffdf8" stroke-width="5.5" fill="none"/>
-<path d="M 519.2 982 H 2514.2 V 960" stroke="#626b64" stroke-width="1.8" fill="none" marker-end="url(#fk-arrow)"/>
-<circle cx="519.2" cy="982" r="2.2" fill="#626b64"/>
-<line x1="2514.2" y1="960" x2="2514.2" y2="960" stroke="#626b64" stroke-width="1.8"/>
-<line x1="2514.2" y1="960" x2="2514.2" y2="941" stroke="#626b64" stroke-width="1.5"/>
-<line x1="2510.2" y1="945" x2="2518.2" y2="945" stroke="#626b64" stroke-width="1.4"/>
-<rect x="2258.2" y="964" width="74" height="30" rx="3" fill="#fffdf8"/>
-<text x="2266.2" y="986" font-size="20" font-weight="600">F01</text>
-<text x="2458.2" y="874" font-size="20" fill="#4f5750">auth.user · key reference · schema 5</text>
-<g data-reference-column="id">
-<rect x="2458.2" y="887" width="112" height="54" fill="#eceeeb" stroke="#747975" stroke-width="1.25"/>
-<text x="2514.2" y="922" text-anchor="middle" font-size="22">id</text>
-<line x1="2502" y1="926" x2="2526.4" y2="926" stroke="#202420" stroke-width="1.5"/>
-</g>
-</g>
-<text x="34" y="1025" font-size="20" fill="#505750">UNIQUE (providerId, accountId)</text>
-<line x1="34" y1="1098" x2="2833.9" y2="1098" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_auth_verification" data-table="auth.verification" data-kind="relation">
-<text x="34" y="1126" font-size="25" font-weight="600">auth.verification</text>
+<g data-kind="relation" data-table="auth.verification">
+<text x="28" y="605" font-size="28" font-weight="bold">AUTH.VERIFICATION</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="1143" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="1178" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="1182" x2="102.2" y2="1182" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="622" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="657" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="663" x2="74.95" y2="663" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="identifier" data-pk="false">
-<rect x="146" y="1143" width="165" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="228.5" y="1178" text-anchor="middle" font-size="22">identifier</text>
+<rect x="100" y="622" width="143.73" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="171.87" y="657" font-size="24" text-anchor="middle">identifier</text>
 </g>
 <g data-column="value" data-pk="false">
-<rect x="311" y="1143" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="367" y="1178" text-anchor="middle" font-size="22">value</text>
+<rect x="243.73" y="622" width="101.56" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="294.51" y="657" font-size="24" text-anchor="middle">value</text>
 </g>
 <g data-column="expiresAt" data-pk="false">
-<rect x="423" y="1143" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="498.95" y="1178" text-anchor="middle" font-size="22">expiresAt</text>
+<rect x="345.29" y="622" width="148.47" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="419.52" y="657" font-size="24" text-anchor="middle">expiresAt</text>
 </g>
 <g data-column="createdAt" data-pk="false">
-<rect x="574.9" y="1143" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="650.85" y="1178" text-anchor="middle" font-size="22">createdAt</text>
+<rect x="493.76" y="622" width="152.83" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="570.17" y="657" font-size="24" text-anchor="middle">createdAt</text>
 </g>
 <g data-column="updatedAt" data-pk="false">
-<rect x="726.8" y="1143" width="151.9" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="802.75" y="1178" text-anchor="middle" font-size="22">updatedAt</text>
+<rect x="646.59" y="622" width="161.2" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="727.19" y="657" font-size="24" text-anchor="middle">updatedAt</text>
 </g>
 </g>
-<text x="34" y="1231" font-size="20" fill="#646c65">No declared foreign keys or alternate UNIQUE constraints.</text>
-<line x1="34" y1="1304" x2="2833.9" y2="1304" stroke="#d8dcd5" stroke-width="1"/>
-<g id="table_auth_rateLimit" data-table="auth.rateLimit" data-kind="relation">
-<text x="34" y="1332" font-size="25" font-weight="600">auth.rateLimit</text>
+<g data-kind="relation" data-table="auth.rateLimit">
+<text x="28" y="766" font-size="28" font-weight="bold">AUTH.&quot;rateLimit&quot;</text>
 <g data-column="id" data-pk="true">
-<rect x="34" y="1349" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="90" y="1384" text-anchor="middle" font-size="22">id</text>
-<line x1="77.8" y1="1388" x2="102.2" y2="1388" stroke="#202420" stroke-width="1.5"/>
+<rect x="28" y="783" width="72" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="64" y="818" font-size="24" text-anchor="middle">id</text>
+<line x1="53.05" y1="824" x2="74.95" y2="824" stroke="#000" stroke-width="1.5"/>
 </g>
 <g data-column="key" data-pk="false">
-<rect x="146" y="1349" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="202" y="1384" text-anchor="middle" font-size="22">key</text>
+<rect x="100" y="783" width="78.02" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="139.01" y="818" font-size="24" text-anchor="middle">key</text>
 </g>
 <g data-column="count" data-pk="false">
-<rect x="258" y="1349" width="112" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="314" y="1384" text-anchor="middle" font-size="22">count</text>
+<rect x="178.02" y="783" width="103.73" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="229.88" y="818" font-size="24" text-anchor="middle">count</text>
 </g>
 <g data-column="lastRequest" data-pk="false">
-<rect x="370" y="1349" width="178.1" height="54" fill="#fffdf6" stroke="#747975" stroke-width="1.25"/>
-<text x="459.05" y="1384" text-anchor="middle" font-size="22">lastRequest</text>
+<rect x="281.75" y="783" width="176.77" height="52" fill="#e8e8e8" stroke="#000" stroke-width="1.5"/>
+<text x="370.13" y="818" font-size="24" text-anchor="middle">lastRequest</text>
 </g>
 </g>
-<text x="34" y="1437" font-size="20" fill="#505750">UNIQUE (key)</text>
-<line x1="34" y1="1510" x2="2833.9" y2="1510" stroke="#d8dcd5" stroke-width="1"/>
 </g></svg>
